@@ -1,0 +1,47 @@
+#include "ligo.fcl"
+#include "services.fcl"
+
+process_name: ligoFTW
+
+services:
+{
+  # Load the service that manages root files for histograms.
+  TFileService: { fileName: "histos.root" }
+  message:      @local::standard_out
+  @table::standard_services
+}
+
+#Start each new event with an empty event.
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+# Define and configure some modules to do work on each event.
+# First modules are defined; they are scheduled later.
+# Modules are grouped by type.
+physics:
+{
+ analyzers:
+ {
+   lookit: @local::standard_lookit
+ }
+
+ reco: [ lookit ]
+
+ stream1: [ lookit, out1 ]
+
+ #end_path are things that do not modify art::Event, includes analyzers and output modules. 
+ #all items here can be run simultaneously
+ end_paths:     [ stream1 ]  
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fileName:    "ligo.root" #default file name, can override from command line with -o or --output
+  }
+}
