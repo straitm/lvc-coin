@@ -10,24 +10,16 @@
 #include "art/Framework/Principal/Handle.h"
 #include "fhiclcpp/ParameterSet.h"
 #include "art/Framework/Core/ModuleMacros.h"
+#include "art/Framework/Core/EDAnalyzer.h"
 
 #include "RecoBase/Track.h"
-#include "Calibrator/Calibrator.h"
-
-#include "Simulation/ParticleNavigator.h"
-#include "SimulationBase/MCTruth.h"
-#include "SimulationBase/MCParticle.h"
-#include "SimulationBase/MCNeutrino.h"
 
 #include <string>
+using std::string;
 #include <algorithm>
 
 #include <signal.h>
 
-#include "art/Framework/Core/EDAnalyzer.h"
-
-
-/// Calibrating RawData to Produce CellHits
 namespace ligo {
 
   class ligo : public art::EDAnalyzer {
@@ -39,26 +31,99 @@ namespace ligo {
 
     void analyze(const art::Event& evt);
 
+    string fGWEventTime;
+    float fWindowSize;
+
   }; // class ligo
 }
 
+static unsigned long long gwevent_time_us = 0;
+static unsigned long long window_size_s = 1000;
 
 namespace ligo{
 
-ligo::ligo(fhicl::ParameterSet const& pset)
-  : EDAnalyzer(pset)
-{ }
+// Convert an art time, which is a 64 bit number where the upper 32
+// bits are the number of seconds since the UNIX Epoch and the lower 32
+// bits are the number of microseconds to be added to that, to a double
+// which is the number of seconds since the UNIX Epoch. Note that some
+// precision is lost in this process since a double only holds about 16
+// decimal digits.
+static double art_time_to_unix_double(const unsigned long long at)
+{
+  return (at >> 32) + (at & 0xffffffff)*1e6;
+}
+
+/* XXX wait. Leap seconds. GPS. TIA.  UTC.  Oh no. */
+
+// Take a time string like 2000-Jan-01T00:00:00.123Z and return the time
+// in art format. That is, a 64 bit number where the upper 32 bits are
+// the number of seconds since the UNIX Epoch and the lower 32 bits are
+// the number of microseconds to be added to that.
+static unsigned long long rfc3339_to_art_time(const string & stime)
+{
+  tm tm_time;
+  const unsigned int rfc3339length = sizeof("2000-Jan-01T00:00:00") - 1;
+
+  const char * const timehelpmessage = "Must look like "
+    "2000-Jan-01T00:00:00.123Z where the Z denotes UTC time "
+    "and you have to give it in UTC time.  The fractional part "
+    "of the second is optional.";
+
+  if(stime.size() < rfc3339length+1 || stime[stime.size()-1] != 'Z'){
+    fprintf(stderr, "Malformed time string for LIGO. %s\n", timehelpmessage);
+    exit(1);
+  }
+
+  strptime(stime.substr(0, rfc3339length).c_str(),
+           "%Y-%m-%dT%H:%M:%S", &tm_time);
+  int32_t utc_s = mktime(&tm_time); // XXX local time :-(
+
+  // tzset() followed by correction by timezone and somehow fix DST?
+
+  double f_us = 0;
+  const string fractional_second_s =
+    stime.substr(rfc3339length, stime.size() - 1 - rfc3339length);
+
+  if(fractional_second_s.size() > 1)
+    sscanf(fractional_second_s.c_str(), "%lf", &f_us);
+
+  if(f_us < 0 || f_us > 1){
+    fprintf(stderr, "Your time string, \"%s\", gave a fractional number of "
+            "seconds outside the range [0-1]. I guess it in the wrong format. %s\n",
+            stime.c_str(), timehelpmessage);
+    exit(1);
+  }
+
+  return (((unsigned long long)utc_s) << 32) + (unsigned long long)(f_us * 1e6);
+}
+
+ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
+  fGWEventTime(pset.get<string>("GWEventTime")),
+  fWindowSize(pset.get<float>("WindowSize"))
+{
+  gwevent_time_us = rfc3339_to_art_time(fGWEventTime);
+  window_size_s = fWindowSize;
+}
 
 ligo::~ligo() { }
 
-void ligo::analyze(const art::Event& evt)
+/**********************************************************************/
+/*                          The meat follows                          */
+/**********************************************************************/
+
+// Returns true if the event time is within the window defined by the user
+static bool inwindow(const art::Event & evt)
+{
+  const double evt_time = art_time_to_unix_double(evt.time().value());
+  return fabsl(evt_time - art_time_to_unix_double(gwevent_time_us)) < window_size_s/2.;
+}
+
+
+void ligo::analyze(const art::Event & evt)
 {
   // I'm so sorry that I have to do this.  And, my goodness, doing
   // it in the constructor isn't sufficient.
   signal(SIGPIPE, SIG_DFL);
-
-  art::Handle< std::vector<sim::Particle> > particles;
-  evt.getByLabel("geantgen", particles);
 
   {
     static int NOvA = printf(
@@ -66,9 +131,7 @@ void ligo::analyze(const art::Event& evt)
     NOvA = NOvA;
   }
 
-  printf("ntuple: %.1f", 
-                    (*particles)[0].Trajectory().TotalLength()
-        );
+  printf("ntuple: %d", inwindow(evt));
 
   printf("\n");
 }

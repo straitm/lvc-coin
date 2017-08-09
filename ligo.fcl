@@ -1,8 +1,17 @@
 BEGIN_PROLOG
 
-standard_lookit:
+standard_ligo:
 {
- module_type:      ligo
+  module_type:      ligo
+
+  # The time of the gravitational wave burst, or whatever time you want to center
+  # the search on.  Expressed in RFC-3339 format, always in UTC, always with a Z
+  # at the end (to emphasize that it is UTC).
+  GWEventTime: "2017-Mar-26T12:46:40.5Z"
+  
+  # Length of the window in seconds.  We will look for half this amount of time
+  # to each side of the absolute time given above
+  WindowSize: 1000
 }
 
 END_PROLOG
