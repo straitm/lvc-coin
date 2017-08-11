@@ -50,22 +50,23 @@ namespace ligo{
 // decimal digits.
 static double art_time_to_unix_double(const unsigned long long at)
 {
-  return (at >> 32) + (at & 0xffffffff)*1e6;
+  return (at >> 32) + (at & 0xffffffffULL)*1e-6;
 }
 
 /* XXX wait. Leap seconds. GPS. TIA.  UTC.  Oh no. */
 
-// Take a time string like 2000-Jan-01T00:00:00.123Z and return the time
+// Take a time string like 2000-01-01T00:00:00.123Z and return the time
 // in art format. That is, a 64 bit number where the upper 32 bits are
 // the number of seconds since the UNIX Epoch and the lower 32 bits are
 // the number of microseconds to be added to that.
 static unsigned long long rfc3339_to_art_time(const string & stime)
 {
   tm tm_time;
-  const unsigned int rfc3339length = sizeof("2000-Jan-01T00:00:00") - 1;
+  memset(&tm_time, 0, sizeof(tm));
+  const unsigned int rfc3339length = sizeof("2000-01-01T00:00:00") - 1;
 
   const char * const timehelpmessage = "Must look like "
-    "2000-Jan-01T00:00:00.123Z where the Z denotes UTC time "
+    "2000-01-01T00:00:00.123Z where the Z denotes UTC time "
     "and you have to give it in UTC time.  The fractional part "
     "of the second is optional.";
 
@@ -73,10 +74,18 @@ static unsigned long long rfc3339_to_art_time(const string & stime)
     fprintf(stderr, "Malformed time string for LIGO. %s\n", timehelpmessage);
     exit(1);
   }
-
-  strptime(stime.substr(0, rfc3339length).c_str(),
+  string dateforstrptime = stime.substr(0, rfc3339length);
+  printf("dateforstrptime = %s\n", dateforstrptime.c_str());
+  strptime(dateforstrptime.c_str(),
            "%Y-%m-%dT%H:%M:%S", &tm_time);
+  printf("Year: %d\n", tm_time.tm_year);
+  printf("Month: %d\n", tm_time.tm_mon);
+  printf("Day: %d\n", tm_time.tm_mday);
+  printf("Hour: %d\n", tm_time.tm_hour);
+  printf("Minute: %d\n", tm_time.tm_min);
   int32_t utc_s = mktime(&tm_time); // XXX local time :-(
+
+  utc_s += 6 * 3600; // XXX :-(
 
   // tzset() followed by correction by timezone and somehow fix DST?
 
@@ -86,6 +95,8 @@ static unsigned long long rfc3339_to_art_time(const string & stime)
 
   if(fractional_second_s.size() > 1)
     sscanf(fractional_second_s.c_str(), "%lf", &f_us);
+
+  printf("DEBUG: seconds %d, fractional seconds: %f\n", utc_s, f_us);
 
   if(f_us < 0 || f_us > 1){
     fprintf(stderr, "Your time string, \"%s\", gave a fractional number of "
@@ -115,7 +126,9 @@ ligo::~ligo() { }
 static bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  return fabsl(evt_time - art_time_to_unix_double(gwevent_time_us)) < window_size_s/2.;
+  const double gw_time  = art_time_to_unix_double(gwevent_time_us);
+  printf("DEBUG: %16f %16f %16f\n", evt_time, gw_time, evt_time - gw_time);
+  return fabsl(evt_time - gw_time) < window_size_s/2.;
 }
 
 
@@ -127,7 +140,7 @@ void ligo::analyze(const art::Event & evt)
 
   {
     static int NOvA = printf(
-      "ntuple: totallength\n");
+      "ntuple: inwindow\n");
     NOvA = NOvA;
   }
 

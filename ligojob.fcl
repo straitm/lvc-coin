@@ -25,12 +25,12 @@ physics:
 {
  analyzers:
  {
-   lookit: @local::standard_lookit
+   ligo: @local::standard_ligo
  }
 
- reco: [ lookit ]
+ reco: [ ligo ]
 
- stream1: [ lookit, out1 ]
+ stream1: [ ligo, out1 ]
 
  #end_path are things that do not modify art::Event, includes analyzers and output modules. 
  #all items here can be run simultaneously
