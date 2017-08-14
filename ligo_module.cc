@@ -49,7 +49,7 @@ class ligo : public art::EDAnalyzer {
   float fWindowSize;
 };
 
-unsigned long long gwevent_time_ns = 0;
+unsigned long long gwevent_unix_double_time = 0;
 unsigned long long window_size_s = 1000;
 
 // Convert an art time, which is a 64 bit number where the upper 32
@@ -82,14 +82,11 @@ double nova_unix_time_to_double(const timeval & nova_broken_down_time)
 }
 
 // Take a time string like 2000-01-01T00:00:00.123Z and return the time
-// in art format. That is, a 64 bit number where the upper 32 bits are
-// the number of seconds since the UNIX Epoch, ignoring leap seconds,
-// and the lower 32 bits are the number of nanoseconds to be added to
-// that.
-//
-// XXX There's no reason to use this format in an intermediate step.
-// Cut it out.
-unsigned long long rfc3339_to_art_time(const string & stime)
+// in Unix time with fractional seconds. That is, a floating point
+// number where the integer part is the same as what you get from "date
+// +%s", the number of seconds since the UNIX Epoch, ignoring leap
+// seconds, and there's also a fractional part.
+double rfc3339_to_unix_double(const string & stime)
 {
   tm tm_time;
   memset(&tm_time, 0, sizeof(tm));
@@ -110,30 +107,30 @@ unsigned long long rfc3339_to_art_time(const string & stime)
 
   setenv("TZ", "", 1); // Make sure we are interpreting the time as UTC
   tzset();
-  int32_t utc_s = mktime(&tm_time);
+  int32_t unix_s = mktime(&tm_time);
 
-  double f_us = 0;
   const string fractional_second_s =
     stime.substr(rfc3339length, stime.size() - 1 - rfc3339length);
 
+  double unix_fraction = 0;
   if(fractional_second_s.size() > 1)
-    sscanf(fractional_second_s.c_str(), "%lf", &f_us);
+    sscanf(fractional_second_s.c_str(), "%lf", &unix_fraction);
 
-  if(f_us < 0 || f_us >= 1){
+  if(unix_fraction < 0 || unix_fraction >= 1){
     fprintf(stderr, "Your time string, \"%s\", gave fractional seconds outside"
             "the range [0-1). I guess it is in the wrong format. %s\n",
             stime.c_str(), timehelpmessage);
     exit(1);
   }
 
-  return (((unsigned long long)utc_s) << 32) + (unsigned long long)(f_us * 1e9);
+  return unix_s + unix_fraction;
 }
 
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<float>("WindowSize"))
 {
-  gwevent_time_ns = rfc3339_to_art_time(fGWEventTime);
+  gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
 }
 
@@ -200,11 +197,22 @@ ligo::~ligo() { }
 // seconds of events piled up in 1s, depending on how the rest of this
 // module is implemented. If there were to be a negative leap second
 // (never happened as of 2017), there'd be the opposite problem.
+//
+// We could solve this problem by using the time from the header and
+// converting it ourselves *without* leap seconds, so it is the (simple
+// monotonic) number of seconds since the NOvA epoch. But we'd have to
+// correct the user supplied time then, and different headaches ensue.
+// Probably better to check by hand that we're not near a leap second,
+// which is pretty unlikely since they come only every year or two, and
+// so far gravitational wave events only come a few per year. There's
+// only a ~2e-5 chance of it being a problem for a given event with a
+// 1000s window. I don't know.
 bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  const double gw_time  = art_time_to_unix_double(gwevent_time_ns);
-  return fabsl(evt_time - gw_time) < window_size_s/2.;
+  printf("DEBUG: %6u %16f %16f %16f\n", evt.id().event(),
+    evt_time, gwevent_unix_double_time, evt_time - gwevent_unix_double_time);
+  return fabsl(evt_time - gwevent_unix_double_time) < window_size_s/2.;
 }
 
 
