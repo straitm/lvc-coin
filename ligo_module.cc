@@ -12,6 +12,23 @@
 #include "art/Framework/Core/ModuleMacros.h"
 #include "art/Framework/Core/EDAnalyzer.h"
 
+#include <DAQDataFormats/RawTriggerTime.h>
+#include "DAQDataFormats/RawEvent.h"
+#include "DAQDataFormats/RawTrigger.h"
+#include "DAQDataFormats/RawTriggerMask.h"
+#include "DAQDataFormats/RawDataBlock.h"
+#include "DAQDataFormats/RawMicroBlock.h"
+#include "DAQDataFormats/RawMicroSlice.h"
+#include "DAQDataFormats/RawNanoSlice.h"
+#include "DAQChannelMap/DAQChannelMap.h"
+#include "RawData/RawSumDropMB.h"
+
+#include "RawData/FlatDAQData.h"
+#include "RawData/RawTrigger.h"
+
+#include "NovaTimingUtilities/TimingUtilities.h"
+
+
 #include "RecoBase/Track.h"
 
 #include <string>
@@ -22,44 +39,57 @@ using std::string;
 
 namespace ligo {
 
-  class ligo : public art::EDAnalyzer {
-
+class ligo : public art::EDAnalyzer {
   public:
+  explicit ligo(fhicl::ParameterSet const& pset);
+  virtual ~ligo();
+  void analyze(const art::Event& evt);
 
-    explicit ligo(fhicl::ParameterSet const& pset);
-    virtual ~ligo();
+  string fGWEventTime;
+  float fWindowSize;
+};
 
-    void analyze(const art::Event& evt);
-
-    string fGWEventTime;
-    float fWindowSize;
-
-  }; // class ligo
-}
-
-static unsigned long long gwevent_time_us = 0;
-static unsigned long long window_size_s = 1000;
-
-namespace ligo{
+unsigned long long gwevent_time_ns = 0;
+unsigned long long window_size_s = 1000;
 
 // Convert an art time, which is a 64 bit number where the upper 32
 // bits are the number of seconds since the UNIX Epoch and the lower 32
 // bits are the number of nanoseconds to be added to that, to a double
-// which is the number of seconds since the UNIX Epoch. Note that some
-// precision is lost in this process since a double only holds about 16
-// decimal digits.
-static double art_time_to_unix_double(const unsigned long long at)
+// which is the number of seconds since the UNIX Epoch.
+//
+// Note that some precision is lost in this process since a double
+// only holds about 16 decimal digits. The granularity at any relevant
+// timestamp is 2**-22 seconds = 238 nanoseconds, which does not matter
+// for these purposes.
+double art_time_to_unix_double(const unsigned long long at)
 {
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
 }
 
-/* XXX wait. Leap seconds. GPS. TIA.  UTC.  Oh no. */
+// Convert a nova timestamp which represents Unix time with integer
+// and fractional seconds, into a double that also represents Unix time.
+// as with art_time_to_unix_double(), this incurs an unimportant
+// loss of precision.
+//
+// For the name of the argument to this function cf. 
+// http://www.catb.org/esr/time-programming/#_broken_down_time
+// "In what is probably unintentional humor, various manual pages and
+// standards documents refer to it as 'broken-down time'."
+double nova_unix_time_to_double(const timeval & nova_broken_down_time)
+{
+  return nova_broken_down_time.tv_sec +
+         nova_broken_down_time.tv_usec * 1e-6;
+}
 
 // Take a time string like 2000-01-01T00:00:00.123Z and return the time
 // in art format. That is, a 64 bit number where the upper 32 bits are
-// the number of seconds since the UNIX Epoch and the lower 32 bits are
-// the number of nanoseconds to be added to that.
-static unsigned long long rfc3339_to_art_time(const string & stime)
+// the number of seconds since the UNIX Epoch, ignoring leap seconds,
+// and the lower 32 bits are the number of nanoseconds to be added to
+// that.
+//
+// XXX There's no reason to use this format in an intermediate step.
+// Cut it out.
+unsigned long long rfc3339_to_art_time(const string & stime)
 {
   tm tm_time;
   memset(&tm_time, 0, sizeof(tm));
@@ -89,9 +119,9 @@ static unsigned long long rfc3339_to_art_time(const string & stime)
   if(fractional_second_s.size() > 1)
     sscanf(fractional_second_s.c_str(), "%lf", &f_us);
 
-  if(f_us < 0 || f_us > 1){
-    fprintf(stderr, "Your time string, \"%s\", gave a fractional number of "
-            "seconds outside the range [0-1]. I guess it in the wrong format. %s\n",
+  if(f_us < 0 || f_us >= 1){
+    fprintf(stderr, "Your time string, \"%s\", gave fractional seconds outside"
+            "the range [0-1). I guess it is in the wrong format. %s\n",
             stime.c_str(), timehelpmessage);
     exit(1);
   }
@@ -103,7 +133,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<float>("WindowSize"))
 {
-  gwevent_time_us = rfc3339_to_art_time(fGWEventTime);
+  gwevent_time_ns = rfc3339_to_art_time(fGWEventTime);
   window_size_s = fWindowSize;
 }
 
@@ -113,25 +143,78 @@ ligo::~ligo() { }
 /*                          The meat follows                          */
 /**********************************************************************/
 
-// Returns true if the event time is within the window defined by the user
-static bool inwindow(const art::Event & evt)
+// Returns true if the event time is within the window defined by the
+// user.
+//
+// I wondered if evt.time() correctly returns true Unix time or if there
+// was perhaps a leap second problem of one flavor or another in there.
+// Since absolute timing doesn't matter for anything in NOvA except
+// SNEWS triggering and LIGO follow-ups, this is certainly a risk.
+//
+// Here is code to test that by examining the raw trigger. It
+// shows that evt.time() is always within a microsecond or so of
+// fTriggerTimingMarker_TimeStart converted into Unix time by code that
+// explicitly does a leap second correction:
+//
+////////////////////////////////////////////////////////////////////////
+//  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+//  evt.getByLabel("daq", rawtrigger);
+// 
+//  // Consulting example code in 
+//  // Online/NovaGlobalTrigger/src/test/GTReceiver.cc
+//  // But I have a rawdata::RawTrigger.  I need a daqdataformats::RawTrigger
+//  // Or I just need the triggertime directly.  Anyway, I can't directly
+//  // do this:
+//  // 
+//  // daqdataformats::RawTriggerTime* triggerTime =
+//  //   (*rawtrigger)[0].getTriggerTime();
+//  //
+//  // daqdataformats:RawTrigger is full of "clever" preprocesor macros
+//  // that make it impossible to read or understand. Sure, I'm guilty of
+//  // doing this from time to time, but usually not in code I intend a
+//  // whole collaboration to use.
+// 
+//  timeval tv; // seconds and microseconds
+// 
+//  // Args in the opposite of the conventional order. tv gets set.
+//  novadaq::timeutils::convertNovaTimeToUnixTime(
+//    // Actually want fTriggerTimingMarker_ExtractionStart, but that is
+//    // always zero, which is probably a bug. TimeStart is the time the
+//    // trigger *asked* for rather than the one it *got*, but that's
+//    // probably close enough.
+//   (*rawtrigger)[0].fTriggerTimingMarker_TimeStart, tv);
+// 
+//  const double evt_time_from_header = nova_unix_time_to_double(tv);
+// 
+//  printf("DEBUG: %6u %16f %16f %16f : %16f %16f : %.9f\n", evt.id().event(),
+//    evt_time, evt_time_from_header, gw_time,
+//    evt_time - gw_time, evt_time_from_header - gw_time,
+//    evt_time - evt_time_from_header);
+////////////////////////////////////////////////////////////////////////
+//
+// Now, Unix time is not a great time stamp because a leap second and
+// the second prior to a leap second are represented by the same value.
+// It's like using Daylight Savings Time and not having any marker for
+// whether or not it is in effect. This means that if there is a leap
+// second in our window it is going to be 1s too long and/or have 2
+// seconds of events piled up in 1s, depending on how the rest of this
+// module is implemented. If there were to be a negative leap second
+// (never happened as of 2017), there'd be the opposite problem.
+bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  const double gw_time  = art_time_to_unix_double(gwevent_time_us);
-  printf("DEBUG: %lu %16f %16f %16f\n", evt.id().event(), evt_time, gw_time, evt_time - gw_time);
+  const double gw_time  = art_time_to_unix_double(gwevent_time_ns);
   return fabsl(evt_time - gw_time) < window_size_s/2.;
 }
 
 
 void ligo::analyze(const art::Event & evt)
 {
-  // I'm so sorry that I have to do this.  And, my goodness, doing
-  // it in the constructor isn't sufficient.
+  // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
 
   {
-    static int NOvA = printf(
-      "ntuple: inwindow\n");
+    static int NOvA = printf("ntuple: inwindow\n");
     NOvA = NOvA;
   }
 
