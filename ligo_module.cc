@@ -44,12 +44,44 @@ class ligo : public art::EDAnalyzer {
   explicit ligo(fhicl::ParameterSet const& pset);
   virtual ~ligo();
   void analyze(const art::Event& evt);
+  void endJob();
 
+  /// \brief The user-supplied time of the gravitational wave burst, or
+  /// whatever time you want to center the search on.
+  ///
+  /// Expressed in RFC-3339 format, always in UTC, always with a Z at
+  /// the end (to emphasize that it is UTC).
   string fGWEventTime;
+
+  /// \brief The user-supplied length of the search window in seconds.
+  ///
+  /// We search for half this length on either side of the given time.
   float fWindowSize;
+
+  private:
+
+  /// True if we see the beginning of the window, i.e. a transition from
+  /// being before the window to being in the window.
+  bool risingEdge = false;
+
+  /// True if we see the end of the window, i.e. a transtion from being
+  /// in the window to being after it.
+  bool fallingEdge = false;
+
+  /// True if the first event we saw was in the window.
+  bool startedHigh = false;
+
+  /// True if we ever see any events in the window.
+  bool sawTheWindow = false;
+
+  /// True if we encounter an event in the window after already seeing
+  /// a transition from being in the window to being out of the window.
+  /// Could conceivably happen if leap seconds are involved, or if the
+  /// user constructs some sort of odd file.
+  bool tooManyEdges = false;
 };
 
-unsigned long long gwevent_unix_double_time = 0;
+double gwevent_unix_double_time = 0;
 unsigned long long window_size_s = 1000;
 
 // Convert an art time, which is a 64 bit number where the upper 32
@@ -71,7 +103,7 @@ double art_time_to_unix_double(const unsigned long long at)
 // as with art_time_to_unix_double(), this incurs an unimportant
 // loss of precision.
 //
-// For the name of the argument to this function cf. 
+// For the name of the argument to this function cf.
 // http://www.catb.org/esr/time-programming/#_broken_down_time
 // "In what is probably unintentional humor, various manual pages and
 // standards documents refer to it as 'broken-down time'."
@@ -126,6 +158,16 @@ double rfc3339_to_unix_double(const string & stime)
   return unix_s + unix_fraction;
 }
 
+void ligo::endJob()
+{
+  if(tooManyEdges) printf("Data was out of time order! :-0\n");
+  else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
+  else if( risingEdge && !fallingEdge) printf("Saw only the beginning of the window :-\\\n");
+  else if(!risingEdge &&  fallingEdge) printf("Saw only the end of the window :-\\\n");
+  else if(sawTheWindow) printf("Saw only the middle of the window >:-\\\n");
+  else printf("Did not see any data in the window :-(\n");
+}
+
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<float>("WindowSize"))
@@ -156,13 +198,13 @@ ligo::~ligo() { }
 ////////////////////////////////////////////////////////////////////////
 //  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
 //  evt.getByLabel("daq", rawtrigger);
-// 
-//  // Consulting example code in 
+//
+//  // Consulting example code in
 //  // Online/NovaGlobalTrigger/src/test/GTReceiver.cc
 //  // But I have a rawdata::RawTrigger.  I need a daqdataformats::RawTrigger
 //  // Or I just need the triggertime directly.  Anyway, I can't directly
 //  // do this:
-//  // 
+//  //
 //  // daqdataformats::RawTriggerTime* triggerTime =
 //  //   (*rawtrigger)[0].getTriggerTime();
 //  //
@@ -170,9 +212,9 @@ ligo::~ligo() { }
 //  // that make it impossible to read or understand. Sure, I'm guilty of
 //  // doing this from time to time, but usually not in code I intend a
 //  // whole collaboration to use.
-// 
+//
 //  timeval tv; // seconds and microseconds
-// 
+//
 //  // Args in the opposite of the conventional order. tv gets set.
 //  novadaq::timeutils::convertNovaTimeToUnixTime(
 //    // Actually want fTriggerTimingMarker_ExtractionStart, but that is
@@ -180,9 +222,9 @@ ligo::~ligo() { }
 //    // trigger *asked* for rather than the one it *got*, but that's
 //    // probably close enough.
 //   (*rawtrigger)[0].fTriggerTimingMarker_TimeStart, tv);
-// 
+//
 //  const double evt_time_from_header = nova_unix_time_to_double(tv);
-// 
+//
 //  printf("DEBUG: %6u %16f %16f %16f : %16f %16f : %.9f\n", evt.id().event(),
 //    evt_time, evt_time_from_header, gw_time,
 //    evt_time - gw_time, evt_time_from_header - gw_time,
@@ -206,7 +248,8 @@ ligo::~ligo() { }
 // which is pretty unlikely since they come only every year or two, and
 // so far gravitational wave events only come a few per year. There's
 // only a ~2e-5 chance of it being a problem for a given event with a
-// 1000s window. I don't know.
+// 1000s window. I don't know. Watch out for events at the end of June
+// or December (or, to some extent, the end of any month).
 bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
@@ -224,6 +267,20 @@ void ligo::analyze(const art::Event & evt)
   {
     static int NOvA = printf("ntuple: inwindow\n");
     NOvA = NOvA;
+  }
+
+  const bool is_in_window = inwindow(evt);
+
+  // Keep track of whether we've seen the beginning and
+  // end of the window.
+  {
+    static bool firstevent = true;
+    if(is_in_window)                                 sawTheWindow = true;
+    if(firstevent && is_in_window)                   startedHigh  = true;
+    if(!startedHigh && is_in_window && !risingEdge)  risingEdge   = true;
+    if(is_in_window && fallingEdge)                  tooManyEdges = true;
+    if((startedHigh || risingEdge) && !is_in_window) fallingEdge  = true;
+    firstevent = false;
   }
 
   printf("ntuple: %d", inwindow(evt));
