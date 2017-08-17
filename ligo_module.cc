@@ -6,6 +6,7 @@
 
 #include "art/Framework/Principal/Run.h"
 #include "art/Framework/Principal/Event.h"
+#include "art/Framework/Services/Optional/TFileService.h"
 #include "art/Framework/Services/Registry/ServiceHandle.h"
 #include "art/Framework/Principal/Handle.h"
 #include "fhiclcpp/ParameterSet.h"
@@ -28,14 +29,18 @@
 
 #include "NovaTimingUtilities/TimingUtilities.h"
 
-
 #include "RecoBase/Track.h"
+
+#include "TH1.h"
 
 #include <string>
 using std::string;
 #include <algorithm>
 
 #include <signal.h>
+
+const int TDC_PER_US = 64;
+const int US_PER_MICROSLICE = 50; // I hope this is always true
 
 namespace ligo {
 
@@ -58,13 +63,12 @@ class ligo : public art::EDAnalyzer {
   /// We search for half this length on either side of the given time.
   float fWindowSize;
 
-  private:
 
   /// True if we see the beginning of the window, i.e. a transition from
   /// being before the window to being in the window.
   bool risingEdge = false;
 
-  /// True if we see the end of the window, i.e. a transtion from being
+  /// True if we see the end of the window, i.e. a transition from being
   /// in the window to being after it.
   bool fallingEdge = false;
 
@@ -82,7 +86,103 @@ class ligo : public art::EDAnalyzer {
 };
 
 double gwevent_unix_double_time = 0;
-unsigned long long window_size_s = 1000;
+long long window_size_s = 1000;
+
+/**********************************************************************/
+/*                             Histograms                             */
+/**********************************************************************/
+
+struct ligohist{
+  // Things per second, for whatever it is we're selecting
+  TH1D * sig = NULL;
+
+  // Livetime per second (XXX same for all histograms? I think not necessarily
+  // for DDTs)
+  TH1D * live = NULL;
+};
+
+void init_lh(ligohist & lh, const char * const name)
+{
+  art::ServiceHandle<art::TFileService> tfs;
+  lh.sig = tfs->make<TH1D>(name, "",
+    window_size_s, -window_size_s/2, window_size_s/2);
+  lh.live = tfs->make<TH1D>(Form("%slive", name), "",
+    window_size_s, -window_size_s/2, window_size_s/2);
+}
+
+// Number of hits, with no filtering of any sort
+ligohist lh_rawhits;
+
+// Number of hits that are not in any Slicer4D slice, i.e. they are in the
+// Slicer4D noise slice.
+ligohist lh_unslice4ddhits;
+
+/**********************************************************************/
+
+/*
+  Get the length of the event in TDC ticks, typically 550*64, and
+  "delta_tdc", the time between the trigger time and the time the event
+  starts. You can subtract this off of the time that the offline gives
+  each hit to get the time since the beginning of the readout, and with
+  the event length, the time until the end of the readout.
+
+  delta_tdc is a signed 64 bit integer, even though it should always be
+  a small positive number, just in case. Ditto for the event length.
+
+  Returns whether this information was successfully extracted.
+*/
+static bool delta_and_length(int64_t & event_length_tdc,
+  int64_t & delta_tdc,
+  const art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
+  const art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger)
+{
+  daqdataformats::RawEvent raw;
+  if(flatdaq->empty()) return false;
+
+  raw.readData((*flatdaq)[0].getRawBufferPointer());
+  if(raw.getDataBlockNumber() == 0) return false;
+
+  raw.setFloatingDataBlock(0);
+  daqdataformats::RawDataBlock& datablock = *raw.getFloatingDataBlock();
+
+  uint64_t event_start_time = 0xffffffffffffffff;
+  uint64_t event_end_time   = 0x0000000000000000;
+
+  for(unsigned int di = 0; di < raw.getDataBlockNumber(); di++){
+    raw.setFloatingDataBlock(di);
+    datablock = (*raw.getFloatingDataBlock());
+
+    if(datablock.getHeader()->getMarker() ==
+         daqdataformats::datablockheader::SummaryBlock_Marker ||
+       !datablock.getHeader()->checkMarker()) continue;
+
+    for(unsigned int mi = 0; mi < datablock.getNumMicroBlocks(); mi++){
+      datablock.setFloatingMicroBlock(mi);
+      daqdataformats::RawMicroBlock * ub = datablock.getFloatingMicroBlock();
+
+      // The time is always in the second and third words of the
+      // microslice, which follows two words of microblock header, so
+      // just get it. Justin says you can also get it from getTime(),
+      // but this already works and I'm not touching it.
+      const uint32_t t_marker_low  = ((uint32_t *)(ub->getBuffer()))[3];
+      const uint32_t t_marker_high = ((uint32_t *)(ub->getBuffer()))[4];
+
+      uint64_t time_marker = t_marker_low;
+      time_marker |= (uint64_t)t_marker_high << 32;
+      if(time_marker < event_start_time) event_start_time = time_marker;
+      if(time_marker > event_end_time  ) event_end_time   = time_marker;
+    }
+  }
+
+  delta_tdc = (int64_t)((*rawtrigger)[0].fTriggerTimingMarker_TimeStart
+                        - event_start_time);
+
+  // Assume that microblocks are always 50us. I hope that's true for all
+  // relevant data.
+  event_length_tdc = ((int64_t)(event_end_time - event_start_time))
+                     + US_PER_MICROSLICE*TDC_PER_US;
+  return true; // ok
+}
 
 // Convert an art time, which is a 64 bit number where the upper 32
 // bits are the number of seconds since the UNIX Epoch and the lower 32
@@ -107,10 +207,9 @@ double art_time_to_unix_double(const unsigned long long at)
 // http://www.catb.org/esr/time-programming/#_broken_down_time
 // "In what is probably unintentional humor, various manual pages and
 // standards documents refer to it as 'broken-down time'."
-double nova_unix_time_to_double(const timeval & nova_broken_down_time)
+double nova_unix_time_to_double(const timeval & broken_down_time)
 {
-  return nova_broken_down_time.tv_sec +
-         nova_broken_down_time.tv_usec * 1e-6;
+  return broken_down_time.tv_sec + broken_down_time.tv_usec * 1e-6;
 }
 
 // Take a time string like 2000-01-01T00:00:00.123Z and return the time
@@ -160,20 +259,28 @@ double rfc3339_to_unix_double(const string & stime)
 
 void ligo::endJob()
 {
-  if(tooManyEdges) printf("Data was out of time order! :-0\n");
+  if(tooManyEdges)                     printf("Data was out of time order! :-0\n");
   else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
-  else if( risingEdge && !fallingEdge) printf("Saw only the beginning of the window :-\\\n");
-  else if(!risingEdge &&  fallingEdge) printf("Saw only the end of the window :-\\\n");
-  else if(sawTheWindow) printf("Saw only the middle of the window >:-\\\n");
-  else printf("Did not see any data in the window :-(\n");
+  else if( risingEdge && !fallingEdge) printf("Saw only beginning of window :-\\\n");
+  else if(!risingEdge &&  fallingEdge) printf("Saw only end of the window :-\\\n");
+  else if(sawTheWindow)                printf("Saw only middle of window >:-\\\n");
+  else                                 printf("Didn't see any data in window :-(\n");
+
+  lh_rawhits.sig->SavePrimitive(std::cout);
+  lh_rawhits.live->SavePrimitive(std::cout);
+  lh_rawhits.sig->Write();
+  lh_rawhits.live->Write();
 }
 
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
-  fWindowSize(pset.get<float>("WindowSize"))
+  fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
+
+  init_lh(lh_rawhits, "rawhits");
+  init_lh(lh_unslice4ddhits, "unslice4ddhits");
 }
 
 ligo::~ligo() { }
@@ -259,15 +366,57 @@ bool inwindow(const art::Event & evt)
 }
 
 
+// Return the livetime in this event in seconds, as it is relevant for
+// raw hits (same as for anything else? Maybe not if we don't trust
+// tracks close to the time-edges of events).
+double rawlivetime(const art::Event & evt)
+{
+  art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
+  evt.getByLabel("daq", flatdaq);
+
+  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  evt.getByLabel("daq", rawtrigger);
+
+  if(rawtrigger->empty()) return -1;
+
+  int64_t event_length_tdc = 0, delta_tdc = 0;
+
+  if(!delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger))
+    return -1;
+
+  return event_length_tdc / TDC_PER_US * 1e-6;
+}
+
+// Add 'add' to bin number 'bin'.  Same as
+// h->Fill(h->GetBinCenter(bin), add), but without the need to go
+// through an unnecesary step of looking up the bin x-value, and avoids
+// (for the caller) needing to name the histogram twice.
+void THplusequals(TH1D * const h, const int bin, const double add)
+{
+  h->SetBinContent(bin, h->GetBinContent(bin) + add);
+}
+
+// Count the number of raw hits in the event and fill the appropriate histograms
+void count_hits(const art::Event & evt)
+{
+  art::Handle< std::vector<rawdata::RawDigit> > rawhits;
+  evt.getByLabel("daq", rawhits);
+
+
+  printf("Hits in this event: %lu\n", rawhits->size());
+  const double evt_time = art_time_to_unix_double(evt.time().value());
+
+  const int bin = int(evt_time - gwevent_unix_double_time) + window_size_s/2;
+
+  // Can't use Fill(x, weight) because I want to do it by bin number
+  THplusequals(lh_rawhits.sig,  bin, rawhits->size());
+  THplusequals(lh_rawhits.live, bin, rawlivetime(evt));
+}
+
 void ligo::analyze(const art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
-
-  {
-    static int NOvA = printf("ntuple: inwindow\n");
-    NOvA = NOvA;
-  }
 
   const bool is_in_window = inwindow(evt);
 
@@ -283,7 +432,11 @@ void ligo::analyze(const art::Event & evt)
     firstevent = false;
   }
 
-  printf("ntuple: %d", inwindow(evt));
+  if(is_in_window){
+    count_hits(evt);
+  }
+
+  printf("In window: %d", is_in_window);
 
   printf("\n");
 }

@@ -10,7 +10,9 @@ standard_ligo:
   GWEventTime: "2017-03-26T12:46:40.5Z"
   
   # Length of the window in seconds.  We will look for half this amount of time
-  # to each side of the absolute time given above
+  # to each side of the absolute time given above.  Must be an integer.
+  # XXX require this to be an *odd* integer so that the GW events is
+  # centered in the middle bin?
   WindowSize: 1000
 }
 
