@@ -265,11 +265,6 @@ void ligo::endJob()
   else if(!risingEdge &&  fallingEdge) printf("Saw only end of the window :-\\\n");
   else if(sawTheWindow)                printf("Saw only middle of window >:-\\\n");
   else                                 printf("Didn't see any data in window :-(\n");
-
-  lh_rawhits.sig->SavePrimitive(std::cout);
-  lh_rawhits.live->SavePrimitive(std::cout);
-  lh_rawhits.sig->Write();
-  lh_rawhits.live->Write();
 }
 
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
@@ -406,7 +401,7 @@ void count_hits(const art::Event & evt)
   printf("Hits in this event: %lu\n", rawhits->size());
   const double evt_time = art_time_to_unix_double(evt.time().value());
 
-  const int bin = int(evt_time - gwevent_unix_double_time) + window_size_s/2;
+  const int bin = floor(evt_time - gwevent_unix_double_time) + window_size_s/2;
 
   // Can't use Fill(x, weight) because I want to do it by bin number
   THplusequals(lh_rawhits.sig,  bin, rawhits->size());
