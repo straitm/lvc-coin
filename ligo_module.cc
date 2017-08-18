@@ -22,8 +22,8 @@
 #include "DAQDataFormats/RawMicroSlice.h"
 #include "DAQDataFormats/RawNanoSlice.h"
 #include "DAQChannelMap/DAQChannelMap.h"
-#include "RawData/RawSumDropMB.h"
 
+#include "RawData/RawSumDropMB.h"
 #include "RawData/FlatDAQData.h"
 #include "RawData/RawTrigger.h"
 
@@ -110,13 +110,6 @@ void init_lh(ligohist & lh, const char * const name)
   lh.live = t->make<TH1D>(Form("%slive", name), "",
     window_size_s, -window_size_s/2, window_size_s/2);
 }
-
-// Number of hits, with no filtering of any sort
-ligohist lh_rawhits;
-
-// Number of hits that are not in any Slicer4D slice, i.e. they are in the
-// Slicer4D noise slice.
-ligohist lh_unslice4ddhits;
 
 /**********************************************************************/
 
@@ -254,6 +247,15 @@ void ligo::endJob()
   else                                 printf("Didn't see any data in window :-(\n");
 }
 
+// Number of hits, with no filtering of any sort
+ligohist lh_rawhits;
+
+// Number of hits that are not in any Slicer4D slice, i.e. they are in the
+// Slicer4D noise slice.
+ligohist lh_unslice4ddhits;
+
+ligohist lh_tracks;
+
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
@@ -263,6 +265,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
 
   init_lh(lh_rawhits, "rawhits");
   init_lh(lh_unslice4ddhits, "unslice4ddhits");
+  init_lh(lh_tracks, "tracks");
 }
 
 ligo::~ligo() { }
@@ -411,6 +414,15 @@ void count_unslice4dd_hits(const art::Event & evt)
   THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(), rawlivetime(evt));
 }
 
+void count_tracks(const art::Event & evt)
+{
+  art::Handle< std::vector<rb::Track> > tracks;
+  evt.getByLabel("kalmantrackmerge", tracks);
+
+  printf("Tracks in this event: %lu\n", tracks->size());
+  THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
+}
+
 void ligo::analyze(const art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
@@ -432,6 +444,7 @@ void ligo::analyze(const art::Event & evt)
   if(is_in_window){
     count_hits(evt);
     count_unslice4dd_hits(evt);
+    count_tracks(evt);
   }
 
   printf("In window: %d\n", is_in_window);
