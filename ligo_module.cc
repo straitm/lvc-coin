@@ -85,6 +85,7 @@ class ligo : public art::EDAnalyzer {
   bool tooManyEdges = false;
 };
 
+// Set from the FCL parameters
 double gwevent_unix_double_time = 0;
 long long window_size_s = 1000;
 
@@ -103,10 +104,10 @@ struct ligohist{
 
 void init_lh(ligohist & lh, const char * const name)
 {
-  art::ServiceHandle<art::TFileService> tfs;
-  lh.sig = tfs->make<TH1D>(name, "",
+  art::ServiceHandle<art::TFileService> t;
+  lh.sig  = t->make<TH1D>(name,                 "",
     window_size_s, -window_size_s/2, window_size_s/2);
-  lh.live = tfs->make<TH1D>(Form("%slive", name), "",
+  lh.live = t->make<TH1D>(Form("%slive", name), "",
     window_size_s, -window_size_s/2, window_size_s/2);
 }
 
@@ -191,25 +192,11 @@ static bool delta_and_length(int64_t & event_length_tdc,
 //
 // Note that some precision is lost in this process since a double
 // only holds about 16 decimal digits. The granularity at any relevant
-// timestamp is 2**-22 seconds = 238 nanoseconds, which does not matter
+// time stamp is 2**-22 seconds = 238 nanoseconds, which does not matter
 // for these purposes.
 double art_time_to_unix_double(const unsigned long long at)
 {
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
-}
-
-// Convert a nova timestamp which represents Unix time with integer
-// and fractional seconds, into a double that also represents Unix time.
-// as with art_time_to_unix_double(), this incurs an unimportant
-// loss of precision.
-//
-// For the name of the argument to this function cf.
-// http://www.catb.org/esr/time-programming/#_broken_down_time
-// "In what is probably unintentional humor, various manual pages and
-// standards documents refer to it as 'broken-down time'."
-double nova_unix_time_to_double(const timeval & broken_down_time)
-{
-  return broken_down_time.tv_sec + broken_down_time.tv_usec * 1e-6;
 }
 
 // Take a time string like 2000-01-01T00:00:00.123Z and return the time
@@ -325,8 +312,7 @@ ligo::~ligo() { }
 //    // probably close enough.
 //   (*rawtrigger)[0].fTriggerTimingMarker_TimeStart, tv);
 //
-//  const double evt_time_from_header = nova_unix_time_to_double(tv);
-//
+//  const double evt_time_from_header = tv.tv_sec + tv.tv_usec * 1e-6;
 //  printf("DEBUG: %6u %16f %16f %16f : %16f %16f : %.9f\n", evt.id().event(),
 //    evt_time, evt_time_from_header, gw_time,
 //    evt_time - gw_time, evt_time_from_header - gw_time,
@@ -385,8 +371,8 @@ double rawlivetime(const art::Event & evt)
 // Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
 void THplusequals(ligohist & lh, const int bin, const double sig, const double live)
 {
-  // Use SetBinContent instead of TH1::Fill(x, weight) to avoid having to look
-  // up the bin number twice by x value.
+  // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
+  // the bin number twice.
   lh.sig ->SetBinContent(bin, lh.sig ->GetBinContent(bin) + sig);
   lh.live->SetBinContent(bin, lh.live->GetBinContent(bin) + live);
 }
@@ -432,8 +418,7 @@ void ligo::analyze(const art::Event & evt)
 
   const bool is_in_window = inwindow(evt);
 
-  // Keep track of whether we've seen the beginning and
-  // end of the window.
+  // Keep track of whether we've seen the beginning and end of the window.
   {
     static bool firstevent = true;
     if(is_in_window)                                 sawTheWindow = true;
@@ -449,9 +434,7 @@ void ligo::analyze(const art::Event & evt)
     count_unslice4dd_hits(evt);
   }
 
-  printf("In window: %d", is_in_window);
-
-  printf("\n");
+  printf("In window: %d\n", is_in_window);
 }
 
 DEFINE_ART_MODULE(ligo);
