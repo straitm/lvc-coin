@@ -382,13 +382,21 @@ double rawlivetime(const art::Event & evt)
   return event_length_tdc / TDC_PER_US * 1e-6;
 }
 
-// Add 'add' to bin number 'bin'.  Same as
-// h->Fill(h->GetBinCenter(bin), add), but without the need to go
-// through an unnecesary step of looking up the bin x-value, and avoids
-// (for the caller) needing to name the histogram twice.
-void THplusequals(TH1D * const h, const int bin, const double add)
+// Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
+void THplusequals(ligohist & lh, const int bin, const double sig, const double live)
 {
-  h->SetBinContent(bin, h->GetBinContent(bin) + add);
+  // Use SetBinContent instead of TH1::Fill(x, weight) to avoid having to look
+  // up the bin number twice by x value.
+  lh.sig ->SetBinContent(bin, lh.sig ->GetBinContent(bin) + sig);
+  lh.live->SetBinContent(bin, lh.live->GetBinContent(bin) + live);
+}
+
+// Return the bin number for this event, i.e. the number of seconds from the
+// beginning of the window.
+int timebin(const art::Event & evt)
+{
+  const double evt_time = art_time_to_unix_double(evt.time().value());
+  return floor(evt_time - gwevent_unix_double_time) + window_size_s/2;
 }
 
 // Count the number of raw hits in the event and fill the appropriate histograms
@@ -397,15 +405,24 @@ void count_hits(const art::Event & evt)
   art::Handle< std::vector<rawdata::RawDigit> > rawhits;
   evt.getByLabel("daq", rawhits);
 
-
   printf("Hits in this event: %lu\n", rawhits->size());
-  const double evt_time = art_time_to_unix_double(evt.time().value());
 
-  const int bin = floor(evt_time - gwevent_unix_double_time) + window_size_s/2;
+  THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
+}
 
-  // Can't use Fill(x, weight) because I want to do it by bin number
-  THplusequals(lh_rawhits.sig,  bin, rawhits->size());
-  THplusequals(lh_rawhits.live, bin, rawlivetime(evt));
+void count_unslice4dd_hits(const art::Event & evt)
+{
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+
+  if(slice->empty()){
+    printf("Unexpected event with zero slices!\n");
+    return;
+  }
+
+  printf("Hits in this event in the Slicer4D noise slice: %d\n", (*slice)[0].NCell());
+
+  THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(), rawlivetime(evt));
 }
 
 void ligo::analyze(const art::Event & evt)
@@ -429,6 +446,7 @@ void ligo::analyze(const art::Event & evt)
 
   if(is_in_window){
     count_hits(evt);
+    count_unslice4dd_hits(evt);
   }
 
   printf("In window: %d", is_in_window);
