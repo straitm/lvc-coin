@@ -13,6 +13,8 @@
 #include "art/Framework/Core/ModuleMacros.h"
 #include "art/Framework/Core/EDAnalyzer.h"
 
+#include "Geometry/Geometry.h"
+
 #include <DAQDataFormats/RawTriggerTime.h>
 #include "DAQDataFormats/RawEvent.h"
 #include "DAQDataFormats/RawTrigger.h"
@@ -22,6 +24,7 @@
 #include "DAQDataFormats/RawMicroSlice.h"
 #include "DAQDataFormats/RawNanoSlice.h"
 #include "DAQChannelMap/DAQChannelMap.h"
+#include "StandardRecord/SREnums.h"
 
 #include "RawData/RawSumDropMB.h"
 #include "RawData/FlatDAQData.h"
@@ -34,7 +37,9 @@
 #include "TH1.h"
 
 #include <string>
+#include <vector>
 using std::string;
+using std::vector;
 #include <algorithm>
 
 #include <signal.h>
@@ -88,6 +93,8 @@ class ligo : public art::EDAnalyzer {
 // Set from the FCL parameters
 double gwevent_unix_double_time = 0;
 long long window_size_s = 1000;
+
+int gDet = caf::kUNKNOWN;
 
 /**********************************************************************/
 /*                             Histograms                             */
@@ -254,7 +261,12 @@ ligohist lh_rawhits;
 // Slicer4D noise slice.
 ligohist lh_unslice4ddhits;
 
+// Raw number of tracks
 ligohist lh_tracks;
+
+// Number of tracks with at least one contained endpoint, with some additional
+// sanity checks.
+ligohist lh_halfcontained_tracks;
 
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
@@ -263,9 +275,10 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
 
-  init_lh(lh_rawhits, "rawhits");
-  init_lh(lh_unslice4ddhits, "unslice4ddhits");
-  init_lh(lh_tracks, "tracks");
+  init_lh(lh_rawhits,          "rawhits");
+  init_lh(lh_unslice4ddhits,   "unslice4ddhits");
+  init_lh(lh_tracks,           "tracks");
+  init_lh(lh_halfcontained_tracks, "halfcontained_tracks");
 }
 
 ligo::~ligo() { }
@@ -344,8 +357,8 @@ ligo::~ligo() { }
 bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  printf("DEBUG: %6u %16f %16f %16f\n", evt.id().event(),
-    evt_time, gwevent_unix_double_time, evt_time - gwevent_unix_double_time);
+  printf("DEBUG: %6u %16f %16f\n", evt.id().event(),
+    evt_time, evt_time - gwevent_unix_double_time);
   return fabsl(evt_time - gwevent_unix_double_time) < window_size_s/2.;
 }
 
@@ -388,6 +401,54 @@ int timebin(const art::Event & evt)
   return floor(evt_time - gwevent_unix_double_time) + window_size_s/2;
 }
 
+bool contained(const TVector3 & v)
+{
+  if(gDet == caf::kNEARDET)
+    return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 25 && v.Z() < 1225;
+  if(gDet == caf::kFARDET)
+    return fabs(v.X()) < 700 && fabs(v.Y()) < 700 && v.Z() > 25 && v.Z() < 6225; // XXX pick better numbers
+  fprintf(stderr, "Unknown detector %d\n", gDet);
+  exit(1);
+}
+
+bool half_contained_track(const rb::Track & t)
+{
+  return (contained(t.Start()) || contained(t.Stop())) &&
+          fabs(t.Dir().Y()) < 0.95;
+}
+
+// return the index in the slice array that the given track is in
+static int which_slice_is_this_track_in(
+  const rb::Track & t,
+  const art::Handle< std::vector<rb::Cluster> > & slice)
+{
+  // I'm sure this is not the best way, but I have had it with trying to
+  // figure out what the best way is, and I'm just going to do it *some*
+  // way.
+  const art::Ptr<rb::CellHit> ahit =
+    t.Cell(0); // some random hit on the track
+
+  // Skip slice 0 since it is the noise slice
+  for(unsigned int i = 1; i < slice->size(); i++){
+    const rb::Cluster & slc = (*slice)[i];
+    for(unsigned int j = 0; j < slc.NCell(); j++){
+      const art::Ptr<rb::CellHit> shit = slc.Cell(j);
+      if(*ahit == *shit) return i;
+    }
+  }
+  return -1;
+}
+
+// A readable version of find(). Returns true if the vector has the element.
+bool has(const vector<int> & v, const int e)
+{
+  return find(v.begin(), v.end(), e) != v.end();
+}
+
+/************************************************/
+/* Here come the functions that fill histograms */
+/************************************************/
+
 // Count the number of raw hits in the event and fill the appropriate histograms
 void count_hits(const art::Event & evt)
 {
@@ -416,11 +477,42 @@ void count_unslice4dd_hits(const art::Event & evt)
 
 void count_tracks(const art::Event & evt)
 {
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("kalmantrackmerge", tracks);
 
   printf("Tracks in this event: %lu\n", tracks->size());
   THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
+
+  // Count tracks with either a contained start or end, but not if they are
+  // very steep, since those probably aren't really contained and may not even
+  // be complete. Also don't count more than one per slice, nor count slices
+  // with uncontained tracks.  This protects against counting a brem as a 
+  // contained track.
+  int n_half_contained = 0;
+  vector<int> slices_with_uc_tracks;
+  for(unsigned int i = 0; i < tracks->size(); i++){
+    const int s = which_slice_is_this_track_in((*tracks)[i], slice);
+    if(!half_contained_track((*tracks)[i]))
+      slices_with_uc_tracks.push_back(s);
+  }
+
+  vector<int> slices_with_hc_tracks;
+  for(unsigned int i = 0; i < tracks->size(); i++){
+    const int s = which_slice_is_this_track_in((*tracks)[i], slice);
+    if(!has(slices_with_uc_tracks, s) && half_contained_track((*tracks)[i])){
+      if(has(slices_with_hc_tracks, s)){
+        slices_with_hc_tracks.push_back(s);
+        n_half_contained++;
+      }
+    }
+  }
+
+  printf("Half-contained tracks in this event: %d\n", n_half_contained);
+
+  THplusequals(lh_halfcontained_tracks, timebin(evt), n_half_contained, rawlivetime(evt));
 }
 
 void ligo::analyze(const art::Event & evt)
@@ -428,7 +520,11 @@ void ligo::analyze(const art::Event & evt)
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
 
+  art::ServiceHandle<geo::Geometry> geo;
+  gDet = geo->DetId();
+
   const bool is_in_window = inwindow(evt);
+
 
   // Keep track of whether we've seen the beginning and end of the window.
   {
