@@ -7,12 +7,10 @@ standard_ligo:
   # The time of the gravitational wave burst, or whatever time you want to center
   # the search on.  Expressed in RFC-3339 format, always in UTC, always with a Z
   # at the end (to emphasize that it is UTC).
-  GWEventTime: "2017-03-26T12:46:40.5Z"
+  GWEventTime: "2017-03-26T17:46:40.5Z"
   
   # Length of the window in seconds.  We will look for half this amount of time
   # to each side of the absolute time given above.  Must be an integer.
-  # XXX require this to be an *odd* integer so that the GW events is
-  # centered in the middle bin?
   WindowSize: 1000
 }
 

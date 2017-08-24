@@ -42,7 +42,7 @@ physics:
 
  reco: [ calhit, slicer, kalmantrack, kalmantrackmerge ]
 
- stream1: [ ligo ]
+ stream1: [ ligo, out1 ]
 
  #end_path are things that do not modify art::Event, includes analyzers and output modules. 
  #all items here can be run simultaneously

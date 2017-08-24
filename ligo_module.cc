@@ -38,8 +38,10 @@
 
 #include <string>
 #include <vector>
+#include <set>
 using std::string;
 using std::vector;
+using std::set;
 #include <algorithm>
 
 #include <signal.h>
@@ -268,6 +270,10 @@ ligohist lh_tracks;
 // sanity checks.
 ligohist lh_halfcontained_tracks;
 
+// Number of tracks with at two contained endpoints, with some additional
+// sanity checks.
+ligohist lh_fullycontained_tracks;
+
 ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
@@ -279,6 +285,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
   init_lh(lh_unslice4ddhits,   "unslice4ddhits");
   init_lh(lh_tracks,           "tracks");
   init_lh(lh_halfcontained_tracks, "halfcontained_tracks");
+  init_lh(lh_fullycontained_tracks, "fullycontained_tracks");
 }
 
 ligo::~ligo() { }
@@ -357,8 +364,8 @@ ligo::~ligo() { }
 bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  printf("DEBUG: %6u %16f %16f\n", evt.id().event(),
-    evt_time, evt_time - gwevent_unix_double_time);
+  printf("DEBUG: %6u %16f %16f %16f\n", evt.id().event(),
+    evt_time, gwevent_unix_double_time, evt_time - gwevent_unix_double_time);
   return fabsl(evt_time - gwevent_unix_double_time) < window_size_s/2.;
 }
 
@@ -406,15 +413,23 @@ bool contained(const TVector3 & v)
   if(gDet == caf::kNEARDET)
     return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 25 && v.Z() < 1225;
   if(gDet == caf::kFARDET)
-    return fabs(v.X()) < 700 && fabs(v.Y()) < 700 && v.Z() > 25 && v.Z() < 6225; // XXX pick better numbers
+    return fabs(v.X()) < 700 && v.Y() < 500 && v.Y() > -700 && v.Z() > 25 && v.Z() < 5950;
   fprintf(stderr, "Unknown detector %d\n", gDet);
   exit(1);
+}
+
+bool fully_contained_track(const rb::Track & t)
+{
+  return contained(t.Start()) && contained(t.Stop()) &&
+          fabs(t.Dir().Y()) < 0.95 &&
+          fabs(t.Dir().X()) < 0.95;
 }
 
 bool half_contained_track(const rb::Track & t)
 {
   return (contained(t.Start()) || contained(t.Stop())) &&
-          fabs(t.Dir().Y()) < 0.95;
+          fabs(t.Dir().Y()) < 0.95 &&
+          fabs(t.Dir().X()) < 0.95;
 }
 
 // return the index in the slice array that the given track is in
@@ -437,12 +452,6 @@ static int which_slice_is_this_track_in(
     }
   }
   return -1;
-}
-
-// A readable version of find(). Returns true if the vector has the element.
-bool has(const vector<int> & v, const int e)
-{
-  return find(v.begin(), v.end(), e) != v.end();
 }
 
 /************************************************/
@@ -487,32 +496,42 @@ void count_tracks(const art::Event & evt)
   THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
 
   // Count tracks with either a contained start or end, but not if they are
-  // very steep, since those probably aren't really contained and may not even
-  // be complete. Also don't count more than one per slice, nor count slices
-  // with uncontained tracks.  This protects against counting a brem as a 
-  // contained track.
-  int n_half_contained = 0;
-  vector<int> slices_with_uc_tracks;
-  for(unsigned int i = 0; i < tracks->size(); i++){
-    const int s = which_slice_is_this_track_in((*tracks)[i], slice);
-    if(!half_contained_track((*tracks)[i]))
-      slices_with_uc_tracks.push_back(s);
-  }
+  // very steep in x or y, since those probably aren't really contained and may
+  // not even be complete. Also don't count more than one per slice, nor count
+  // slices with uncontained tracks.  This protects against counting a brem as
+  // a contained track.
 
-  vector<int> slices_with_hc_tracks;
+  // Find out what slice each track is in
+  vector<int> track_slices;
+  for(unsigned int i = 0; i < tracks->size(); i++)
+    track_slices.push_back(which_slice_is_this_track_in((*tracks)[i], slice));
+
+  // Make a list of slices with tracks that aren't fully contained
+  std::set<int> slices_with_uc_tracks;
+  for(unsigned int i = 0; i < tracks->size(); i++)
+    if(!fully_contained_track((*tracks)[i]))
+      slices_with_uc_tracks.insert(track_slices[i]);
+
+  // Find any tracks that are half-contained/fully-contained and do not share a
+  // slice with any uncontained tracks.
+  std::set<int> slices_with_hc_tracks;
+  std::set<int> slices_with_fc_tracks;
   for(unsigned int i = 0; i < tracks->size(); i++){
-    const int s = which_slice_is_this_track_in((*tracks)[i], slice);
-    if(!has(slices_with_uc_tracks, s) && half_contained_track((*tracks)[i])){
-      if(has(slices_with_hc_tracks, s)){
-        slices_with_hc_tracks.push_back(s);
-        n_half_contained++;
-      }
+    if(slices_with_uc_tracks.end() == slices_with_uc_tracks.find(track_slices[i])){
+      if(half_contained_track((*tracks)[i]))
+        slices_with_hc_tracks.insert(track_slices[i]);
+      if(fully_contained_track((*tracks)[i]))
+        slices_with_fc_tracks.insert(track_slices[i]);
     }
   }
 
-  printf("Half-contained tracks in this event: %d\n", n_half_contained);
+  printf("Slices with half-contained tracks: %lu\n", slices_with_hc_tracks.size());
+  printf("Slices with fully-contained tracks: %lu\n", slices_with_fc_tracks.size());
+  for(set<int>::iterator i = slices_with_fc_tracks.begin(); i != slices_with_fc_tracks.end(); i++)
+    printf("  %3d\n", *i);
 
-  THplusequals(lh_halfcontained_tracks, timebin(evt), n_half_contained, rawlivetime(evt));
+  THplusequals(lh_halfcontained_tracks, timebin(evt), slices_with_hc_tracks.size(), rawlivetime(evt));
+  THplusequals(lh_fullycontained_tracks, timebin(evt), slices_with_fc_tracks.size(), rawlivetime(evt));
 }
 
 void ligo::analyze(const art::Event & evt)
@@ -524,7 +543,6 @@ void ligo::analyze(const art::Event & evt)
   gDet = geo->DetId();
 
   const bool is_in_window = inwindow(evt);
-
 
   // Keep track of whether we've seen the beginning and end of the window.
   {
