@@ -11,7 +11,7 @@
 #include "art/Framework/Principal/Handle.h"
 #include "fhiclcpp/ParameterSet.h"
 #include "art/Framework/Core/ModuleMacros.h"
-#include "art/Framework/Core/EDAnalyzer.h"
+#include "art/Framework/Core/EDProducer.h"
 
 #include "Geometry/Geometry.h"
 
@@ -51,11 +51,11 @@ const int US_PER_MICROSLICE = 50; // I hope this is always true
 
 namespace ligo {
 
-class ligo : public art::EDAnalyzer {
+class ligo : public art::EDProducer {
   public:
   explicit ligo(fhicl::ParameterSet const& pset);
   virtual ~ligo();
-  void analyze(const art::Event& evt);
+  void produce(art::Event& evt);
   void endJob();
 
   /// \brief The user-supplied time of the gravitational wave burst, or
@@ -274,7 +274,7 @@ ligohist lh_halfcontained_tracks;
 // sanity checks.
 ligohist lh_fullycontained_tracks;
 
-ligo::ligo(fhicl::ParameterSet const& pset) : EDAnalyzer(pset),
+ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
@@ -401,11 +401,12 @@ void THplusequals(ligohist & lh, const int bin, const double sig, const double l
 }
 
 // Return the bin number for this event, i.e. the number of seconds from the
-// beginning of the window.
+// beginning of the window, plus 1.
 int timebin(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  return floor(evt_time - gwevent_unix_double_time) + window_size_s/2;
+  return floor(evt_time - gwevent_unix_double_time) + window_size_s/2
+         + 1; // stupid ROOT 1-based numbering!
 }
 
 bool contained(const TVector3 & v)
@@ -418,18 +419,42 @@ bool contained(const TVector3 & v)
   exit(1);
 }
 
+// Returns true if the track enters and exits.  Or if both of its ends
+// are pretty close to the edge.  But not if it is just steep.
+bool un_contained_track(const rb::Track & t)
+{
+  return !contained(t.Start()) && !contained(t.Stop());
+}
+
+const int min_plane_extent = 10;
+
+// Returns true if the track starts AND stops inside the detector, 
+// and we're pretty sure that this isn't artifactual.
 bool fully_contained_track(const rb::Track & t)
 {
   return contained(t.Start()) && contained(t.Stop()) &&
           fabs(t.Dir().Y()) < 0.95 &&
-          fabs(t.Dir().X()) < 0.95;
+          fabs(t.Dir().X()) < 0.95 &&
+          t.ExtentPlane() >= min_plane_extent;
 }
 
+// Returns true if either end of the track is uncontained or might be
+bool half_uncontained_track(const rb::Track & t)
+{
+  return !contained(t.Start()) || !contained(t.Stop()) ||
+          fabs(t.Dir().Y()) > 0.95 ||
+          fabs(t.Dir().X()) > 0.95 ||
+          t.ExtentPlane() < min_plane_extent;
+}
+
+// Returns true if the track either starts or stops in the detector, or both, 
+// and we're pretty sure that this isn't artifactual.
 bool half_contained_track(const rb::Track & t)
 {
   return (contained(t.Start()) || contained(t.Stop())) &&
           fabs(t.Dir().Y()) < 0.95 &&
-          fabs(t.Dir().X()) < 0.95;
+          fabs(t.Dir().X()) < 0.95 &&
+          t.ExtentPlane() >= min_plane_extent;
 }
 
 // return the index in the slice array that the given track is in
@@ -490,7 +515,7 @@ void count_tracks(const art::Event & evt)
   evt.getByLabel("slicer", slice);
 
   art::Handle< std::vector<rb::Track> > tracks;
-  evt.getByLabel("kalmantrackmerge", tracks);
+  evt.getByLabel("breakpoint", tracks);
 
   printf("Tracks in this event: %lu\n", tracks->size());
   THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
@@ -501,40 +526,51 @@ void count_tracks(const art::Event & evt)
   // slices with uncontained tracks.  This protects against counting a brem as
   // a contained track.
 
-  // Find out what slice each track is in
-  vector<int> track_slices;
-  for(unsigned int i = 0; i < tracks->size(); i++)
-    track_slices.push_back(which_slice_is_this_track_in((*tracks)[i], slice));
-
-  // Make a list of slices with tracks that aren't fully contained
-  std::set<int> slices_with_uc_tracks;
-  for(unsigned int i = 0; i < tracks->size(); i++)
-    if(!fully_contained_track((*tracks)[i]))
-      slices_with_uc_tracks.insert(track_slices[i]);
+  // Find out what slice each track is in and make a list of slices with tracks
+  // that aren't fully contained
+  vector<int> trk_slices(tracks->size(), -1);
+  std::set<int> slices_with_uc_tracks, slices_with_huc_tracks;
+  for(unsigned int i = 0; i < tracks->size(); i++){
+    trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice);
+    if(un_contained_track((*tracks)[i]))
+      slices_with_uc_tracks.insert(trk_slices[i]);
+    if(half_uncontained_track((*tracks)[i]))
+      slices_with_huc_tracks.insert(trk_slices[i]);
+  }
 
   // Find any tracks that are half-contained/fully-contained and do not share a
-  // slice with any uncontained tracks.
-  std::set<int> slices_with_hc_tracks;
-  std::set<int> slices_with_fc_tracks;
+  // slice with any tracks that are, like, totally uncontained, man
+  std::set<int> slices_with_hc_tracks, slices_with_fc_tracks;
   for(unsigned int i = 0; i < tracks->size(); i++){
-    if(slices_with_uc_tracks.end() == slices_with_uc_tracks.find(track_slices[i])){
-      if(half_contained_track((*tracks)[i]))
-        slices_with_hc_tracks.insert(track_slices[i]);
-      if(fully_contained_track((*tracks)[i]))
-        slices_with_fc_tracks.insert(track_slices[i]);
-    }
+    // Exclude 2D tracks
+    if((*tracks)[i].Stop().X() == 0 || (*tracks)[i].Stop().Y() == 0) continue;
+    
+    // To be called a slice with half-contained tracks, it must not have any
+    // tracks that both enter and exit
+    if(!slices_with_uc_tracks.count(trk_slices[i]) &&
+       half_contained_track((*tracks)[i]))
+      slices_with_hc_tracks.insert(trk_slices[i]);
+
+    // To be called a slice with fully contained tracks, it must not have any
+    // track that either enters or exits.
+    if(!slices_with_huc_tracks.count(trk_slices[i]) &&
+       fully_contained_track((*tracks)[i]))
+      slices_with_fc_tracks.insert(trk_slices[i]);
   }
 
   printf("Slices with half-contained tracks: %lu\n", slices_with_hc_tracks.size());
   printf("Slices with fully-contained tracks: %lu\n", slices_with_fc_tracks.size());
-  for(set<int>::iterator i = slices_with_fc_tracks.begin(); i != slices_with_fc_tracks.end(); i++)
+  for(set<int>::iterator i = slices_with_fc_tracks.begin();
+      i != slices_with_fc_tracks.end(); i++)
     printf("  %3d\n", *i);
 
-  THplusequals(lh_halfcontained_tracks, timebin(evt), slices_with_hc_tracks.size(), rawlivetime(evt));
-  THplusequals(lh_fullycontained_tracks, timebin(evt), slices_with_fc_tracks.size(), rawlivetime(evt));
+  THplusequals(lh_halfcontained_tracks,  timebin(evt),
+               slices_with_hc_tracks.size(), rawlivetime(evt));
+  THplusequals(lh_fullycontained_tracks, timebin(evt),
+               slices_with_fc_tracks.size(), rawlivetime(evt));
 }
 
-void ligo::analyze(const art::Event & evt)
+void ligo::produce(art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);

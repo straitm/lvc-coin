@@ -14,4 +14,4 @@ include SoftRelTools/standard.mk
 include SoftRelTools/arch_spec_art.mk
 include SoftRelTools/arch_spec_novadb.mk
 
-override LIBLIBS += $(LOADLIBES) -L$(SRT_PRIVATE_CONTEXT)/lib/$(SRT_SUBDIR) -L$(SRT_PUBLIC_CONTEXT)/lib/$(SRT_SUBDIR) -lCalibrator -lRecoBase -lRawData -lChannelInfo
+override LIBLIBS += $(LOADLIBES) -L$(SRT_PRIVATE_CONTEXT)/lib/$(SRT_SUBDIR) -L$(SRT_PUBLIC_CONTEXT)/lib/$(SRT_SUBDIR)

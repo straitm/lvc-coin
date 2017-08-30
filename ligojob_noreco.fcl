@@ -1,0 +1,39 @@
+#include "ligo.fcl"
+#include "services.fcl"
+#include "IFDBSpillInfo.fcl"
+#include "RemoveBeamSpills.fcl"
+
+process_name: ligonoreco
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  message:      @local::standard_out
+  @table::standard_services
+}
+
+# Cargo-culting this line.  Ok, not entirely cargo-culting, because I 
+# tested that if it isn't here, it doesn't work.  But I don't know what
+# it does.
+services.IFBeam: {}
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+physics:
+{
+  filters:
+  {
+    removebeam: @local::standard_removebeamspills
+  }
+
+  producers:
+  {
+    ligo: @local::standard_ligo
+  }
+
+  reco: [ removebeam, ligo ]
+}
