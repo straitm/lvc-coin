@@ -17,6 +17,8 @@ services:
 # it does.
 services.IFBeam: {}
 
+ligo_removebeam: @local::standard_removebeamspills
+
 source:
 {
   module_type: RootInput
@@ -27,7 +29,7 @@ physics:
 {
   filters:
   {
-    removebeam: @local::standard_removebeamspills
+    removebeam: @local::ligo_removebeam
   }
 
   producers:

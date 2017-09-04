@@ -274,6 +274,10 @@ ligohist lh_halfcontained_tracks;
 // sanity checks.
 ligohist lh_fullycontained_tracks;
 
+// Count of slices with nothing around the edges, regardless of what sorts of
+// objects are inside.
+ligohist lh_contained_slices;
+
 ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
@@ -281,11 +285,12 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
 
-  init_lh(lh_rawhits,          "rawhits");
-  init_lh(lh_unslice4ddhits,   "unslice4ddhits");
-  init_lh(lh_tracks,           "tracks");
-  init_lh(lh_halfcontained_tracks, "halfcontained_tracks");
+  init_lh(lh_rawhits,               "rawhits");
+  init_lh(lh_unslice4ddhits,        "unslice4ddhits");
+  init_lh(lh_tracks,                "tracks");
+  init_lh(lh_halfcontained_tracks,  "halfcontained_tracks");
   init_lh(lh_fullycontained_tracks, "fullycontained_tracks");
+  init_lh(lh_contained_slices,      "contained_slices");
 }
 
 ligo::~ligo() { }
@@ -412,9 +417,9 @@ int timebin(const art::Event & evt)
 bool contained(const TVector3 & v)
 {
   if(gDet == caf::kNEARDET)
-    return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 25 && v.Z() < 1225;
+    return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 40 && v.Z() < 1225;
   if(gDet == caf::kFARDET)
-    return fabs(v.X()) < 700 && v.Y() < 500 && v.Y() > -700 && v.Z() > 25 && v.Z() < 5950;
+    return fabs(v.X()) < 690 && v.Y() < 500 && v.Y() > -690 && v.Z() > 75 && v.Z() < 5900;
   fprintf(stderr, "Unknown detector %d\n", gDet);
   exit(1);
 }
@@ -428,22 +433,39 @@ bool un_contained_track(const rb::Track & t)
 
 const int min_plane_extent = 10;
 
+const double tan_track_cut = 0.2;
+
+// Use a start-to-stop measure of angles to avoid some tiny kink at the
+// start or end making it look like a nearly-straight-down track isn't.
+bool good_track_direction(const rb::Track & t)
+{
+  const double dx = t.Start().X() - t.Stop().X();
+  const double dy = t.Start().Y() - t.Stop().Y();
+  const double dz = t.Start().Z() - t.Stop().Z();
+
+  return fabs(dx/dz) > tan_track_cut && fabs(dy/dz) > tan_track_cut;
+}
+
 // Returns true if the track starts AND stops inside the detector, 
 // and we're pretty sure that this isn't artifactual.
 bool fully_contained_track(const rb::Track & t)
 {
-  return contained(t.Start()) && contained(t.Stop()) &&
-          fabs(t.Dir().Y()) < 0.95 &&
-          fabs(t.Dir().X()) < 0.95 &&
-          t.ExtentPlane() >= min_plane_extent;
+  // Note how here we're looking at all the hits' positions, not
+  // just the line whose endpoints are Start() and Stop().  For steep
+  // tracks, this reveals their uncontainedness.
+  return contained(t.MaxXYZ()) && contained(t.MinXYZ()) &&
+          good_track_direction(t) &&
+
+          // Don't accept a track just because of a stray hit that gets
+          // swept into it.
+          t.MostContiguousPlanes(geo::kXorY) >= min_plane_extent;
 }
 
 // Returns true if either end of the track is uncontained or might be
 bool half_uncontained_track(const rb::Track & t)
 {
   return !contained(t.Start()) || !contained(t.Stop()) ||
-          fabs(t.Dir().Y()) > 0.95 ||
-          fabs(t.Dir().X()) > 0.95 ||
+          !good_track_direction(t) ||
           t.ExtentPlane() < min_plane_extent;
 }
 
@@ -452,8 +474,7 @@ bool half_uncontained_track(const rb::Track & t)
 bool half_contained_track(const rb::Track & t)
 {
   return (contained(t.Start()) || contained(t.Stop())) &&
-          fabs(t.Dir().Y()) < 0.95 &&
-          fabs(t.Dir().X()) < 0.95 &&
+          good_track_direction(t) &&
           t.ExtentPlane() >= min_plane_extent;
 }
 
@@ -530,6 +551,37 @@ void count_tracks(const art::Event & evt)
   // that aren't fully contained
   vector<int> trk_slices(tracks->size(), -1);
   std::set<int> slices_with_uc_tracks, slices_with_huc_tracks;
+  std::set<int> contained_slices;
+  std::set<int> contained_shower_slices;
+  for(unsigned int i = 0; i < slice->size(); i++){
+    if(contained((*slice)[i].MinXYZ()) &&
+       contained((*slice)[i].MaxXYZ())){
+       contained_slices.insert(i);
+       if((*slice)[i].NCell() >= 10){
+         const int planesx = (*slice)[i].ExtentPlane(geo::kX);
+         const int planesy = (*slice)[i].ExtentPlane(geo::kY);
+         const int cellsx = (*slice)[i].ExtentCell(geo::kX);
+         const int cellsy = (*slice)[i].ExtentCell(geo::kY);
+
+         // Must be somewhat extended in z (not a straight-down track), and
+         // whatever box is defined by the cell and plane extent must neither
+         // be too sparse (random hits plus a straight-down track) nor too full
+         // (FEB flashing).  A block of flashers plus a random hit is not
+         // really excludable with this cut.  Note that the maximum is ~0.5
+         // because the count of planes is in both views.
+         const double min_boxupancy = 0.1,
+                      max_boxupancy = 0.45;
+
+         if(planesx >= 9 && planesy >= 9 && // always odd
+            (*slice)[i].NXCell()/double(cellsx*planesx) < max_boxupancy &&
+            (*slice)[i].NYCell()/double(cellsy*planesy) < max_boxupancy &&
+            (*slice)[i].NXCell()/double(cellsx*planesx) > min_boxupancy &&
+            (*slice)[i].NYCell()/double(cellsy*planesy) > min_boxupancy)
+           contained_shower_slices.insert(i);
+       }
+    }
+  }
+
   for(unsigned int i = 0; i < tracks->size(); i++){
     trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice);
     if(un_contained_track((*tracks)[i]))
@@ -552,10 +604,18 @@ void count_tracks(const art::Event & evt)
       slices_with_hc_tracks.insert(trk_slices[i]);
 
     // To be called a slice with fully contained tracks, it must not have any
-    // track that either enters or exits.
+    // track that either enters or exits, and the slice itself must be contained.
+    // So, in other words, no hits around the edges, and no tracks reconstructed
+    // to be near the edges even in the abscence of hits.
     if(!slices_with_huc_tracks.count(trk_slices[i]) &&
-       fully_contained_track((*tracks)[i]))
+       fully_contained_track((*tracks)[i]) &&
+       contained_slices.count(trk_slices[i])){
       slices_with_fc_tracks.insert(trk_slices[i]);
+      printf("start cosx %6.3f cosy %6.3f\n",
+             (*tracks)[i].Dir().X(), (*tracks)[i].Dir().Y());
+      printf("stop  cosx %6.3f cosy %6.3f\n",
+             (*tracks)[i].StopDir().X(), (*tracks)[i].StopDir().Y());
+    }
   }
 
   printf("Slices with half-contained tracks: %lu\n", slices_with_hc_tracks.size());
@@ -563,13 +623,24 @@ void count_tracks(const art::Event & evt)
   for(set<int>::iterator i = slices_with_fc_tracks.begin();
       i != slices_with_fc_tracks.end(); i++)
     printf("  %3d\n", *i);
+  printf("Contained GeV physics-like slices: %lu\n", contained_shower_slices.size());
+  for(set<int>::iterator i = contained_shower_slices.begin();
+      i != contained_shower_slices.end(); i++)
+    printf("  %3d\n", *i);
 
   THplusequals(lh_halfcontained_tracks,  timebin(evt),
                slices_with_hc_tracks.size(), rawlivetime(evt));
   THplusequals(lh_fullycontained_tracks, timebin(evt),
                slices_with_fc_tracks.size(), rawlivetime(evt));
+  THplusequals(lh_contained_slices, timebin(evt),
+               contained_shower_slices.size(), rawlivetime(evt));
 }
 
+// TODO Somehow deal with overlapping triggers?  I found a case where a NuMI
+// spill caused three overlapping ddactivity1 triggers, each offset slightly.
+// And I noticed it because RemoveBeamSpills fails to remove it.  Ideally, I'd
+// drop all the hits that were seen before and only reconstruct the new ones,
+// but that is non-trivial.
 void ligo::produce(art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
