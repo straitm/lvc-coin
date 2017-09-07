@@ -419,7 +419,7 @@ bool contained(const TVector3 & v)
   if(gDet == caf::kNEARDET)
     return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 40 && v.Z() < 1225;
   if(gDet == caf::kFARDET)
-    return fabs(v.X()) < 690 && v.Y() < 500 && v.Y() > -690 && v.Z() > 75 && v.Z() < 5900;
+    return fabs(v.X()) < 650 && v.Y() < 500 && v.Y() > -650 && v.Z() > 75 && v.Z() < 5900;
   fprintf(stderr, "Unknown detector %d\n", gDet);
   exit(1);
 }
@@ -433,17 +433,32 @@ bool un_contained_track(const rb::Track & t)
 
 const int min_plane_extent = 10;
 
-const double tan_track_cut = 0.2;
+const double tan_track_cut = atan(15 * M_PI/180);
 
-// Use a start-to-stop measure of angles to avoid some tiny kink at the
-// start or end making it look like a nearly-straight-down track isn't.
+// Check that the reconstruction (probably BreakPointFitter) doesn't think
+// either end of the track points nearly along a plane AND check that if we
+// just draw a line from one end of the track to the other, that that doesn't
+// either.  This second part is to make sure that some tiny kink at the start
+// or end can't fool us into thinking it is well-contained.
 bool good_track_direction(const rb::Track & t)
 {
-  const double dx = t.Start().X() - t.Stop().X();
-  const double dy = t.Start().Y() - t.Stop().Y();
-  const double dz = t.Start().Z() - t.Stop().Z();
+  const double tot_dx = t.Start().X() - t.Stop().X();
+  const double tot_dy = t.Start().Y() - t.Stop().Y();
+  const double tot_dz = t.Start().Z() - t.Stop().Z();
 
-  return fabs(dx/dz) > tan_track_cut && fabs(dy/dz) > tan_track_cut;
+  const double rec_dx1 = t.    Dir().X();
+  const double rec_dx2 = t.StopDir().X();
+  const double rec_dy1 = t.    Dir().Y();
+  const double rec_dy2 = t.StopDir().Y();
+  const double rec_dz1 = t.    Dir().Z();
+  const double rec_dz2 = t.StopDir().Z();
+
+  return fabs(tot_dz /tot_dx ) > tan_track_cut &&
+         fabs(tot_dz /tot_dy ) > tan_track_cut &&
+         fabs(rec_dz1/rec_dx1) > tan_track_cut &&
+         fabs(rec_dz2/rec_dx2) > tan_track_cut &&
+         fabs(rec_dz1/rec_dy1) > tan_track_cut &&
+         fabs(rec_dz2/rec_dy2) > tan_track_cut;
 }
 
 // Returns true if the track starts AND stops inside the detector, 
@@ -570,7 +585,8 @@ void count_tracks(const art::Event & evt)
          // really excludable with this cut.  Note that the maximum is ~0.5
          // because the count of planes is in both views.
          const double min_boxupancy = 0.1,
-                      max_boxupancy = 0.45;
+                      // max_boxupancy = 0.45; // seems to work
+                      max_boxupancy = 1; // shouldn't work
 
          if(planesx >= 9 && planesy >= 9 && // always odd
             (*slice)[i].NXCell()/double(cellsx*planesx) < max_boxupancy &&
