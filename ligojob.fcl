@@ -5,6 +5,7 @@
 #include "ElasticArmsHS.fcl"
 #include "FuzzyKVertex.fcl"
 #include "BreakPoint.fcl"
+#include "RemoveBeamSpills.fcl"
 #include "services.fcl"
 
 process_name: ligoFTW
@@ -17,6 +18,13 @@ services:
   message:      @local::standard_out
   @table::standard_services
 }
+
+# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
+# tested that if it isn't here, it doesn't work.  But I don't know what
+# it does.
+services.IFBeam: {}
+
+ligo_removebeam: @local::standard_removebeamspills
 
 #Start each new event with an empty event.
 source:
@@ -34,6 +42,10 @@ thisone_breakpoint_here.FitAsProton: false
 # Modules are grouped by type.
 physics:
 {
+ filters:
+ {
+   removebeam: @local::ligo_removebeam
+ }
  producers:
  {
    calhit: @local::standard_calhit
@@ -42,10 +54,6 @@ physics:
    elasticarmshs: @local::standard_elasticarmshs
    fuzzykvertex: @local::standard_fuzzykvertex
    breakpoint: @local::thisone_breakpoint_here
- }
-
- analyzers:
- {
    ligo: @local::standard_ligo
  }
 
@@ -54,9 +62,11 @@ physics:
           multihough, # for breakpoint
           elasticarmshs, # for breakpoint
           fuzzykvertex, # for breakpoint
-          breakpoint ]
+          breakpoint,
+          removebeam,
+          ligo ]
 
- stream1: [ ligo, out1 ]
+ stream1: [ out1 ]
 
  #end_path are things that do not modify art::Event, includes analyzers and
  #output modules.  All items here can be run simultaneously
