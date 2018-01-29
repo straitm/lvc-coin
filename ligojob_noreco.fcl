@@ -3,6 +3,10 @@
 #include "IFDBSpillInfo.fcl"
 #include "RemoveBeamSpills.fcl"
 
+# For up-mu
+#include "CelestialLocator.fcl"
+#include "UpMuAnalysis.fcl"
+
 process_name: ligonoreco
 
 services:
@@ -31,6 +35,10 @@ physics:
   {
     removebeam: @local::ligo_removebeam
   }
+  analyzers:
+  {
+    upmuanalysis: @local::standard_upmuanalysis
+  }
 
   producers:
   {
@@ -38,4 +46,6 @@ physics:
   }
 
   reco: [ removebeam, ligo ]
+
+  end_paths: [ upmuanalysis ]
 }

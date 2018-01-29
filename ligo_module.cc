@@ -530,6 +530,7 @@ void count_hits(const art::Event & evt)
   THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
 }
 
+// Counts hits in the noise slices and adds the results to the output histograms
 void count_unslice4dd_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
@@ -545,6 +546,7 @@ void count_unslice4dd_hits(const art::Event & evt)
   THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(), rawlivetime(evt));
 }
 
+// Counts tracks with various cuts and adds the results to the output histograms
 void count_tracks(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;

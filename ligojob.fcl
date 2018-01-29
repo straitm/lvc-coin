@@ -8,16 +8,27 @@
 #include "RemoveBeamSpills.fcl"
 #include "services.fcl"
 
+# For up-mu
+#include "CosmicTrack.fcl"
+#include "CelestialLocator.fcl"
+#include "UpMuAnalysis.fcl"
+
 process_name: ligoFTW
 
 services:
 {
-  # Load the service that manages root files for histograms.
   TFileService: { fileName: "histos.root" }
   scheduler:    { wantTracer: false wantSummary: true }
   message:      @local::standard_out
   @table::standard_services
+
+  # for up-mu
+  CelestialLocator:    @local::standard_celestial
 }
+
+# Copied from windowtrackjob.fcl.  Necessary or not?
+services.BadChanList.UseSubrunForMCTimes: true
+
 
 # Cargo-culting this line.  Ok, not entirely cargo-culting, because I
 # tested that if it isn't here, it doesn't work.  But I don't know what
@@ -26,7 +37,6 @@ services.IFBeam: {}
 
 ligo_removebeam: @local::standard_removebeamspills
 
-#Start each new event with an empty event.
 source:
 {
   module_type: RootInput
@@ -37,9 +47,6 @@ thisone_breakpoint_here: @local::standard_breakpoint
 thisone_breakpoint_here.FitAsPion: false
 thisone_breakpoint_here.FitAsProton: false
 
-# Define and configure some modules to do work on each event.
-# First modules are defined; they are scheduled later.
-# Modules are grouped by type.
 physics:
 {
  filters:
@@ -54,7 +61,12 @@ physics:
    elasticarmshs: @local::standard_elasticarmshs
    fuzzykvertex: @local::standard_fuzzykvertex
    breakpoint: @local::thisone_breakpoint_here
+   windowtrack: @local::window_cosmictrack
    ligo: @local::standard_ligo
+ }
+ analyzers:
+ {
+   upmuanalysis: @local::standard_upmuanalysis
  }
 
   reco: [ calhit,
@@ -64,12 +76,11 @@ physics:
           fuzzykvertex, # for breakpoint
           breakpoint,
           removebeam,
+          windowtrack,
           ligo ]
 
- stream1: [ out1 ]
+ stream1: [ upmuanalysis, out1 ]
 
- #end_path are things that do not modify art::Event, includes analyzers and
- #output modules.  All items here can be run simultaneously
  end_paths:     [ stream1 ]  
 }
 
@@ -78,6 +89,6 @@ outputs:
  out1:
   {
    module_type: RootOutput
-   fileName:    "ligo.root" #default file name, can override from command line with -o or --output
+   fileName:    "ligo.root"
   }
 }
