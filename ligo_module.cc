@@ -278,6 +278,9 @@ ligohist lh_fullycontained_tracks;
 // objects are inside.
 ligohist lh_contained_slices;
 
+// Number of tracks that pass the UpMu analysis
+ligohist lh_upmu_tracks;
+
 ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
@@ -291,6 +294,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   init_lh(lh_halfcontained_tracks,  "halfcontained_tracks");
   init_lh(lh_fullycontained_tracks, "fullycontained_tracks");
   init_lh(lh_contained_slices,      "contained_slices");
+  init_lh(lh_upmu_tracks,           "upmu_tracks");
 }
 
 ligo::~ligo() { }
@@ -555,6 +559,12 @@ void count_tracks(const art::Event & evt)
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("breakpoint", tracks);
 
+  art::Handle< std::vector<rb::Track> > upmu;
+  if(!evt.getByLabel("upmuanalysis", upmu)){
+    printf("No UpMu product to read\n");
+    _exit(1);
+  }
+
   printf("Tracks in this event: %lu\n", tracks->size());
   THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
 
@@ -652,6 +662,8 @@ void count_tracks(const art::Event & evt)
                slices_with_fc_tracks.size(), rawlivetime(evt));
   THplusequals(lh_contained_slices, timebin(evt),
                contained_shower_slices.size(), rawlivetime(evt));
+  THplusequals(lh_upmu_tracks, timebin(evt),
+               upmu->size(), rawlivetime(evt));
 }
 
 // TODO Somehow deal with overlapping triggers?  I found a case where a NuMI

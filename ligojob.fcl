@@ -63,9 +63,6 @@ physics:
    breakpoint: @local::thisone_breakpoint_here
    windowtrack: @local::window_cosmictrack
    ligo: @local::standard_ligo
- }
- analyzers:
- {
    upmuanalysis: @local::standard_upmuanalysis
  }
 
@@ -77,9 +74,10 @@ physics:
           breakpoint,
           removebeam,
           windowtrack,
+          upmuanalysis,
           ligo ]
 
- stream1: [ upmuanalysis, out1 ]
+ stream1: [ out1 ]
 
  end_paths:     [ stream1 ]  
 }
