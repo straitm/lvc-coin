@@ -1,0 +1,12 @@
+BEGIN_PROLOG
+
+standard_upmuanalysis:
+{
+  module_type: UpMuAnalysis
+
+  trackInputTag:      "windowtrack"
+  SliceModuleLabel:   "slicer"
+  SliceInstanceLabel: ""
+}
+
+END_PROLOG
