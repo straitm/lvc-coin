@@ -49,6 +49,10 @@ using std::set;
 const int TDC_PER_US = 64;
 const int US_PER_MICROSLICE = 50; // I hope this is always true
 
+// Types of analysis, dependent on which trigger we're looking at
+enum analysis_class_t { NDactivity, LiveTime, UpMu, DDenergy,
+                        RawTrigger, MAX_ANALYSIS_CLASS };
+
 namespace ligo {
 
 class ligo : public art::EDProducer {
@@ -57,6 +61,11 @@ class ligo : public art::EDProducer {
   virtual ~ligo();
   void produce(art::Event& evt);
   void endJob();
+
+  /// \brief User-supplied type of trigger being examined.
+  ///
+  /// Which histograms we make depends on this.
+  analysis_class_t fAnalysisClass;
 
   /// \brief The user-supplied time of the gravitational wave burst, or
   /// whatever time you want to center the search on.
@@ -256,6 +265,9 @@ void ligo::endJob()
   else                                 printf("Didn't see any data in window :-(\n");
 }
 
+// Count of triggers, with no examination of the data within
+ligohist lh_rawtrigger;
+
 // Number of hits, with no filtering of any sort
 ligohist lh_rawhits;
 
@@ -285,9 +297,23 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
+  const std::string analysis_class_string(pset.get<string>("Class"));
+
+  if     (analysis_class_string == "NDactivity") fAnalysisClass = NDactivity;
+  else if(analysis_class_string == "LiveTime")   fAnalysisClass = LiveTime;
+  else if(analysis_class_string == "UpMu")       fAnalysisClass = UpMu;
+  else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
+  else if(analysis_class_string == "RawTrigger") fAnalysisClass = RawTrigger;
+  else{
+    fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
+            "in ligo.fcl.\n", analysis_class_string.c_str());
+    exit(1);
+  }
+
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
 
+  init_lh(lh_rawtrigger,            "rawtrigger");
   init_lh(lh_rawhits,               "rawhits");
   init_lh(lh_unslice4ddhits,        "unslice4ddhits");
   init_lh(lh_tracks,                "tracks");
@@ -523,6 +549,12 @@ static int which_slice_is_this_track_in(
 /* Here come the functions that fill histograms */
 /************************************************/
 
+// Put put raw triggers into a histogram
+void count_triggers(const art::Event & evt)
+{
+  THplusequals(lh_rawtrigger, timebin(evt), 1, 1);
+}
+
 // Count the number of raw hits in the event and fill the appropriate histograms
 void count_hits(const art::Event & evt)
 {
@@ -550,6 +582,18 @@ void count_unslice4dd_hits(const art::Event & evt)
   THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(), rawlivetime(evt));
 }
 
+void count_upmu(const art::Event & evt)
+{
+  art::Handle< std::vector<rb::Track> > upmu;
+  if(!evt.getByLabel("upmuanalysis", upmu)){
+    printf("No UpMu product to read\n");
+    _exit(1);
+  }
+
+  THplusequals(lh_upmu_tracks, timebin(evt),
+               upmu->size(), rawlivetime(evt));
+}
+
 // Counts tracks with various cuts and adds the results to the output histograms
 void count_tracks(const art::Event & evt)
 {
@@ -558,12 +602,6 @@ void count_tracks(const art::Event & evt)
 
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("breakpoint", tracks);
-
-  art::Handle< std::vector<rb::Track> > upmu;
-  if(!evt.getByLabel("upmuanalysis", upmu)){
-    printf("No UpMu product to read\n");
-    _exit(1);
-  }
 
   printf("Tracks in this event: %lu\n", tracks->size());
   THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
@@ -662,8 +700,6 @@ void count_tracks(const art::Event & evt)
                slices_with_fc_tracks.size(), rawlivetime(evt));
   THplusequals(lh_contained_slices, timebin(evt),
                contained_shower_slices.size(), rawlivetime(evt));
-  THplusequals(lh_upmu_tracks, timebin(evt),
-               upmu->size(), rawlivetime(evt));
 }
 
 // TODO Somehow deal with overlapping triggers?  I found a case where a NuMI
@@ -693,9 +729,17 @@ void ligo::produce(art::Event & evt)
   }
 
   if(is_in_window){
-    count_hits(evt);
-    count_unslice4dd_hits(evt);
-    count_tracks(evt);
+    if(fAnalysisClass == RawTrigger){
+      count_triggers(evt);
+    }
+    else if(fAnalysisClass == UpMu){
+       count_upmu(evt);
+    }
+    else if(fAnalysisClass == LiveTime){
+      count_hits(evt);
+      count_unslice4dd_hits(evt);
+      count_tracks(evt);
+    }
   }
 
   printf("In window: %d\n", is_in_window);

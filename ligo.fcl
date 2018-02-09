@@ -12,6 +12,14 @@ standard_ligo:
   # Length of the window in seconds.  We will look for half this amount of time
   # to each side of the absolute time given above.  Must be an integer.
   WindowSize: 1000
+
+  # Which class of file we are processing.  One of:
+  # NDactivity: for ND ddactivity1 files
+  # LiveTime:   for ND BNB, FD 10Hz and FD slow monopole
+  # UpMu:       for FD UpMu
+  # DDenergy:   for FD ddenergy
+  # RawTrigger: for contained vertex, numu and fast monopole
+  AnalysisClass: NDactivity
 }
 
 END_PROLOG
