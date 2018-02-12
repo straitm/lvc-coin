@@ -416,7 +416,7 @@ void upmuana::UpMuAnalysis::produce(art::Event & e)
       || slope > 2.0;
 
     if(!failscut){
-      printf("%d %d %d %.0f\t(%7.1f %7.1f %7.1f)\t(%7.1f %7.1f %7.1f)\n", e.run(), e.subRun(), e.event(), slice, start.X(), start.Y(), start.Z(), end.X(), end.Y(), end.Z());
+      printf("Upmu: %d %d %d %.0f\t(%7.1f %7.1f %7.1f)\t(%7.1f %7.1f %7.1f)\n", e.run(), e.subRun(), e.event(), slice, start.X(), start.Y(), start.Z(), end.X(), end.Y(), end.Z());
       output->push_back(theTrack);
     }
 
