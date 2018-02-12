@@ -44,10 +44,13 @@ for f in $@; do
 
   base=$(basename $f .artdaq.root)
   reco=$base.ligo.root
-  log=$base.ligo.log
+  if ! echo $type | grep -q noreco; then
+    recoopt="-o $reco"
+  fi
+  log=$base.ligo.$type.log
   hist=$base.hists.root
   hists="$hists $hist"
-  if ! nova $f -c $fcl -o $reco -T $hist 2> /dev/stdout | tee $log; then
+  if ! nova $f -c $fcl $recoopt -T $hist 2> /dev/stdout | tee $log; then
     exit 1
   fi
 done
