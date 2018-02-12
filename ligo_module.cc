@@ -309,9 +309,12 @@ ligohist lh_contained_slices("contained_slices");
 // Number of tracks that pass the UpMu analysis
 ligohist lh_upmu_tracks("upmu_tracks");
 
-// Number of triggers above two cuts for DDEnergy
+// Number of triggers above two cuts for DDEnergy, the first pair
+// in raw ADC, the second ADC per unit time.
 ligohist lh_ddenergy_locut("energy_low_cut");
 ligohist lh_ddenergy_hicut("energy_high_cut");
+ligohist lh_ddenergy_lopertime("energy_low_cut_pertime");
+ligohist lh_ddenergy_hipertime("energy_high_cut_pertime");
 
 ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
@@ -352,6 +355,8 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_rawtrigger);
       init_lh(lh_ddenergy_locut);
       init_lh(lh_ddenergy_hicut);
+      init_lh(lh_ddenergy_lopertime);
+      init_lh(lh_ddenergy_hipertime);
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
@@ -603,12 +608,20 @@ void count_ddenergy(const art::Event & evt)
   for(unsigned int i = 0; i < rawhits->size(); i++)
     sumadc += (*rawhits)[i].ADC();
 
-  printf("ADC: %ld\n", sumadc);
+  const double rawtime = rawlivetime(evt);
+
+  printf("ADC: %ld %12.0f\n", sumadc, sumadc/rawtime);
+
+  // 1500000(0) ADC in 50e-6 seconds
+  if(sumadc/rawtime > 3e10)
+    THplusequals(lh_ddenergy_lopertime, timebin(evt), 1, rawtime);
+  if(sumadc/rawtime > 3e11)
+    THplusequals(lh_ddenergy_hipertime, timebin(evt), 1, rawtime);
 
   if(sumadc >  3000000)
-    THplusequals(lh_ddenergy_locut, timebin(evt), 1, rawlivetime(evt));
+    THplusequals(lh_ddenergy_locut, timebin(evt), 1, rawtime);
   if(sumadc > 30000000)
-    THplusequals(lh_ddenergy_hicut, timebin(evt), 1, rawlivetime(evt));
+    THplusequals(lh_ddenergy_hicut, timebin(evt), 1, rawtime);
 }
 
 // Count the number of raw hits in the event and fill the appropriate histograms
