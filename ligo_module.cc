@@ -297,7 +297,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
-  const std::string analysis_class_string(pset.get<string>("Class"));
+  const std::string analysis_class_string(pset.get<string>("AnalysisClass"));
 
   if     (analysis_class_string == "NDactivity") fAnalysisClass = NDactivity;
   else if(analysis_class_string == "LiveTime")   fAnalysisClass = LiveTime;
