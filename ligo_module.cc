@@ -726,21 +726,25 @@ void ligo::produce(art::Event & evt)
     firstevent = false;
   }
 
-  if(is_in_window){
-    if(fAnalysisClass == RawTrigger){
+  if(!is_in_window) return;
+
+  printf("In GW coincidence window\n");
+
+  switch(fAnalysisClass){
+    case RawTrigger:
       count_triggers(evt);
-    }
-    else if(fAnalysisClass == UpMu){
+      break;
+    case UpMu:
       count_upmu(evt);
-    }
-    else if(fAnalysisClass == LiveTime){
+      break;
+    case LiveTime:
       count_hits(evt);
       count_unslice4dd_hits(evt);
       count_tracks(evt);
-    }
+      break;
+    default:
+      printf("No case for type %d\n", fAnalysisClass);
   }
-
-  printf("In window: %d\n", is_in_window);
 }
 
 DEFINE_ART_MODULE(ligo);
