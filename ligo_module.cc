@@ -587,6 +587,24 @@ void count_triggers(const art::Event & evt)
   THplusequals(lh_rawtrigger, timebin(evt), 1, 1);
 }
 
+void count_ddenergy(const art::Event & evt)
+{
+  art::Handle< std::vector<rawdata::RawDigit> > rawhits;
+  evt.getByLabel("daq", rawhits);
+
+  int64_t sumadc = 0;
+
+  for(unsigned int i = 0; i < rawhits->size(); i++)
+    sumadc += (*rawhits)[i].ADC();
+
+  printf("ADC: %ld\n", sumadc);
+
+  if(sumadc > 2000000)
+    THplusequals(lh_ddenergy_locut, timebin(evt), 1, rawlivetime(evt));
+  if(sumadc > 4000000)
+    THplusequals(lh_ddenergy_hicut, timebin(evt), 1, rawlivetime(evt));
+}
+
 // Count the number of raw hits in the event and fill the appropriate histograms
 void count_hits(const art::Event & evt)
 {
@@ -775,6 +793,10 @@ void ligo::produce(art::Event & evt)
       count_hits(evt);
       count_unslice4dd_hits(evt);
       count_tracks(evt);
+      break;
+    case DDenergy:
+      count_triggers(evt);
+      count_ddenergy(evt);
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
