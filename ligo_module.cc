@@ -605,9 +605,9 @@ void count_ddenergy(const art::Event & evt)
 
   printf("ADC: %ld\n", sumadc);
 
-  if(sumadc > 2000000)
+  if(sumadc >  3000000)
     THplusequals(lh_ddenergy_locut, timebin(evt), 1, rawlivetime(evt));
-  if(sumadc > 4000000)
+  if(sumadc > 30000000)
     THplusequals(lh_ddenergy_hicut, timebin(evt), 1, rawlivetime(evt));
 }
 
