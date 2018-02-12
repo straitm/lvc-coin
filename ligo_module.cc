@@ -96,8 +96,9 @@ class ligo : public art::EDProducer {
 
   /// True if we encounter an event in the window after already seeing
   /// a transition from being in the window to being out of the window.
-  /// Could conceivably happen if leap seconds are involved, or if the
-  /// user constructs some sort of odd file.
+  /// Observed in some DDenergy files. Could also conceivably happen if
+  /// leap seconds are involved, or if the user constructs some sort of
+  /// odd file.
   bool tooManyEdges = false;
 };
 
@@ -272,7 +273,7 @@ double rfc3339_to_unix_double(const string & stime)
 
 void ligo::endJob()
 {
-  if(tooManyEdges)                     printf("Data out of time order! :-0\n");
+  if(tooManyEdges)                     printf("Data out of time order :-0\n");
   else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
   else if( risingEdge && !fallingEdge) printf("Saw beginning of window :-\\\n");
   else if(!risingEdge &&  fallingEdge) printf("Saw end of the window :-\\\n");
@@ -429,7 +430,9 @@ ligo::~ligo() { }
 bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-#if 0
+#if 1
+  // This is very useful for understanding if we got the whole window
+  // in files like DDEnergy where the events are only loosely ordered.
   printf("DEBUG: %6u %16f %16f %16f\n", evt.id().event(),
     evt_time, gwevent_unix_double_time, evt_time - gwevent_unix_double_time);
 #endif
