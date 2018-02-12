@@ -371,10 +371,6 @@ ligo::~ligo() { }
 //   (*rawtrigger)[0].fTriggerTimingMarker_TimeStart, tv);
 //
 //  const double evt_time_from_header = tv.tv_sec + tv.tv_usec * 1e-6;
-//  printf("DEBUG: %6u %16f %16f %16f : %16f %16f : %.9f\n", evt.id().event(),
-//    evt_time, evt_time_from_header, gw_time,
-//    evt_time - gw_time, evt_time_from_header - gw_time,
-//    evt_time - evt_time_from_header);
 ////////////////////////////////////////////////////////////////////////
 //
 // Now, Unix time is not a great time stamp because a leap second and
@@ -399,8 +395,10 @@ ligo::~ligo() { }
 bool inwindow(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
+#if 0
   printf("DEBUG: %6u %16f %16f %16f\n", evt.id().event(),
     evt_time, gwevent_unix_double_time, evt_time - gwevent_unix_double_time);
+#endif
   return fabsl(evt_time - gwevent_unix_double_time) < window_size_s/2.;
 }
 
