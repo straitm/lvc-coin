@@ -118,14 +118,29 @@ struct ligohist{
   // Livetime per second (XXX same for all histograms? I think not necessarily
   // for DDTs)
   TH1D * live = NULL;
+
+  // Base name for the histograms.  Name for the livetime histogram will be
+  // this with "live" appended.
+  std::string name;
+
+  ligohist(const std::string & name_)
+  {
+    name = name_;
+  }
 };
 
-void init_lh(ligohist & lh, const char * const name)
+// Construct the histograms and hook them up with TFileService to be saved
+void init_lh(ligohist & lh)
 {
+  if(lh.sig != NULL || lh.live != NULL){
+    fprintf(stderr, "%s already initialized.\n", lh.name.c_str());
+    exit(1);
+  }
+
   art::ServiceHandle<art::TFileService> t;
-  lh.sig  = t->make<TH1D>(name,                 "",
+  lh.sig  = t->make<TH1D>(lh.name.c_str(),                 "",
     window_size_s, -window_size_s/2, window_size_s/2);
-  lh.live = t->make<TH1D>(Form("%slive", name), "",
+  lh.live = t->make<TH1D>(Form("%slive", lh.name.c_str()), "",
     window_size_s, -window_size_s/2, window_size_s/2);
 }
 
@@ -266,32 +281,36 @@ void ligo::endJob()
 }
 
 // Count of triggers, with no examination of the data within
-ligohist lh_rawtrigger;
+ligohist lh_rawtrigger("rawtrigger");
 
 // Number of hits, with no filtering of any sort
-ligohist lh_rawhits;
+ligohist lh_rawhits("rawhits");
 
 // Number of hits that are not in any Slicer4D slice, i.e. they are in the
 // Slicer4D noise slice.
-ligohist lh_unslice4ddhits;
+ligohist lh_unslice4ddhits("unslice4ddhits");
 
 // Raw number of tracks
-ligohist lh_tracks;
+ligohist lh_tracks("tracks");
 
 // Number of tracks with at least one contained endpoint, with some additional
 // sanity checks.
-ligohist lh_halfcontained_tracks;
+ligohist lh_halfcontained_tracks("halfcontained_tracks");
 
 // Number of tracks with at two contained endpoints, with some additional
 // sanity checks.
-ligohist lh_fullycontained_tracks;
+ligohist lh_fullycontained_tracks("fullycontained_tracks");
 
 // Count of slices with nothing around the edges, regardless of what sorts of
 // objects are inside.
-ligohist lh_contained_slices;
+ligohist lh_contained_slices("contained_slices");
 
 // Number of tracks that pass the UpMu analysis
-ligohist lh_upmu_tracks;
+ligohist lh_upmu_tracks("upmu_tracks");
+
+// Number of triggers above two cuts for DDEnergy
+ligohist lh_ddenergy_locut("energy_low_cut");
+ligohist lh_ddenergy_hicut("energy_high_cut");
 
 ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
@@ -313,14 +332,29 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
 
-  init_lh(lh_rawtrigger,            "rawtrigger");
-  init_lh(lh_rawhits,               "rawhits");
-  init_lh(lh_unslice4ddhits,        "unslice4ddhits");
-  init_lh(lh_tracks,                "tracks");
-  init_lh(lh_halfcontained_tracks,  "halfcontained_tracks");
-  init_lh(lh_fullycontained_tracks, "fullycontained_tracks");
-  init_lh(lh_contained_slices,      "contained_slices");
-  init_lh(lh_upmu_tracks,           "upmu_tracks");
+  switch(fAnalysisClass){
+    case RawTrigger:
+      init_lh(lh_rawtrigger);
+      break;
+    case UpMu:
+      init_lh(lh_upmu_tracks);
+      break;
+    case LiveTime:
+      init_lh(lh_rawhits);
+      init_lh(lh_unslice4ddhits);
+      init_lh(lh_tracks);
+      init_lh(lh_halfcontained_tracks);
+      init_lh(lh_fullycontained_tracks);
+      init_lh(lh_contained_slices);
+      break;
+    case DDenergy:
+      init_lh(lh_rawtrigger);
+      init_lh(lh_ddenergy_locut);
+      init_lh(lh_ddenergy_hicut);
+      break;
+    default:
+      printf("No case for type %d\n", fAnalysisClass);
+  }
 }
 
 ligo::~ligo() { }
