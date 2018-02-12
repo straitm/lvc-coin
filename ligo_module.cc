@@ -489,7 +489,7 @@ bool good_track_direction(const rb::Track & t)
          fabs(rec_dz2/rec_dy2) > tan_track_cut;
 }
 
-// Returns true if the track starts AND stops inside the detector, 
+// Returns true if the track starts AND stops inside the detector,
 // and we're pretty sure that this isn't artifactual.
 bool fully_contained_track(const rb::Track & t)
 {
@@ -512,7 +512,7 @@ bool half_uncontained_track(const rb::Track & t)
           t.ExtentPlane() < min_plane_extent;
 }
 
-// Returns true if the track either starts or stops in the detector, or both, 
+// Returns true if the track either starts or stops in the detector, or both,
 // and we're pretty sure that this isn't artifactual.
 bool half_contained_track(const rb::Track & t)
 {
@@ -660,7 +660,7 @@ void count_tracks(const art::Event & evt)
   for(unsigned int i = 0; i < tracks->size(); i++){
     // Exclude 2D tracks
     if((*tracks)[i].Stop().X() == 0 || (*tracks)[i].Stop().Y() == 0) continue;
-    
+
     // To be called a slice with half-contained tracks, it must not have any
     // tracks that both enter and exit
     if(!slices_with_uc_tracks.count(trk_slices[i]) &&
@@ -731,7 +731,7 @@ void ligo::produce(art::Event & evt)
       count_triggers(evt);
     }
     else if(fAnalysisClass == UpMu){
-       count_upmu(evt);
+      count_upmu(evt);
     }
     else if(fAnalysisClass == LiveTime){
       count_hits(evt);
