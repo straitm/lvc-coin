@@ -9,8 +9,13 @@ else
 fi
 
 if ! [ -e allfiles.$t ]; then
+  # I want a 1000 second window, but also add a 50 second buffer on each
+  # end because I have observed, at least with DDEnergy files, that the
+  # events are out of order on the scale of 10 seconds and the metadata
+  # variables don't seem to know that.
+  #
   # Fantastically slow
-  samweb list-files 'Online.SubRunEndTime > '$((t-500))' and Online.SubRunStartTime < '$((t+500)) > allfiles.$t
+  samweb list-files 'Online.SubRunEndTime > '$((t-550))' and Online.SubRunStartTime < '$((t+550)) > allfiles.$t
 fi
 
 for trigger in \
