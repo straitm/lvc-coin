@@ -272,12 +272,12 @@ double rfc3339_to_unix_double(const string & stime)
 
 void ligo::endJob()
 {
-  if(tooManyEdges)                     printf("Data was out of time order! :-0\n");
+  if(tooManyEdges)                     printf("Data out of time order! :-0\n");
   else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
-  else if( risingEdge && !fallingEdge) printf("Saw only beginning of window :-\\\n");
-  else if(!risingEdge &&  fallingEdge) printf("Saw only end of the window :-\\\n");
-  else if(sawTheWindow)                printf("Saw only middle of window >:-\\\n");
-  else                                 printf("Didn't see any data in window :-(\n");
+  else if( risingEdge && !fallingEdge) printf("Saw beginning of window :-\\\n");
+  else if(!risingEdge &&  fallingEdge) printf("Saw end of the window :-\\\n");
+  else if(sawTheWindow)                printf("Saw middle of window >:-\\\n");
+  else                                 printf("Saw no data in window :-(\n");
 }
 
 // Count of triggers, with no examination of the data within
@@ -459,7 +459,8 @@ double rawlivetime(const art::Event & evt)
 }
 
 // Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
-void THplusequals(ligohist & lh, const int bin, const double sig, const double live)
+void THplusequals(ligohist & lh, const int bin, const double sig,
+                  const double live)
 {
   // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
   // the bin number twice.
@@ -481,7 +482,9 @@ bool contained(const TVector3 & v)
   if(gDet == caf::kNEARDET)
     return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 40 && v.Z() < 1225;
   if(gDet == caf::kFARDET)
-    return fabs(v.X()) < 650 && v.Y() < 500 && v.Y() > -650 && v.Z() > 75 && v.Z() < 5900;
+    return fabs(v.X()) < 650 &&
+      v.Y() < 500 && v.Y() > -650 &&
+      v.Z() > 75 && v.Z() < 5900;
   fprintf(stderr, "Unknown detector %d\n", gDet);
   exit(1);
 }
@@ -627,9 +630,11 @@ void count_unslice4dd_hits(const art::Event & evt)
     return;
   }
 
-  printf("Hits in this event in the Slicer4D noise slice: %d\n", (*slice)[0].NCell());
+  printf("Hits in this event in the Slicer4D noise slice: %d\n",
+         (*slice)[0].NCell());
 
-  THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(), rawlivetime(evt));
+  THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(),
+              rawlivetime(evt));
 }
 
 void count_upmu(const art::Event & evt)
@@ -720,9 +725,9 @@ void count_tracks(const art::Event & evt)
       slices_with_hc_tracks.insert(trk_slices[i]);
 
     // To be called a slice with fully contained tracks, it must not have any
-    // track that either enters or exits, and the slice itself must be contained.
-    // So, in other words, no hits around the edges, and no tracks reconstructed
-    // to be near the edges even in the abscence of hits.
+    // track that either enters or exits, and the slice itself must be
+    // contained.  So, in other words, no hits around the edges, and no tracks
+    // reconstructed to be near the edges even in the abscence of hits.
     if(!slices_with_huc_tracks.count(trk_slices[i]) &&
        fully_contained_track((*tracks)[i]) &&
        contained_slices.count(trk_slices[i])){
@@ -734,12 +739,15 @@ void count_tracks(const art::Event & evt)
     }
   }
 
-  printf("Slices with half-contained tracks: %lu\n", slices_with_hc_tracks.size());
-  printf("Slices with fully-contained tracks: %lu\n", slices_with_fc_tracks.size());
+  printf("Slices with half-contained tracks: %lu\n",
+         slices_with_hc_tracks.size());
+  printf("Slices with fully-contained tracks: %lu\n",
+         slices_with_fc_tracks.size());
   for(set<int>::iterator i = slices_with_fc_tracks.begin();
       i != slices_with_fc_tracks.end(); i++)
     printf("  %3d\n", *i);
-  printf("Contained GeV physics-like slices: %lu\n", contained_shower_slices.size());
+  printf("Contained GeV physics-like slices: %lu\n",
+         contained_shower_slices.size());
   for(set<int>::iterator i = contained_shower_slices.begin();
       i != contained_shower_slices.end(); i++)
     printf("  %3d\n", *i);
