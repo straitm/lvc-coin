@@ -5,7 +5,15 @@
 if [ $1 ]; then
   t=$1
 else
-  t=1490550400
+  echo Specify a Unix timestamp
+  exit 1
+fi
+
+def=strait-ligo-coincidence-artdaq-$t
+if samweb list-definintions | grep -qE "^$def$"; then
+  echo SAM definition $def already exists for $t
+  echo Maybe delete it before trying to make another?
+  exit 1
 fi
 
 if ! [ -e allfiles.$t ]; then
@@ -15,7 +23,11 @@ if ! [ -e allfiles.$t ]; then
   # variables don't seem to know that.
   #
   # Fantastically slow
-  samweb list-files 'Online.SubRunEndTime > '$((t-550))' and Online.SubRunStartTime < '$((t+550)) > allfiles.$t
+  echo Asking SAM for a list of files. This typically takes a
+  echo stubstantial fraction of the age of the universe to complete.
+  samweb list-files \
+         'Online.SubRunEndTime   > '$((t-550))\
+    ' and Online.SubRunStartTime < '$((t+550)) > allfiles.$t
 fi
 
 for trigger in \
@@ -33,9 +45,20 @@ for trigger in \
   echo
 done | tee selectedfiles.$t
 
-if [ $2 ] && [ $2 == create-definition ]; then
-  def=strait-ligo-coincidence-artdaq-$t
-  samweb create-definition $def "$(for f in $(cat selectedfiles.$t | grep -v ^$); do printf "%s %s or " file_name $(basename $f); done | sed 's/or $//')"
-  cache_state.py -d $def
-  echo consider running: samweb prestage-dataset --defname=$def --parallel 4
+samweb create-definition $def \
+  "$(for f in $(cat selectedfiles.$t | grep -v ^$); do
+       printf "%s %s or " file_name $(basename $f);
+     done | sed 's/ or $//')"
+
+if ! samweb list-definintions | grep -qE "^$def$"; then
+  echo Failed to make a SAM definition
+  exit 1
+fi
+
+cachedpercent=$(cache_state.py -d $def | tee /dev/stderr | \
+  awk '/Cached:/{split($1, n, "("); print n[2]*1;}')
+
+if [ "$cachedpercent" -lt 100 ]; then
+  echo consider running:
+  echo samweb prestage-dataset --defname=$def --parallel 4
 fi
