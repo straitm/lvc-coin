@@ -62,9 +62,19 @@ else
     # Fantastically slow
     echo Asking SAM for a list of files. This typically takes a
     echo stubstantial fraction of the age of the universe to complete.
+
+    # Some subruns have a start time of zero in the metadata.  In this case,
+    # Look at the run start time.  If the run start time isn't there, don't
+    # select.  I don't know if this happens. Might there be other problems?
     samweb list-files \
            'Online.SubRunEndTime   > '$((t-550))\
-      ' and Online.SubRunStartTime < '$((t+550)) > allfiles.$t
+      ' and ( '\
+      ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((t+550))\
+      ' ) or '\
+      ' ( Online.SubRunStartTime = 0 and Online.RunStartTime > 0 and '\
+      '                                  Online.RunStartTime < '$((t+550))\
+      ' ) )' \
+       > allfiles.$t
   fi
 
   for i in {0..8}; do
@@ -75,6 +85,18 @@ else
   for i in {0..8}; do
     def=$defbase-${triggers[i]}
     if cat selectedfiles.$t | grep -q ${filepatterns[i]}; then
+      # Even during the SNEWS trigger, we only get about 40 subruns at the
+      # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)
+      # means that something is broken.
+      if [ $(cat selectedfiles.$t|grep ${filepatterns[i]}|wc -l) -gt 99 ]; then
+        echo Unreasonable number of files for ${triggers[i]}.  Skipping.
+        continue
+      fi
+
+      if samweb list-definitions | grep -qE "^$def$"; then
+        continue
+      fi
+
       samweb create-definition $def \
         "$(for f in $(cat selectedfiles.$t | grep ${filepatterns[i]}); do
              printf "%s %s or " file_name $(basename $f);
