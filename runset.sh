@@ -1,10 +1,14 @@
 #!/bin/bash
 
 if ! [ $1 ]; then
-  echo specify an analysis type
-  echo \(That is, the part of the name of the fcl between ligojob_ and .fcl\)
+  echo $(basename $0) [type] [time] [files]
+  echo "  type:  The analysis type, that is, the part of"
+  echo "         the name of the fcl between ligojob_ and .fcl"
+  echo "  time:  Unix time stamp of the GW event or whatever"
+  echo "  files: Any number of art files"
   exit 1
 fi
+
 type=$1
 shift
 
@@ -17,6 +21,10 @@ shift
 
 export TZ=UTC
 rfctime=$(date "+%Y-%m-%dT%H:%M:%SZ" -d @$unixtime)
+
+if [ $? -ne 0 ]; then
+  exit 1
+fi
 
 fcl=ligojob_$type.$rfctime.fcl
 
