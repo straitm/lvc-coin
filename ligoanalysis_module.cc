@@ -1,7 +1,6 @@
 ////////////////////////////////////////////////////////////////////////
-/// \brief   This module is named ligo and looks at LIGO coincidences
+/// \brief   This module is named ligoanalysis and looks at GW coincidences
 /// \author  M. Strait
-/// \date
 ////////////////////////////////////////////////////////////////////////
 
 #include "art/Framework/Principal/Run.h"
@@ -12,6 +11,7 @@
 #include "fhiclcpp/ParameterSet.h"
 #include "art/Framework/Core/ModuleMacros.h"
 #include "art/Framework/Core/EDProducer.h"
+#include "art/Framework/Core/EDFilter.h"
 
 #include "Geometry/Geometry.h"
 
@@ -53,12 +53,12 @@ const int US_PER_MICROSLICE = 50; // I hope this is always true
 enum analysis_class_t { NDactivity, LiveTime, UpMu, DDenergy,
                         RawTrigger, MAX_ANALYSIS_CLASS };
 
-namespace ligo {
+namespace ligoanalysis {
 
-class ligo : public art::EDProducer {
+class ligoanalysis : public art::EDProducer {
   public:
-  explicit ligo(fhicl::ParameterSet const& pset);
-  virtual ~ligo();
+  explicit ligoanalysis(fhicl::ParameterSet const& pset);
+  virtual ~ligoanalysis();
   void produce(art::Event& evt);
   void endJob();
 
@@ -271,7 +271,7 @@ double rfc3339_to_unix_double(const string & stime)
   return unix_s + unix_fraction;
 }
 
-void ligo::endJob()
+void ligoanalysis::endJob()
 {
   if(tooManyEdges)                     printf("Data out of time order :-0\n");
   else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
@@ -316,7 +316,7 @@ ligohist lh_ddenergy_hicut("energy_high_cut");
 ligohist lh_ddenergy_lopertime("energy_low_cut_pertime");
 ligohist lh_ddenergy_hipertime("energy_high_cut_pertime");
 
-ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
+ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
@@ -329,7 +329,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   else if(analysis_class_string == "RawTrigger") fAnalysisClass = RawTrigger;
   else{
     fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
-            "in ligo.fcl.\n", analysis_class_string.c_str());
+            "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
     exit(1);
   }
 
@@ -337,6 +337,9 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   window_size_s = fWindowSize;
 
   switch(fAnalysisClass){
+    case NDactivity:
+      init_lh(lh_rawtrigger);
+      break;
     case RawTrigger:
       init_lh(lh_rawtrigger);
       break;
@@ -363,7 +366,7 @@ ligo::ligo(fhicl::ParameterSet const& pset) : EDProducer(),
   }
 }
 
-ligo::~ligo() { }
+ligoanalysis::~ligoanalysis() { }
 
 /**********************************************************************/
 /*                          The meat follows                          */
@@ -615,7 +618,7 @@ void count_ddenergy(const art::Event & evt)
   // 1500000(0) ADC in 50e-6 seconds
   if(sumadc/rawtime > 5e10)
     THplusequals(lh_ddenergy_lopertime, timebin(evt), 1, rawtime);
-  if(sumadc/rawtime > 5e11)
+  if(sumadc/rawtime > 4e11)
     THplusequals(lh_ddenergy_hipertime, timebin(evt), 1, rawtime);
 
   if(sumadc >  5000000)
@@ -781,7 +784,7 @@ void count_tracks(const art::Event & evt)
 // And I noticed it because RemoveBeamSpills fails to remove it.  Ideally, I'd
 // drop all the hits that were seen before and only reconstruct the new ones,
 // but that is non-trivial.
-void ligo::produce(art::Event & evt)
+void ligoanalysis::produce(art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
@@ -807,6 +810,9 @@ void ligo::produce(art::Event & evt)
   printf("In GW coincidence window\n");
 
   switch(fAnalysisClass){
+    case NDactivity:
+      count_triggers(evt);
+      break;
     case RawTrigger:
       count_triggers(evt);
       break;
@@ -827,7 +833,7 @@ void ligo::produce(art::Event & evt)
   }
 }
 
-DEFINE_ART_MODULE(ligo);
+DEFINE_ART_MODULE(ligoanalysis);
 
-} // end namespace ligo
+} // end namespace ligoanalysis
 //////////////////////////////////////////////////////////////////////////

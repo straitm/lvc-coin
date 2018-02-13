@@ -34,7 +34,8 @@ if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
 fi
 
 cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
-  sed "/this_here_ligo: @local/a this_here_ligo.GWEventTime: \"$rfctime\"" > $fcl
+  sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
+      \nthis_here_ligofilter.GWEventTime: \"$rfctime\"" > $fcl
 
 # Need to fail if nova fails in 'nova | tee'
 set -o pipefail

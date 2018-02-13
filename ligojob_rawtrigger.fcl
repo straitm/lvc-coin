@@ -1,0 +1,58 @@
+#include "ligo.fcl"
+#include "RemoveBeamSpills.fcl"
+#include "services.fcl"
+
+process_name: ligoFTW
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantTracer: false wantSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+}
+
+# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
+# tested that if it isn't here, it doesn't work.  But I don't know what
+# it does.
+services.IFBeam: {}
+
+this_here_removebeam: @local::standard_removebeamspills
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+this_here_ligo: @local::standard_ligo
+this_here_ligo.AnalysisClass: RawTrigger
+
+physics:
+{
+  filters:
+  {
+    removebeam: @local::this_here_removebeam
+  }
+
+  producers:
+  {
+    ligo: @local::this_here_ligo
+  }
+
+  reco: [ removebeam,
+          ligo ]
+
+ stream1: [ out1 ]
+
+ end_paths: [ stream1 ]
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fileName:    "ligo.root"
+  }
+}

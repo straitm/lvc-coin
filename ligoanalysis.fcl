@@ -1,8 +1,8 @@
 BEGIN_PROLOG
 
-standard_ligo:
+standard_ligoanalysis:
 {
-  module_type:      ligo
+  module_type:      ligoanalysis
 
   # The time of the gravitational wave burst, or whatever time you want to center
   # the search on.  Expressed in RFC-3339 format, always in UTC, always with a Z

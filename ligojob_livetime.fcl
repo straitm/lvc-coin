@@ -1,4 +1,5 @@
-#include "ligo.fcl"
+#include "ligoanalysis.fcl"
+#include "ligofilter.fcl"
 #include "CalHit.fcl"
 #include "Slicer4D.fcl"
 #include "MultiHoughT.fcl"
@@ -35,14 +36,17 @@ thisone_breakpoint_here: @local::standard_breakpoint
 thisone_breakpoint_here.FitAsPion: false
 thisone_breakpoint_here.FitAsProton: false
 
-this_here_ligo: @local::standard_ligo
-this_here_ligo.AnalysisClass: LiveTime
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: LiveTime
+
+this_here_ligofilter: @local::standard_ligofilter
 
 physics:
 {
   filters:
   {
     removebeam: @local::this_here_removebeam
+    ligofilter: @local::this_here_ligofilter
   }
 
   producers:
@@ -53,17 +57,17 @@ physics:
     elasticarmshs: @local::standard_elasticarmshs
     fuzzykvertex: @local::standard_fuzzykvertex
     breakpoint: @local::thisone_breakpoint_here
-    ligo: @local::this_here_ligo
+    ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ calhit,
+  reco: [ removebeam, ligofilter,
+          calhit,
           slicer,
           multihough, # for breakpoint
           elasticarmshs, # for breakpoint
           fuzzykvertex, # for breakpoint
           breakpoint,
-          removebeam,
-          ligo ]
+          ligoanalysis ]
 
  stream1: [ out1 ]
 
