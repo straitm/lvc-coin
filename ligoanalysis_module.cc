@@ -506,10 +506,9 @@ void count_ddenergy(const art::Event & evt)
 
   printf("ADC: %ld %12.0f\n", sumadc, sumadc/rawtime);
 
-  // 1500000(0) ADC in 50e-6 seconds
   if(sumadc/rawtime > 5e10)
     THplusequals(lh_ddenergy_lopertime, timebin(evt), 1, rawtime);
-  if(sumadc/rawtime > 4e11)
+  if(sumadc/rawtime > 5e11)
     THplusequals(lh_ddenergy_hipertime, timebin(evt), 1, rawtime);
 
   if(sumadc >  5000000)
