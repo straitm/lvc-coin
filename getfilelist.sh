@@ -54,9 +54,9 @@ else
 fi
 
 cachedpercent=$(cache_state.py -d $def | tee /dev/stderr | \
-  awk '/Cached:/{split($1, n, "("); print n[2]*1;}')
+  awk '/Cached:/{split($3, n, "("); print n[2]*1;}')
 
 if [ "$cachedpercent" -lt 100 ]; then
-  echo consider running:
-  echo samweb prestage-dataset --defname=$def --parallel 4
+  echo Not all files are cached.  Caching...
+  samweb prestage-dataset --defname=$def --parallel 4
 fi
