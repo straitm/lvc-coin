@@ -2,27 +2,22 @@
 /// \brief   This module filters out a time window for the GW analysis
 /// \author  M. Strait
 ////////////////////////////////////////////////////////////////////////
-#include "art/Framework/Services/Registry/ServiceHandle.h"
+
 #include "fhiclcpp/ParameterSet.h"
 #include "art/Framework/Core/ModuleMacros.h"
-#include "art/Framework/Core/EDProducer.h"
 #include "art/Framework/Core/EDFilter.h"
-
-#include "NovaTimingUtilities/TimingUtilities.h"
-
 #include <string>
-using std::string;
 
 // Set from the FCL parameters
-double gwevent_unix_double_time = 0;
-long long window_size_s = 1000;
+static double gwevent_unix_double_time = 0;
+static long long window_size_s = 1000;
 
 // Take a time string like 2000-01-01T00:00:00.123Z and return the time
 // in Unix time with fractional seconds. That is, a floating point
 // number where the integer part is the same as what you get from "date
 // +%s", the number of seconds since the UNIX Epoch, ignoring leap
 // seconds, and there's also a fractional part.
-double rfc3339_to_unix_double(const string & stime)
+static double rfc3339_to_unix_double(const std::string & stime)
 {
   tm tm_time;
   memset(&tm_time, 0, sizeof(tm));
@@ -37,7 +32,7 @@ double rfc3339_to_unix_double(const string & stime)
     fprintf(stderr, "Malformed time string for LIGO. %s\n", timehelpmessage);
     exit(1);
   }
-  string dateforstrptime = stime.substr(0, rfc3339length);
+  std::string dateforstrptime = stime.substr(0, rfc3339length);
   strptime(dateforstrptime.c_str(),
            "%Y-%m-%dT%H:%M:%S", &tm_time);
 
@@ -45,7 +40,7 @@ double rfc3339_to_unix_double(const string & stime)
   tzset();
   int32_t unix_s = mktime(&tm_time);
 
-  const string fractional_second_s =
+  const std::string fractional_second_s =
     stime.substr(rfc3339length, stime.size() - 1 - rfc3339length);
 
   double unix_fraction = 0;
@@ -62,7 +57,7 @@ double rfc3339_to_unix_double(const string & stime)
   return unix_s + unix_fraction;
 }
 
-double art_time_to_unix_double(const unsigned long long at)
+static double art_time_to_unix_double(const unsigned long long at)
 {
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
 }
@@ -74,28 +69,60 @@ class ligofilter : public art::EDFilter {
   explicit ligofilter(const fhicl::ParameterSet & pset);
   virtual ~ligofilter();
   bool filter(art::Event& evt);
+  void endJob();
 
   /// \brief The user-supplied time of the gravitational wave burst, or
   /// whatever time you want to center the search on.
   ///
   /// Expressed in RFC-3339 format, always in UTC, always with a Z at
   /// the end (to emphasize that it is UTC).
-  string fGWEventTime;
+  std::string fGWEventTime;
 
   /// \brief The user-supplied length of the search window in seconds.
   ///
   /// We search for half this length on either side of the given time.
   float fWindowSize;
+
+  /// True if we see the beginning of the window, i.e. a transition from
+  /// being before the window to being in the window.
+  bool risingEdge = false;
+
+  /// True if we see the end of the window, i.e. a transition from being
+  /// in the window to being after it.
+  bool fallingEdge = false;
+
+  /// True if the first event we saw was in the window.
+  bool startedHigh = false;
+
+  /// True if we ever see any events in the window.
+  bool sawTheWindow = false;
+
+  /// True if we encounter an event in the window after already seeing
+  /// a transition from being in the window to being out of the window.
+  /// Observed in some DDenergy files. Could also conceivably happen if
+  /// leap seconds are involved, or if the user constructs some sort of
+  /// odd file.
+  bool tooManyEdges = false;
 };
 
 ligofilter::~ligofilter() { }
 
 ligofilter::ligofilter(fhicl::ParameterSet const& pset) : EDFilter(),
-  fGWEventTime(pset.get<string>("GWEventTime")),
+  fGWEventTime(pset.get<std::string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
+}
+
+void ligofilter::endJob()
+{
+  if(tooManyEdges)                     printf("Data out of time order :-0\n");
+  else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
+  else if( risingEdge && !fallingEdge) printf("Saw beginning of window :-\\\n");
+  else if(!risingEdge &&  fallingEdge) printf("Saw end of the window :-\\\n");
+  else if(sawTheWindow)                printf("Saw middle of window >:-\\\n");
+  else                                 printf("Saw no data in window :-(\n");
 }
 
 // Returns true if the event time is within the window defined by the
@@ -170,7 +197,20 @@ bool ligofilter::filter(art::Event & evt)
   printf("DEBUG: %6u %16f %16f %16f\n", evt.id().event(),
     evt_time, gwevent_unix_double_time, evt_time - gwevent_unix_double_time);
 #endif
-  return fabsl(evt_time - gwevent_unix_double_time) < window_size_s/2.;
+  const bool inwindow =
+    fabsl(evt_time - gwevent_unix_double_time) < window_size_s/2.;
+
+  // Keep track of whether we've seen the beginning and end of the window.
+  static bool firstevent = true;
+  if(inwindow)                                 sawTheWindow = true;
+  if(firstevent && inwindow)                   startedHigh  = true;
+  if(!startedHigh && inwindow && !risingEdge)  risingEdge   = true;
+  if(inwindow && fallingEdge)                  tooManyEdges = true;
+  if((startedHigh || risingEdge) && !inwindow) fallingEdge  = true;
+  firstevent = false;
+
+  if(inwindow) printf("In GW coincidence window\n");
+  return inwindow;
 }
 DEFINE_ART_MODULE(ligofilter);
 }

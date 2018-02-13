@@ -1,4 +1,5 @@
-#include "ligo.fcl"
+#include "ligoanalysis.fcl"
+#include "ligofilter.fcl"
 #include "services.fcl"
 
 process_name: ligoFTWnoreco
@@ -17,15 +18,22 @@ source:
   maxEvents: -1
 }
 
-this_here_ligo: @local::standard_ligo
-this_here_ligo.AnalysisClass: UpMu
+this_here_ligofilter: @local::standard_ligofilter
+
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: UpMu
 
 physics:
 {
-  producers:
+  filters:
   {
-    ligo: @local::this_here_ligo
+    ligofilter: @local::this_here_ligofilter
   }
 
-  reco: [ ligo ]
+  producers:
+  {
+    ligoanalysis: @local::this_here_ligoanalysis
+  }
+
+  reco: [ ligofilter, ligoanalysis ]
 }

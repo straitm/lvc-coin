@@ -36,10 +36,11 @@ thisone_breakpoint_here: @local::standard_breakpoint
 thisone_breakpoint_here.FitAsPion: false
 thisone_breakpoint_here.FitAsProton: false
 
+this_here_ligofilter: @local::standard_ligofilter
+
 this_here_ligoanalysis: @local::standard_ligoanalysis
 this_here_ligoanalysis.AnalysisClass: LiveTime
 
-this_here_ligofilter: @local::standard_ligofilter
 
 physics:
 {

@@ -1,4 +1,5 @@
-#include "ligo.fcl"
+#include "ligofilter.fcl"
+#include "ligoanalysis.fcl"
 #include "RemoveBeamSpills.fcl"
 #include "services.fcl"
 
@@ -25,23 +26,26 @@ source:
   maxEvents: -1
 }
 
-this_here_ligo: @local::standard_ligo
-this_here_ligo.AnalysisClass: RawTrigger
+this_here_ligofilter: @local::standard_ligofilter
+
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: RawTrigger
 
 physics:
 {
   filters:
   {
     removebeam: @local::this_here_removebeam
+    ligofilter: @local::this_here_ligofilter
   }
 
   producers:
   {
-    ligo: @local::this_here_ligo
+    ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ removebeam,
-          ligo ]
+  reco: [ removebeam, ligofilter,
+          ligoanalysis ]
 
  stream1: [ out1 ]
 
