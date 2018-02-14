@@ -9,7 +9,7 @@
 
 #include "Geometry/Geometry.h"
 
-#include <DAQDataFormats/RawTriggerTime.h>
+#include "DAQDataFormats/RawTriggerTime.h"
 #include "DAQDataFormats/RawEvent.h"
 #include "DAQDataFormats/RawTrigger.h"
 #include "DAQDataFormats/RawTriggerMask.h"
@@ -31,6 +31,8 @@ using std::string;
 
 #include <signal.h>
 
+#include "func/timeutil.h"
+
 static const int TDC_PER_US = 64;
 static const int US_PER_MICROSLICE = 50; // I hope this is always true
 
@@ -47,7 +49,7 @@ enum analysis_class_t { NDactivity, LiveTime, UpMu, DDenergy,
 class ligoanalysis : public art::EDProducer {
   public:
   explicit ligoanalysis(fhicl::ParameterSet const& pset);
-  virtual ~ligoanalysis();
+  virtual ~ligoanalysis() { }; // compiles, but does not run, without this
   void produce(art::Event& evt);
 
   /// \brief User-supplied type of trigger being examined.
@@ -172,65 +174,6 @@ static bool delta_and_length(int64_t & event_length_tdc,
   return true; // ok
 }
 
-// Convert an art time, which is a 64 bit number where the upper 32
-// bits are the number of seconds since the UNIX Epoch and the lower 32
-// bits are the number of nanoseconds to be added to that, to a double
-// which is the number of seconds since the UNIX Epoch.
-//
-// Note that some precision is lost in this process since a double
-// only holds about 16 decimal digits. The granularity at any relevant
-// time stamp is 2**-22 seconds = 238 nanoseconds, which does not matter
-// for these purposes.
-static double art_time_to_unix_double(const unsigned long long at)
-{
-  return (at >> 32) + (at & 0xffffffffULL)*1e-9;
-}
-
-// Take a time string like 2000-01-01T00:00:00.123Z and return the time
-// in Unix time with fractional seconds. That is, a floating point
-// number where the integer part is the same as what you get from "date
-// +%s", the number of seconds since the UNIX Epoch, ignoring leap
-// seconds, and there's also a fractional part.
-double rfc3339_to_unix_double(const string & stime)
-{
-  tm tm_time;
-  memset(&tm_time, 0, sizeof(tm));
-  const unsigned int rfc3339length = sizeof("2000-01-01T00:00:00") - 1;
-
-  const char * const timehelpmessage = "Must look like "
-    "2000-01-01T00:00:00.123Z where the Z denotes UTC time "
-    "and you have to give it in UTC time.  The fractional part "
-    "of the second is optional.";
-
-  if(stime.size() < rfc3339length+1 || stime[stime.size()-1] != 'Z'){
-    fprintf(stderr, "Malformed time string for LIGO. %s\n", timehelpmessage);
-    exit(1);
-  }
-  string dateforstrptime = stime.substr(0, rfc3339length);
-  strptime(dateforstrptime.c_str(),
-           "%Y-%m-%dT%H:%M:%S", &tm_time);
-
-  setenv("TZ", "", 1); // Make sure we are interpreting the time as UTC
-  tzset();
-  int32_t unix_s = mktime(&tm_time);
-
-  const string fractional_second_s =
-    stime.substr(rfc3339length, stime.size() - 1 - rfc3339length);
-
-  double unix_fraction = 0;
-  if(fractional_second_s.size() > 1)
-    sscanf(fractional_second_s.c_str(), "%lf", &unix_fraction);
-
-  if(unix_fraction < 0 || unix_fraction >= 1){
-    fprintf(stderr, "Your time string, \"%s\", gave fractional seconds outside"
-            "the range [0-1). I guess it is in the wrong format. %s\n",
-            stime.c_str(), timehelpmessage);
-    exit(1);
-  }
-
-  return unix_s + unix_fraction;
-}
-
 // Count of triggers, with no examination of the data within
 static ligohist lh_rawtrigger("rawtrigger");
 
@@ -315,8 +258,6 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       printf("No case for type %d\n", fAnalysisClass);
   }
 }
-
-ligoanalysis::~ligoanalysis() { }
 
 /**********************************************************************/
 /*                          The meat follows                          */
