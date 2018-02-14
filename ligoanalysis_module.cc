@@ -508,8 +508,9 @@ static void count_upmu(const art::Event & evt)
                upmu->size(), rawlivetime(evt));
 }
 
-// Counts tracks with various cuts and adds the results to the output histograms
-static void count_tracks(const art::Event & evt)
+// Counts tracks with various cuts and contained slices and adds the
+// results to the output histograms
+static void count_tracks_containedslices(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -635,6 +636,7 @@ void ligoanalysis::produce(art::Event & evt)
   switch(fAnalysisClass){
     case NDactivity:
       count_triggers(evt);
+      count_tracks_containedslices(evt);
       break;
     case JustTrigger:
       count_triggers(evt);
@@ -645,7 +647,7 @@ void ligoanalysis::produce(art::Event & evt)
     case LiveTime:
       count_hits(evt);
       count_unslice4dd_hits(evt);
-      count_tracks(evt);
+      count_tracks_containedslices(evt);
       break;
     case DDenergy:
       count_triggers(evt);
