@@ -332,7 +332,7 @@ static int timebin(const art::Event & evt)
 static bool contained(const TVector3 & v)
 {
   if(gDet == caf::kNEARDET)
-    return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 40 && v.Z() < 1225;
+    return fabs(v.X()) < 150 && fabs(v.Y()) < 150 && v.Z() > 40 && v.Z() < 1225;
   if(gDet == caf::kFARDET)
     return fabs(v.X()) < 650 &&
       v.Y() < 500 && v.Y() > -650 &&
