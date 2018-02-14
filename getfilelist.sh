@@ -1,9 +1,41 @@
 #!/bin/bash
 
+# Prints a random 32 bit unsigned number.  Not cryptographically secure.
+# Probably not even good enough for serious Monte Carlo, but good enough
+# to sample some data.
+rand32()
+{
+  echo $(( $RANDOM * 0x10000 + $RANDOM))
+}
+
+# Pick a random Unix time stamp (or, really, whatever number) between $1
+# and $2. 32-bit *unsigned* numbers.  Fails after Jan 2106.
+randtime()
+{
+  start=$1
+  end=$2
+
+  # Ultra-stupid retry loop
+  # Did you know you could write while loops in bash like this?
+  while
+    r=$(rand32)
+    [ $r -lt $start ] || [ $r -gt $end ]
+  do
+    :
+  done
+  echo $r
+}
+
 # Unix time stamp of the event we want to search around.
 # (How does Online.SubRun*Time handle leap seconds!?)
 if [ $1 ]; then
-  t=$1
+  if [ "$1" == random ]; then
+    start=1359698400
+    end=$(date +%s)
+    t=$(randtime $start $end)
+  else
+    t=$1
+  fi
 else
   echo Specify a Unix timestamp
   exit 1

@@ -1,2 +1,4 @@
 .nfs*
 *.swp
+allfiles.*
+selectedfiles.*
