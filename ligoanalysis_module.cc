@@ -418,6 +418,7 @@ static int which_slice_is_this_track_in(
   // I'm sure this is not the best way, but I have had it with trying to
   // figure out what the best way is, and I'm just going to do it *some*
   // way.
+  if(t.NCell() == 0) return -1;
   const art::Ptr<rb::CellHit> ahit =
     t.Cell(0); // some random hit on the track
 
@@ -534,33 +535,37 @@ static void count_tracks_containedslices(const art::Event & evt)
   std::set<int> contained_slices;
   std::set<int> contained_shower_slices;
   for(unsigned int i = 0; i < slice->size(); i++){
-    if(contained((*slice)[i].MinXYZ()) &&
-       contained((*slice)[i].MaxXYZ())){
-       contained_slices.insert(i);
-       if((*slice)[i].NCell() >= 10){
-         const int planesx = (*slice)[i].ExtentPlane(geo::kX);
-         const int planesy = (*slice)[i].ExtentPlane(geo::kY);
-         const int cellsx = (*slice)[i].ExtentCell(geo::kX);
-         const int cellsy = (*slice)[i].ExtentCell(geo::kY);
+    if(!(*slice)[i].NCell(geo::kX) || !(*slice)[i].NCell(geo::kY))
+      continue;
 
-         // Must be somewhat extended in z (not a straight-down track), and
-         // whatever box is defined by the cell and plane extent must neither
-         // be too sparse (random hits plus a straight-down track) nor too full
-         // (FEB flashing).  A block of flashers plus a random hit is not
-         // really excludable with this cut.  Note that the maximum is ~0.5
-         // because the count of planes is in both views.
-         const double min_boxupancy = 0.1,
-                      // max_boxupancy = 0.45; // seems to work
-                      max_boxupancy = 1; // shouldn't work
+    if(!contained((*slice)[i].MinXYZ()) ||
+       !contained((*slice)[i].MaxXYZ())) continue;
 
-         if(planesx >= 9 && planesy >= 9 && // always odd
-            (*slice)[i].NXCell()/double(cellsx*planesx) < max_boxupancy &&
-            (*slice)[i].NYCell()/double(cellsy*planesy) < max_boxupancy &&
-            (*slice)[i].NXCell()/double(cellsx*planesx) > min_boxupancy &&
-            (*slice)[i].NYCell()/double(cellsy*planesy) > min_boxupancy)
-           contained_shower_slices.insert(i);
-       }
-    }
+    contained_slices.insert(i);
+
+    if((*slice)[i].NCell() < 10) continue;
+
+    const int planesx = (*slice)[i].ExtentPlane(geo::kX);
+    const int planesy = (*slice)[i].ExtentPlane(geo::kY);
+    const int cellsx = (*slice)[i].ExtentCell(geo::kX);
+    const int cellsy = (*slice)[i].ExtentCell(geo::kY);
+
+    // Must be somewhat extended in z (not a straight-down track), and
+    // whatever box is defined by the cell and plane extent must neither
+    // be too sparse (random hits plus a straight-down track) nor too full
+    // (FEB flashing).  A block of flashers plus a random hit is not
+    // really excludable with this cut.  Note that the maximum is ~0.5
+    // because the count of planes is in both views.
+    const double min_boxupancy = 0.1,
+                 // max_boxupancy = 0.45; // seems to work
+                 max_boxupancy = 1; // shouldn't work
+
+    if(planesx >= 9 && planesy >= 9 && // always odd
+       (*slice)[i].NXCell()/double(cellsx*planesx) < max_boxupancy &&
+       (*slice)[i].NYCell()/double(cellsy*planesy) < max_boxupancy &&
+       (*slice)[i].NXCell()/double(cellsx*planesx) > min_boxupancy &&
+       (*slice)[i].NYCell()/double(cellsy*planesy) > min_boxupancy)
+      contained_shower_slices.insert(i);
   }
 
   for(unsigned int i = 0; i < tracks->size(); i++){
