@@ -78,17 +78,35 @@ struct ligohist{
   // Things per second, for whatever it is we're selecting
   TH1D * sig = NULL;
 
-  // Livetime per second (XXX same for all histograms? I think not necessarily
-  // for DDTs)
+  // Livetime per second.  This means the amount of time read out by
+  // triggers in the analysis window, not the amount of time a trigger
+  // was enabled in the DAQ or anything similar.
   TH1D * live = NULL;
 
   // Base name for the histograms.  Name for the livetime histogram will be
   // this with "live" appended.
   string name;
 
-  ligohist(const string & name_)
+  // Answers the question "Are livetime histograms meaningful for this?"
+  //
+  // They aren't meaningful if the sort of event we're looking at causes
+  // the trigger to fire. For instance, it doesn't mean anything to look
+  // at the livetime provided by the Upmu trigger when looking at a
+  // count of upward going muons. However, it may be meaningful to look
+  // at the livetime of Upmu if looking at low-energy events that happen
+  // to get read out because of Upmu.
+  //
+  // If false, we won't write out the second histogram. In some cases,
+  // whether or not they are meaningful depends on the trigger that is
+  // using this histogram. We'll enable this if it is at least sometimes
+  // meaningful. (Or would it be better to make different histograms and
+  // avoid ever having irrelevant output?)
+  bool dolive;
+
+  ligohist(const string & name_, const bool dolive_)
   {
     name = name_;
+    dolive = dolive_;
   }
 };
 
@@ -101,10 +119,13 @@ static void init_lh(ligohist & lh)
   }
 
   art::ServiceHandle<art::TFileService> t;
-  lh.sig  = t->make<TH1D>(lh.name.c_str(),                 "",
+
+  lh.sig = t->make<TH1D>(lh.name.c_str(), "",
     window_size_s, -window_size_s/2, window_size_s/2);
-  lh.live = t->make<TH1D>(Form("%slive", lh.name.c_str()), "",
-    window_size_s, -window_size_s/2, window_size_s/2);
+
+  if(lh.dolive)
+    lh.live = t->make<TH1D>(Form("%slive", lh.name.c_str()), "",
+      window_size_s, -window_size_s/2, window_size_s/2);
 }
 
 /**********************************************************************/
@@ -175,39 +196,39 @@ static bool delta_and_length(int64_t & event_length_tdc,
 }
 
 // Count of triggers, with no examination of the data within
-static ligohist lh_rawtrigger("rawtrigger");
+static ligohist lh_rawtrigger("rawtrigger", false);
 
 // Number of hits, with no filtering of any sort
-static ligohist lh_rawhits("rawhits");
+static ligohist lh_rawhits("rawhits", true);
 
 // Number of hits that are not in any Slicer4D slice, i.e. they are in the
 // Slicer4D noise slice.
-static ligohist lh_unslice4ddhits("unslice4ddhits");
+static ligohist lh_unslice4ddhits("unslice4ddhits", true);
 
 // Raw number of tracks
-static ligohist lh_tracks("tracks");
+static ligohist lh_tracks("tracks", true);
 
 // Number of tracks with at least one contained endpoint, with some additional
 // sanity checks.
-static ligohist lh_halfcontained_tracks("halfcontained_tracks");
+static ligohist lh_halfcontained_tracks("halfcontained_tracks", true);
 
 // Number of tracks with at two contained endpoints, with some additional
 // sanity checks.
-static ligohist lh_fullycontained_tracks("fullycontained_tracks");
+static ligohist lh_fullycontained_tracks("fullycontained_tracks", true);
 
 // Count of slices with nothing around the edges, regardless of what sorts of
 // objects are inside.
-static ligohist lh_contained_slices("contained_slices");
+static ligohist lh_contained_slices("contained_slices", true);
 
 // Number of tracks that pass the UpMu analysis
-static ligohist lh_upmu_tracks("upmu_tracks");
+static ligohist lh_upmu_tracks("upmu_tracks", false);
 
 // Number of triggers above two cuts for DDEnergy, the first pair
 // in raw ADC, the second ADC per unit time.
-static ligohist lh_ddenergy_locut("energy_low_cut");
-static ligohist lh_ddenergy_hicut("energy_high_cut");
-static ligohist lh_ddenergy_lopertime("energy_low_cut_pertime");
-static ligohist lh_ddenergy_hipertime("energy_high_cut_pertime");
+static ligohist lh_ddenergy_locut("energy_low_cut", false);
+static ligohist lh_ddenergy_hicut("energy_high_cut", false);
+static ligohist lh_ddenergy_lopertime("energy_low_cut_pertime", false);
+static ligohist lh_ddenergy_hipertime("energy_high_cut_pertime", false);
 
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
@@ -286,12 +307,13 @@ static double rawlivetime(const art::Event & evt)
 
 // Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
 static void THplusequals(ligohist & lh, const int bin, const double sig,
-                  const double live)
+                         const double live)
 {
   // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
   // the bin number twice.
   lh.sig ->SetBinContent(bin, lh.sig ->GetBinContent(bin) + sig);
-  lh.live->SetBinContent(bin, lh.live->GetBinContent(bin) + live);
+  if(lh.dolive)
+    lh.live->SetBinContent(bin, lh.live->GetBinContent(bin) + live);
 }
 
 // Return the bin number for this event, i.e. the number of seconds from the
