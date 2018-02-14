@@ -62,8 +62,6 @@ static double art_time_to_unix_double(const unsigned long long at)
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
 }
 
-namespace ligofilter {
-
 class ligofilter : public art::EDFilter {
   public:
   explicit ligofilter(const fhicl::ParameterSet & pset);
@@ -213,4 +211,3 @@ bool ligofilter::filter(art::Event & evt)
   return inwindow;
 }
 DEFINE_ART_MODULE(ligofilter);
-}

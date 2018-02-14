@@ -3,15 +3,9 @@
 /// \author  M. Strait
 ////////////////////////////////////////////////////////////////////////
 
-#include "art/Framework/Principal/Run.h"
-#include "art/Framework/Principal/Event.h"
 #include "art/Framework/Services/Optional/TFileService.h"
-#include "art/Framework/Services/Registry/ServiceHandle.h"
-#include "art/Framework/Principal/Handle.h"
-#include "fhiclcpp/ParameterSet.h"
 #include "art/Framework/Core/ModuleMacros.h"
 #include "art/Framework/Core/EDProducer.h"
-#include "art/Framework/Core/EDFilter.h"
 
 #include "Geometry/Geometry.h"
 
@@ -20,40 +14,35 @@
 #include "DAQDataFormats/RawTrigger.h"
 #include "DAQDataFormats/RawTriggerMask.h"
 #include "DAQDataFormats/RawDataBlock.h"
-#include "DAQDataFormats/RawMicroBlock.h"
-#include "DAQDataFormats/RawMicroSlice.h"
-#include "DAQDataFormats/RawNanoSlice.h"
-#include "DAQChannelMap/DAQChannelMap.h"
 #include "StandardRecord/SREnums.h"
 
-#include "RawData/RawSumDropMB.h"
 #include "RawData/FlatDAQData.h"
 #include "RawData/RawTrigger.h"
-
-#include "NovaTimingUtilities/TimingUtilities.h"
 
 #include "RecoBase/Track.h"
 
 #include "TH1.h"
 
 #include <string>
+using std::string;
 #include <vector>
 #include <set>
-using std::string;
-using std::vector;
-using std::set;
 #include <algorithm>
 
 #include <signal.h>
 
-const int TDC_PER_US = 64;
-const int US_PER_MICROSLICE = 50; // I hope this is always true
+static const int TDC_PER_US = 64;
+static const int US_PER_MICROSLICE = 50; // I hope this is always true
+
+// Set from the FCL parameters
+static double gwevent_unix_double_time = 0;
+static long long window_size_s = 1000;
+
+static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
 enum analysis_class_t { NDactivity, LiveTime, UpMu, DDenergy,
-                        RawTrigger, MAX_ANALYSIS_CLASS };
-
-namespace ligoanalysis {
+                        JustTrigger, MAX_ANALYSIS_CLASS };
 
 class ligoanalysis : public art::EDProducer {
   public:
@@ -79,12 +68,6 @@ class ligoanalysis : public art::EDProducer {
   float fWindowSize;
 };
 
-// Set from the FCL parameters
-double gwevent_unix_double_time = 0;
-long long window_size_s = 1000;
-
-int gDet = caf::kUNKNOWN;
-
 /**********************************************************************/
 /*                             Histograms                             */
 /**********************************************************************/
@@ -99,16 +82,16 @@ struct ligohist{
 
   // Base name for the histograms.  Name for the livetime histogram will be
   // this with "live" appended.
-  std::string name;
+  string name;
 
-  ligohist(const std::string & name_)
+  ligohist(const string & name_)
   {
     name = name_;
   }
 };
 
 // Construct the histograms and hook them up with TFileService to be saved
-void init_lh(ligohist & lh)
+static void init_lh(ligohist & lh)
 {
   if(lh.sig != NULL || lh.live != NULL){
     fprintf(stderr, "%s already initialized.\n", lh.name.c_str());
@@ -198,7 +181,7 @@ static bool delta_and_length(int64_t & event_length_tdc,
 // only holds about 16 decimal digits. The granularity at any relevant
 // time stamp is 2**-22 seconds = 238 nanoseconds, which does not matter
 // for these purposes.
-double art_time_to_unix_double(const unsigned long long at)
+static double art_time_to_unix_double(const unsigned long long at)
 {
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
 }
@@ -249,51 +232,51 @@ double rfc3339_to_unix_double(const string & stime)
 }
 
 // Count of triggers, with no examination of the data within
-ligohist lh_rawtrigger("rawtrigger");
+static ligohist lh_rawtrigger("rawtrigger");
 
 // Number of hits, with no filtering of any sort
-ligohist lh_rawhits("rawhits");
+static ligohist lh_rawhits("rawhits");
 
 // Number of hits that are not in any Slicer4D slice, i.e. they are in the
 // Slicer4D noise slice.
-ligohist lh_unslice4ddhits("unslice4ddhits");
+static ligohist lh_unslice4ddhits("unslice4ddhits");
 
 // Raw number of tracks
-ligohist lh_tracks("tracks");
+static ligohist lh_tracks("tracks");
 
 // Number of tracks with at least one contained endpoint, with some additional
 // sanity checks.
-ligohist lh_halfcontained_tracks("halfcontained_tracks");
+static ligohist lh_halfcontained_tracks("halfcontained_tracks");
 
 // Number of tracks with at two contained endpoints, with some additional
 // sanity checks.
-ligohist lh_fullycontained_tracks("fullycontained_tracks");
+static ligohist lh_fullycontained_tracks("fullycontained_tracks");
 
 // Count of slices with nothing around the edges, regardless of what sorts of
 // objects are inside.
-ligohist lh_contained_slices("contained_slices");
+static ligohist lh_contained_slices("contained_slices");
 
 // Number of tracks that pass the UpMu analysis
-ligohist lh_upmu_tracks("upmu_tracks");
+static ligohist lh_upmu_tracks("upmu_tracks");
 
 // Number of triggers above two cuts for DDEnergy, the first pair
 // in raw ADC, the second ADC per unit time.
-ligohist lh_ddenergy_locut("energy_low_cut");
-ligohist lh_ddenergy_hicut("energy_high_cut");
-ligohist lh_ddenergy_lopertime("energy_low_cut_pertime");
-ligohist lh_ddenergy_hipertime("energy_high_cut_pertime");
+static ligohist lh_ddenergy_locut("energy_low_cut");
+static ligohist lh_ddenergy_hicut("energy_high_cut");
+static ligohist lh_ddenergy_lopertime("energy_low_cut_pertime");
+static ligohist lh_ddenergy_hipertime("energy_high_cut_pertime");
 
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
-  const std::string analysis_class_string(pset.get<string>("AnalysisClass"));
+  const string analysis_class_string(pset.get<string>("AnalysisClass"));
 
   if     (analysis_class_string == "NDactivity") fAnalysisClass = NDactivity;
   else if(analysis_class_string == "LiveTime")   fAnalysisClass = LiveTime;
   else if(analysis_class_string == "UpMu")       fAnalysisClass = UpMu;
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
-  else if(analysis_class_string == "RawTrigger") fAnalysisClass = RawTrigger;
+  else if(analysis_class_string == "JustTrigger")fAnalysisClass = JustTrigger;
   else{
     fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
             "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
@@ -307,7 +290,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
     case NDactivity:
       init_lh(lh_rawtrigger);
       break;
-    case RawTrigger:
+    case JustTrigger:
       init_lh(lh_rawtrigger);
       break;
     case UpMu:
@@ -342,7 +325,7 @@ ligoanalysis::~ligoanalysis() { }
 // Return the livetime in this event in seconds, as it is relevant for
 // raw hits (same as for anything else? Maybe not if we don't trust
 // tracks close to the time-edges of events).
-double rawlivetime(const art::Event & evt)
+static double rawlivetime(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
   evt.getByLabel("daq", flatdaq);
@@ -361,7 +344,7 @@ double rawlivetime(const art::Event & evt)
 }
 
 // Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
-void THplusequals(ligohist & lh, const int bin, const double sig,
+static void THplusequals(ligohist & lh, const int bin, const double sig,
                   const double live)
 {
   // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
@@ -372,14 +355,14 @@ void THplusequals(ligohist & lh, const int bin, const double sig,
 
 // Return the bin number for this event, i.e. the number of seconds from the
 // beginning of the window, plus 1.
-int timebin(const art::Event & evt)
+static int timebin(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
   return floor(evt_time - gwevent_unix_double_time) + window_size_s/2
          + 1; // stupid ROOT 1-based numbering!
 }
 
-bool contained(const TVector3 & v)
+static bool contained(const TVector3 & v)
 {
   if(gDet == caf::kNEARDET)
     return fabs(v.X()) < 165 && fabs(v.Y()) < 165 && v.Z() > 40 && v.Z() < 1225;
@@ -393,21 +376,21 @@ bool contained(const TVector3 & v)
 
 // Returns true if the track enters and exits.  Or if both of its ends
 // are pretty close to the edge.  But not if it is just steep.
-bool un_contained_track(const rb::Track & t)
+static bool un_contained_track(const rb::Track & t)
 {
   return !contained(t.Start()) && !contained(t.Stop());
 }
 
-const int min_plane_extent = 10;
+static const int min_plane_extent = 10;
 
-const double tan_track_cut = atan(15 * M_PI/180);
+static const double tan_track_cut = atan(15 * M_PI/180);
 
 // Check that the reconstruction (probably BreakPointFitter) doesn't think
 // either end of the track points nearly along a plane AND check that if we
 // just draw a line from one end of the track to the other, that that doesn't
 // either.  This second part is to make sure that some tiny kink at the start
 // or end can't fool us into thinking it is well-contained.
-bool good_track_direction(const rb::Track & t)
+static bool good_track_direction(const rb::Track & t)
 {
   const double tot_dx = t.Start().X() - t.Stop().X();
   const double tot_dy = t.Start().Y() - t.Stop().Y();
@@ -430,7 +413,7 @@ bool good_track_direction(const rb::Track & t)
 
 // Returns true if the track starts AND stops inside the detector,
 // and we're pretty sure that this isn't artifactual.
-bool fully_contained_track(const rb::Track & t)
+static bool fully_contained_track(const rb::Track & t)
 {
   // Note how here we're looking at all the hits' positions, not
   // just the line whose endpoints are Start() and Stop().  For steep
@@ -444,7 +427,7 @@ bool fully_contained_track(const rb::Track & t)
 }
 
 // Returns true if either end of the track is uncontained or might be
-bool half_uncontained_track(const rb::Track & t)
+static bool half_uncontained_track(const rb::Track & t)
 {
   return !contained(t.Start()) || !contained(t.Stop()) ||
           !good_track_direction(t) ||
@@ -453,7 +436,7 @@ bool half_uncontained_track(const rb::Track & t)
 
 // Returns true if the track either starts or stops in the detector, or both,
 // and we're pretty sure that this isn't artifactual.
-bool half_contained_track(const rb::Track & t)
+static bool half_contained_track(const rb::Track & t)
 {
   return (contained(t.Start()) || contained(t.Stop())) &&
           good_track_direction(t) &&
@@ -487,12 +470,12 @@ static int which_slice_is_this_track_in(
 /************************************************/
 
 // Put put raw triggers into a histogram
-void count_triggers(const art::Event & evt)
+static void count_triggers(const art::Event & evt)
 {
   THplusequals(lh_rawtrigger, timebin(evt), 1, 1);
 }
 
-void count_ddenergy(const art::Event & evt)
+static void count_ddenergy(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::RawDigit> > rawhits;
   evt.getByLabel("daq", rawhits);
@@ -518,7 +501,7 @@ void count_ddenergy(const art::Event & evt)
 }
 
 // Count the number of raw hits in the event and fill the appropriate histograms
-void count_hits(const art::Event & evt)
+static void count_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::RawDigit> > rawhits;
   evt.getByLabel("daq", rawhits);
@@ -529,7 +512,7 @@ void count_hits(const art::Event & evt)
 }
 
 // Counts hits in the noise slices and adds the results to the output histograms
-void count_unslice4dd_hits(const art::Event & evt)
+static void count_unslice4dd_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -546,7 +529,7 @@ void count_unslice4dd_hits(const art::Event & evt)
               rawlivetime(evt));
 }
 
-void count_upmu(const art::Event & evt)
+static void count_upmu(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Track> > upmu;
   if(!evt.getByLabel("upmuanalysis", upmu)){
@@ -559,7 +542,7 @@ void count_upmu(const art::Event & evt)
 }
 
 // Counts tracks with various cuts and adds the results to the output histograms
-void count_tracks(const art::Event & evt)
+static void count_tracks(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -578,7 +561,7 @@ void count_tracks(const art::Event & evt)
 
   // Find out what slice each track is in and make a list of slices with tracks
   // that aren't fully contained
-  vector<int> trk_slices(tracks->size(), -1);
+  std::vector<int> trk_slices(tracks->size(), -1);
   std::set<int> slices_with_uc_tracks, slices_with_huc_tracks;
   std::set<int> contained_slices;
   std::set<int> contained_shower_slices;
@@ -652,12 +635,12 @@ void count_tracks(const art::Event & evt)
          slices_with_hc_tracks.size());
   printf("Slices with fully-contained tracks: %lu\n",
          slices_with_fc_tracks.size());
-  for(set<int>::iterator i = slices_with_fc_tracks.begin();
+  for(std::set<int>::iterator i = slices_with_fc_tracks.begin();
       i != slices_with_fc_tracks.end(); i++)
     printf("  %3d\n", *i);
   printf("Contained GeV physics-like slices: %lu\n",
          contained_shower_slices.size());
-  for(set<int>::iterator i = contained_shower_slices.begin();
+  for(std::set<int>::iterator i = contained_shower_slices.begin();
       i != contained_shower_slices.end(); i++)
     printf("  %3d\n", *i);
 
@@ -686,7 +669,7 @@ void ligoanalysis::produce(art::Event & evt)
     case NDactivity:
       count_triggers(evt);
       break;
-    case RawTrigger:
+    case JustTrigger:
       count_triggers(evt);
       break;
     case UpMu:
@@ -707,6 +690,3 @@ void ligoanalysis::produce(art::Event & evt)
 }
 
 DEFINE_ART_MODULE(ligoanalysis);
-
-} // end namespace ligoanalysis
-//////////////////////////////////////////////////////////////////////////
