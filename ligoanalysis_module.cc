@@ -220,7 +220,7 @@ static ligohist lh_fullycontained_tracks("fullycontained_tracks", true);
 // objects are inside.
 static ligohist lh_contained_slices("contained_slices", true);
 
-// Number of tracks that pass the UpMu analysis
+// Number of tracks that pass the Upmu analysis
 static ligohist lh_upmu_tracks("upmu_tracks", false);
 
 // Number of triggers above two cuts for DDEnergy, the first pair
@@ -379,7 +379,7 @@ static bool good_track_direction(const rb::Track & t)
 }
 
 // Returns true if the track starts AND stops inside the detector,
-// and we're pretty sure that this isn't artifactual.
+// and we're pretty sure that this isn't artefactual.
 static bool fully_contained_track(const rb::Track & t)
 {
   // Note how here we're looking at all the hits' positions, not
@@ -402,7 +402,7 @@ static bool half_uncontained_track(const rb::Track & t)
 }
 
 // Returns true if the track either starts or stops in the detector, or both,
-// and we're pretty sure that this isn't artifactual.
+// and we're pretty sure that this isn't artefactual.
 static bool half_contained_track(const rb::Track & t)
 {
   return (contained(t.Start()) || contained(t.Stop())) &&
@@ -586,7 +586,7 @@ static void count_tracks(const art::Event & evt)
     // To be called a slice with fully contained tracks, it must not have any
     // track that either enters or exits, and the slice itself must be
     // contained.  So, in other words, no hits around the edges, and no tracks
-    // reconstructed to be near the edges even in the abscence of hits.
+    // reconstructed to be near the edges even in the absence of hits.
     if(!slices_with_huc_tracks.count(trk_slices[i]) &&
        fully_contained_track((*tracks)[i]) &&
        contained_slices.count(trk_slices[i])){
