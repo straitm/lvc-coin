@@ -118,10 +118,10 @@ ligofilter::ligofilter(fhicl::ParameterSet const& pset) : EDFilter(),
 void ligofilter::endJob()
 {
   if(tooManyEdges)                     printf("Data out of time order :-0\n");
-  else if( risingEdge &&  fallingEdge) printf("Saw a whole window :-)\n");
+  else if( risingEdge &&  fallingEdge) printf("Saw whole window :-)\n");
   else if( risingEdge && !fallingEdge) printf("Saw beginning of window :-\\\n");
-  else if(!risingEdge &&  fallingEdge) printf("Saw end of the window :-\\\n");
-  else if(sawTheWindow)                printf("Saw middle of window >:-\\\n");
+  else if(!risingEdge &&  fallingEdge) printf("Saw end of window :-/\n");
+  else if(sawTheWindow)                printf("Saw middle of window >:-|\\n");
   else                                 printf("Saw no data in window :-(\n");
 }
 
