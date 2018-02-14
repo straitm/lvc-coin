@@ -253,6 +253,10 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   switch(fAnalysisClass){
     case NDactivity:
       init_lh(lh_rawtrigger);
+      init_lh(lh_tracks);
+      init_lh(lh_halfcontained_tracks);
+      init_lh(lh_fullycontained_tracks);
+      init_lh(lh_contained_slices);
       break;
     case JustTrigger:
       init_lh(lh_rawtrigger);
