@@ -15,6 +15,7 @@ standard_ligoanalysis:
 
   # Which class of file we are processing.  One of:
   # NDactivity:  for ND ddactivity1 files
+  # NDMeV:       for ND BNB
   # LiveTime:    for ND BNB, FD 10Hz and FD slow monopole
   # UpMu:        for FD UpMu
   # DDenergy:    for FD ddenergy

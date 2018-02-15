@@ -44,7 +44,7 @@ static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
 enum analysis_class_t { NDactivity, LiveTime, UpMu, DDenergy,
-                        JustTrigger, MAX_ANALYSIS_CLASS };
+                        JustTrigger, NDMeV, MAX_ANALYSIS_CLASS };
 
 class ligoanalysis : public art::EDProducer {
   public:
@@ -241,6 +241,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   else if(analysis_class_string == "UpMu")       fAnalysisClass = UpMu;
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
   else if(analysis_class_string == "JustTrigger")fAnalysisClass = JustTrigger;
+  else if(analysis_class_string == "NDMeV")      fAnalysisClass = NDMeV;
   else{
     fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
             "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
@@ -278,6 +279,10 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_ddenergy_hicut);
       init_lh(lh_ddenergy_lopertime);
       init_lh(lh_ddenergy_hipertime);
+      break;
+    case NDMeV:
+      init_lh(lh_rawhits);
+      init_lh(lh_unslice4ddhits);
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
@@ -658,6 +663,9 @@ void ligoanalysis::produce(art::Event & evt)
       count_triggers(evt);
       count_ddenergy(evt);
       break;
+    case NDMeV:
+      count_hits(evt);
+      count_unslice4dd_hits(evt);
     default:
       printf("No case for type %d\n", fAnalysisClass);
   }

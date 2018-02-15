@@ -1,0 +1,86 @@
+#include "ligoanalysis.fcl"
+#include "ligofilter.fcl"
+#include "CalHit.fcl"
+#include "Slicer4D.fcl"
+#include "MultiHoughT.fcl"
+#include "ElasticArmsHS.fcl"
+#include "FuzzyKVertex.fcl"
+#include "BreakPoint.fcl"
+#include "RemoveBeamSpills.fcl"
+#include "services.fcl"
+
+process_name: ligoFTW
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantTracer: false wantSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+}
+
+# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
+# tested that if it isn't here, it doesn't work.  But I don't know what
+# it does.
+services.IFBeam: {}
+
+this_here_removebeam: @local::standard_removebeamspills
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+thisone_breakpoint_here: @local::standard_breakpoint
+thisone_breakpoint_here.FitAsPion: false
+thisone_breakpoint_here.FitAsProton: false
+
+this_here_ligofilter: @local::standard_ligofilter
+
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: NDMeV
+
+
+physics:
+{
+  filters:
+  {
+    removebeam: @local::this_here_removebeam
+    ligofilter: @local::this_here_ligofilter
+  }
+
+  producers:
+  {
+    calhit: @local::standard_calhit
+    slicer: @local::standard_slicer4d
+    multihough:   @local::standard_multihough
+    elasticarmshs: @local::standard_elasticarmshs
+    fuzzykvertex: @local::standard_fuzzykvertex
+    breakpoint: @local::thisone_breakpoint_here
+    ligoanalysis: @local::this_here_ligoanalysis
+  }
+
+  reco: [ removebeam, ligofilter,
+          calhit,
+          slicer,
+          multihough, # for breakpoint
+          elasticarmshs, # for breakpoint
+          fuzzykvertex, # for breakpoint
+          breakpoint,
+          ligoanalysis ]
+
+ stream1: [ out1 ]
+
+ end_paths: [ stream1 ]
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fastCloning: false # Needed to process S15-08-12 files
+   fileName:    "ligo.root"
+  }
+}
