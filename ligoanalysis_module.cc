@@ -548,11 +548,12 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       // with all the additional complications there.
       if(plane > 190) continue;
 
-      // Drop outermost two cells. This very weakly excludes muon
-      // tracks that just barely enter the detector, but don't get
-      // reconstructed. This certainly leaves room for tracks of five,
-      // or a few more, cells.
-      if(cell <= 1 || cell >= 94) continue;
+      // Drop outermost three cells. This excludes most muon tracks that
+      // just barely enter the detector, but don't get reconstructed.
+      if(cell <= 2 || cell >= 95) continue;
+
+      // At top of detector, stricter cut based on observed backgrounds
+      if((*slice)[0].Cell(i)->View() == geo::kY && cell >= 80) continue;
     }
 
     const float tns = (*slice)[0].Cell(i)->TNS();
@@ -562,12 +563,12 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
       if(nextslicetime != slicetimes.begin()){
         nextslicetime--;
-        const float time_since_slice = tns - (*nextslicetime);
-        const float time_since_slice_cut = 50e3; // ~1 neutron, many muon lifetimes
+        const float time_since_slc = tns - (*nextslicetime);
+        const float time_since_slc_cut = 50e3; // 1 neutron, many muon lifetimes
 
-        // Just drop the entire detector in this case.  That's fine for the ND, but
-        // probably not for the FD, so come back here for that.
-        if(time_since_slice < time_since_slice_cut) continue;
+        // Just drop entire detector in this case. That's fine for the
+        // ND, but probably not for the FD, so come back here for that.
+        if(time_since_slc < time_since_slc_cut) continue;
       }
     }
 
