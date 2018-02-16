@@ -209,6 +209,10 @@ static ligohist lh_unslice4ddhits("unslice4ddhits", true);
 // things become well-behaved at about this level.
 const double bighit_threshold = 35; // PE
 
+// At this point (in the ND) the hit is almost definitely physics.  It's about
+// 2/3 of a MIP, and is past the end of the steeply falling noise curve.
+const double biggerhit_threshold = 100; // PE
+
 // Number of unsliced hits that are over the above PE threshold
 static ligohist lh_unsliced_big_hits("unslicedbighits", true);
 
@@ -505,7 +509,7 @@ static void count_hits(const art::Event & evt)
   THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
 }
 
-struct mhit{ float tns; uint16_t plane; };
+struct mhit{ float tns; uint16_t plane; bool bigger; };
 
 static bool mhit_by_time(const mhit & a, const mhit & b)
 {
@@ -575,6 +579,7 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     mhit h;
     h.tns   = tns;
     h.plane = plane;
+    h.bigger = (*slice)[0].Cell(i)->PE() > biggerhit_threshold;
 
     mhits.push_back(h);
   }
@@ -588,6 +593,9 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
   for(unsigned int i = 0; i < mhits.size(); i++){
     for(unsigned int j = i+1; j < mhits.size(); j++){
+      // Require at least one to be pretty definite physics
+      if(!mhits[j].bigger && ! mhits[i].bigger) break;
+
       if(mhits[j].tns - mhits[i].tns > timewindow) break;
       if(abs(mhits[j].plane - mhits[i].plane) != 1) continue;
 
