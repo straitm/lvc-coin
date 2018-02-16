@@ -205,6 +205,19 @@ static ligohist lh_rawhits("rawhits", true);
 // Slicer4D noise slice.
 static ligohist lh_unslice4ddhits("unslice4ddhits", true);
 
+// My experience with my neutron capture analysis in the ND is that
+// things become well-behaved at about this level.
+const double bighit_threshold = 35; // PE
+
+// Number of unsliced hits that are over the above PE threshold
+static ligohist lh_unsliced_big_hits("unslicedbighits", true);
+
+// Number of unsliced hits that are over some PE threshold and are paired
+// with a hit in an adjacent plane.  (Not an adjacent cell, because then
+// we select lots of pairs from noisy modules.  We could build a noise map
+// to fix that, but it would require two passes through the data.)
+static ligohist lh_unsliced_hit_pairs("unslicedhitpairs", true);
+
 // Raw number of tracks
 static ligohist lh_tracks("tracks", true);
 
@@ -230,6 +243,22 @@ static ligohist lh_ddenergy_hicut("energy_high_cut", false);
 static ligohist lh_ddenergy_lopertime("energy_low_cut_pertime", false);
 static ligohist lh_ddenergy_hipertime("energy_high_cut_pertime", false);
 
+static void init_mev_hists()
+{
+  init_lh(lh_rawhits);
+  init_lh(lh_unslice4ddhits);
+  init_lh(lh_unsliced_big_hits);
+  init_lh(lh_unsliced_hit_pairs);
+}
+
+static void init_track_and_contained_hists()
+{
+  init_lh(lh_tracks);
+  init_lh(lh_halfcontained_tracks);
+  init_lh(lh_fullycontained_tracks);
+  init_lh(lh_contained_slices);
+}
+
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
@@ -254,10 +283,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   switch(fAnalysisClass){
     case NDactivity:
       init_lh(lh_rawtrigger);
-      init_lh(lh_tracks);
-      init_lh(lh_halfcontained_tracks);
-      init_lh(lh_fullycontained_tracks);
-      init_lh(lh_contained_slices);
+      init_track_and_contained_hists();
       break;
     case JustTrigger:
       init_lh(lh_rawtrigger);
@@ -266,12 +292,8 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_upmu_tracks);
       break;
     case LiveTime:
-      init_lh(lh_rawhits);
-      init_lh(lh_unslice4ddhits);
-      init_lh(lh_tracks);
-      init_lh(lh_halfcontained_tracks);
-      init_lh(lh_fullycontained_tracks);
-      init_lh(lh_contained_slices);
+      init_mev_hists();
+      init_track_and_contained_hists();
       break;
     case DDenergy:
       init_lh(lh_rawtrigger);
@@ -281,8 +303,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_ddenergy_hipertime);
       break;
     case NDMeV:
-      init_lh(lh_rawhits);
-      init_lh(lh_unslice4ddhits);
+      init_mev_hists();
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
@@ -484,6 +505,127 @@ static void count_hits(const art::Event & evt)
   THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
 }
 
+struct mhit{ float tns; uint16_t plane; };
+
+static bool mhit_by_time(const mhit & a, const mhit & b)
+{
+  return a.tns < b.tns;
+}
+
+static void count_unsliced_hit_pairs(const art::Event & evt)
+{
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+
+  if(slice->empty()){
+    printf("Unexpected event with zero slices!\n");
+    return;
+  }
+
+  std::vector<mhit> mhits;
+
+  // Make a list of all the times of all the hits in "physics" slices.
+  // We're going to exclude other hits near them in time to drop Michels
+  // and maybe also neutrons.
+  std::set<float> slicetimes;
+  for(unsigned int i = 1; i < slice->size(); i++)
+    for(unsigned int j = 0; j < (*slice)[i].NCell(); j++)
+       slicetimes.insert((*slice)[i].Cell(j)->TNS());
+
+  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
+    if((*slice)[0].Cell(i)->PE() <= bighit_threshold) continue;
+
+    const int cell  = (*slice)[0].Cell(i)->Cell();
+    const int plane = (*slice)[0].Cell(i)->Plane();
+
+    if(gDet == caf::kNEARDET){
+      if(plane == 0) continue;
+
+      // Exclude last regular plane and the whole muon catcher. Can't
+      // reasonably have a supernova-type event hit planes on each
+      // side of a steel plane, and while they might hit adjacent
+      // scintillator planes in the muon catcher, I don't want to deal
+      // with all the additional complications there.
+      if(plane > 190) continue;
+
+      // Drop outermost two cells. This very weakly excludes muon
+      // tracks that just barely enter the detector, but don't get
+      // reconstructed. This certainly leaves room for tracks of five,
+      // or a few more, cells.
+      if(cell <= 1 || cell >= 94) continue;
+    }
+
+    const float tns = (*slice)[0].Cell(i)->TNS();
+
+    if(!slicetimes.empty()){
+      std::set<float>::iterator nextslicetime = slicetimes.upper_bound(tns);
+
+      if(nextslicetime != slicetimes.begin()){
+        nextslicetime--;
+        const float time_since_slice = tns - (*nextslicetime);
+        const float time_since_slice_cut = 50e3; // ~1 neutron, many muon lifetimes
+
+        // Just drop the entire detector in this case.  That's fine for the ND, but
+        // probably not for the FD, so come back here for that.
+        if(time_since_slice < time_since_slice_cut) continue;
+      }
+    }
+
+    mhit h;
+    h.tns   = tns;
+    h.plane = plane;
+
+    mhits.push_back(h);
+  }
+
+  std::sort(mhits.begin(), mhits.end(), mhit_by_time);
+
+  // Same cut as I use for clustering Michels and neutron capture hits
+  const float timewindow = 500.0; // ns
+
+  unsigned int hitpairs = 0;
+
+  for(unsigned int i = 0; i < mhits.size(); i++){
+    for(unsigned int j = i+1; j < mhits.size(); j++){
+      if(mhits[j].tns - mhits[i].tns > timewindow) break;
+      if(abs(mhits[j].plane - mhits[i].plane) != 1) continue;
+
+      hitpairs++;
+
+      // Do not allow these hits to be used again.  (The first one is automatic
+      // since we won't ever look at it again.) Is this hacky?  Yes.
+      mhits.erase(mhits.begin()+j);
+      break;
+    }
+  }
+
+  printf("Big hit pairs in the noise slice: %u\n", hitpairs);
+
+  THplusequals(lh_unsliced_hit_pairs, timebin(evt), hitpairs,
+               rawlivetime(evt));
+}
+
+static void count_unsliced_big_hits(const art::Event & evt)
+{
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+
+  if(slice->empty()){
+    printf("Unexpected event with zero slices!\n");
+    return;
+  }
+
+  unsigned int bighits = 0;
+
+  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++)
+    bighits += (*slice)[0].Cell(i)->PE() > bighit_threshold;
+
+  printf("Big hits in this event in the noise slice: %u\n", bighits);
+
+  THplusequals(lh_unsliced_big_hits, timebin(evt), bighits,
+               rawlivetime(evt));
+}
+
 // Counts hits in the noise slices and adds the results to the output histograms
 static void count_unslice4dd_hits(const art::Event & evt)
 {
@@ -630,6 +772,14 @@ static void count_tracks_containedslices(const art::Event & evt)
                contained_shower_slices.size(), rawlivetime(evt));
 }
 
+static void count_mev(art::Event & evt)
+{
+  count_hits(evt);
+  count_unslice4dd_hits(evt);
+  count_unsliced_big_hits(evt);
+  count_unsliced_hit_pairs(evt);
+}
+
 // TODO Somehow deal with overlapping triggers?  I found a case where a NuMI
 // spill caused three overlapping ddactivity1 triggers, each offset slightly.
 // And I noticed it because RemoveBeamSpills fails to remove it.  Ideally, I'd
@@ -655,8 +805,7 @@ void ligoanalysis::produce(art::Event & evt)
       count_upmu(evt);
       break;
     case LiveTime:
-      count_hits(evt);
-      count_unslice4dd_hits(evt);
+      count_mev(evt);
       count_tracks_containedslices(evt);
       break;
     case DDenergy:
@@ -664,8 +813,8 @@ void ligoanalysis::produce(art::Event & evt)
       count_ddenergy(evt);
       break;
     case NDMeV:
-      count_hits(evt);
-      count_unslice4dd_hits(evt);
+      count_mev(evt);
+      break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
   }
