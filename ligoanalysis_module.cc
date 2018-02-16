@@ -207,11 +207,15 @@ static ligohist lh_unslice4ddhits("unslice4ddhits", true);
 
 // My experience with my neutron capture analysis in the ND is that
 // things become well-behaved at about this level.
-const double bighit_threshold = 35; // PE
+static const double bighit_threshold_nd = 35; // PE
+static const double bighit_threshold_fd = 15;
+static       double bighit_threshold    =  0; // set when we know det
 
 // At this point (in the ND) the hit is almost definitely physics.  It's about
 // 2/3 of a MIP, and is past the end of the steeply falling noise curve.
-const double biggerhit_threshold = 100; // PE
+static const double biggerhit_threshold_nd = 100; // PE
+static const double biggerhit_threshold_fd = 30;
+static       double biggerhit_threshold    =  0; // set when we know det
 
 // Number of unsliced hits that are over the above PE threshold
 static ligohist lh_unsliced_big_hits("unslicedbighits", true);
@@ -509,12 +513,18 @@ static void count_hits(const art::Event & evt)
   THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
 }
 
-struct mhit{ float tns; uint16_t plane; bool bigger; };
+// Enable printing the cell and plane of each passed hit pair. Probably
+// disable in production, because it uses extra memory and time.
+#define PRINTCELL
 
-static bool mhit_by_time(const mhit & a, const mhit & b)
-{
-  return a.tns < b.tns;
-}
+struct mhit{
+  float tns;
+  uint16_t plane;
+#ifdef PRINTCELL
+  int cell;
+#endif
+  bool bigger;
+};
 
 static void count_unsliced_hit_pairs(const art::Event & evt)
 {
@@ -526,15 +536,14 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     return;
   }
 
-  std::vector<mhit> mhits;
-
-  // Make a list of all the times of all the hits in "physics" slices.
-  // We're going to exclude other hits near them in time to drop Michels
-  // and maybe also neutrons.
+  // Make list of all times of all hits in "physics" slices. Exclude
+  // other hits near them in time to drop Michels & maybe also neutrons.
   std::set<float> slicetimes;
   for(unsigned int i = 1; i < slice->size(); i++)
     for(unsigned int j = 0; j < (*slice)[i].NCell(); j++)
        slicetimes.insert((*slice)[i].Cell(j)->TNS());
+
+  std::vector<mhit> mhits;
 
   for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
     if((*slice)[0].Cell(i)->PE() <= bighit_threshold) continue;
@@ -579,6 +588,9 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     mhit h;
     h.tns   = tns;
     h.plane = plane;
+    #ifdef PRINTCELL
+      h.cell = cell;
+    #endif
     h.bigger = (*slice)[0].Cell(i)->PE() > biggerhit_threshold;
 
     mhits.push_back(h);
@@ -600,6 +612,14 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       if(abs(mhits[j].plane - mhits[i].plane) != 1) continue;
 
       hitpairs++;
+
+      #ifdef PRINTCELL
+        const int eveni = j%2 == 0?j:i,
+                  oddi  = j%2 == 1?j:i;
+        printf("Bighitpair: %4d %4d  %4d %4d\n",
+               mhits[eveni].plane, mhits[eveni].cell,
+               mhits[oddi ].plane, mhits[oddi ].cell);
+      #endif
 
       // Do not allow these hits to be used again.  (The first one is automatic
       // since we won't ever look at it again.) Is this hacky?  Yes.
@@ -626,8 +646,20 @@ static void count_unsliced_big_hits(const art::Event & evt)
 
   unsigned int bighits = 0;
 
-  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++)
+//#define PRINTPE
+
+  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
     bighits += (*slice)[0].Cell(i)->PE() > bighit_threshold;
+#ifdef PRINTPE
+    printf("unslicedPE: %f\n", (*slice)[0].Cell(i)->PE());
+#endif
+  }
+
+#ifdef PRINTPE
+  for(unsigned int j = 1; j < slice->size(); j++)
+    for(unsigned int i = 0; i < (*slice)[i].NCell(); i++)
+      printf("slicedPE: %f\n", (*slice)[i].Cell(i)->PE());
+#endif
 
   printf("Big hits in this event in the noise slice: %u\n", bighits);
 
@@ -801,6 +833,12 @@ void ligoanalysis::produce(art::Event & evt)
 
   art::ServiceHandle<geo::Geometry> geo;
   gDet = geo->DetId();
+
+  bighit_threshold = gDet == caf::kNEARDET?
+    bighit_threshold_nd : bighit_threshold_fd;
+
+  biggerhit_threshold = gDet == caf::kNEARDET?
+    biggerhit_threshold_nd : biggerhit_threshold_fd;
 
   switch(fAnalysisClass){
     case NDactivity:
