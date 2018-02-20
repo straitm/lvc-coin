@@ -322,16 +322,40 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
 /*                          The meat follows                          */
 /**********************************************************************/
 
+static void getflatdaq(art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
+                       const art::Event & evt)
+{
+  evt.getByLabel("minbias", flatdaq);
+  if(flatdaq.failedToGet())
+    evt.getByLabel("daq", flatdaq);
+}
+
+static void getrawtrigger(art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger,
+                         const art::Event & evt)
+{
+  evt.getByLabel("minbias", rawtrigger);
+  if(rawtrigger.failedToGet())
+    evt.getByLabel("daq", rawtrigger);
+}
+
+static void getrawdigits(art::Handle< std::vector<rawdata::RawDigit> > & rawdigits,
+                         const art::Event & evt)
+{
+  evt.getByLabel("minbias", rawdigits);
+  if(rawdigits.failedToGet())
+    evt.getByLabel("daq", rawdigits);
+}
+
 // Return the livetime in this event in seconds, as it is relevant for
 // raw hits (same as for anything else? Maybe not if we don't trust
 // tracks close to the time-edges of events).
 static double rawlivetime(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
-  evt.getByLabel("daq", flatdaq);
+  getflatdaq(flatdaq, evt);
 
   art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
-  evt.getByLabel("daq", rawtrigger);
+  getrawtrigger(rawtrigger, evt);
 
   if(rawtrigger->empty()) return -1;
 
@@ -480,7 +504,7 @@ static void count_triggers(const art::Event & evt)
 static void count_ddenergy(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::RawDigit> > rawhits;
-  evt.getByLabel("daq", rawhits);
+  getrawdigits(rawhits, evt);
 
   int64_t sumadc = 0;
 
@@ -506,7 +530,7 @@ static void count_ddenergy(const art::Event & evt)
 static void count_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::RawDigit> > rawhits;
-  evt.getByLabel("daq", rawhits);
+  getrawdigits(rawhits, evt);
 
   printf("Hits in this event: %lu\n", rawhits->size());
 
