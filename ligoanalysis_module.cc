@@ -517,14 +517,27 @@ static void count_hits(const art::Event & evt)
 // disable in production, because it uses extra memory and time.
 #define PRINTCELL
 
+// Minimal hit information, distilled from CellHit
 struct mhit{
   float tns;
   uint16_t plane;
 #ifdef PRINTCELL
   int cell;
 #endif
-  bool bigger;
+  bool bigger; // True if PE over the biggerhit_threshold
 };
+
+// Minimal slice information, distilled from rb::Cluster
+struct mslice{
+  float mintns, maxtns;
+  uint16_t minplane, maxplane;
+  uint16_t mincellx, maxcellx, mincelly, maxcelly;
+};
+
+static bool mhit_by_time(const mhit & a, const mhit & b)
+{
+  return a.tns < b.tns;
+}
 
 static void count_unsliced_hit_pairs(const art::Event & evt)
 {
@@ -536,12 +549,21 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     return;
   }
 
-  // Make list of all times of all hits in "physics" slices. Exclude
+  // Make list of all times and locations of "physics" slices. Exclude
   // other hits near them in time to drop Michels & maybe also neutrons.
-  std::set<float> slicetimes;
-  for(unsigned int i = 1; i < slice->size(); i++)
-    for(unsigned int j = 0; j < (*slice)[i].NCell(); j++)
-       slicetimes.insert((*slice)[i].Cell(j)->TNS());
+  std::vector<mslice> sliceinfo;
+  for(unsigned int i = 1; i < slice->size(); i++){
+    mslice slc;
+    slc.mintns = (*slice)[i].MinTNS();
+    slc.maxtns = (*slice)[i].MaxTNS();
+    slc.minplane = (*slice)[i].MinPlane();
+    slc.maxplane = (*slice)[i].MaxPlane();
+    slc.mincellx = (*slice)[i].MinCell(geo::kX);
+    slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
+    slc.mincelly = (*slice)[i].MinCell(geo::kY);
+    slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
+    sliceinfo.push_back(slc);
+  }
 
   std::vector<mhit> mhits;
 
@@ -568,20 +590,38 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       // At top of detector, stricter cut based on observed backgrounds
       if((*slice)[0].Cell(i)->View() == geo::kY && cell >= 80) continue;
     }
+    else{ // far
+      if(plane <= 6) continue;
+      if(plane >= 890) continue;
+
+      // Surprisingly it doesn't seem to matter whether we're in x or y
+      // at the far.
+      if(cell <= 8 || cell >= 384 - 20) continue;
+    }
 
     const float tns = (*slice)[0].Cell(i)->TNS();
 
-    if(!slicetimes.empty()){
-      std::set<float>::iterator nextslicetime = slicetimes.upper_bound(tns);
+    // Exclude a rectangular box around each slice for a given time
+    // period before and after the slice, with a given spatial buffer.
+    for(unsigned int j = 0; j < sliceinfo.size(); j++){
+      const float time_until_slc_cut =  1e3; // ~4 sigma in timing
+      const float time_since_slc_cut = 50e3; // 1 neutron, many muon lifetimes
+      const int planebuffer = 5;
+      const int cellbuffer = 9;
 
-      if(nextslicetime != slicetimes.begin()){
-        nextslicetime--;
-        const float time_since_slc = tns - (*nextslicetime);
-        const float time_since_slc_cut = 50e3; // 1 neutron, many muon lifetimes
+      if(tns > sliceinfo[j].mintns - time_until_slc_cut &&
+         tns < sliceinfo[j].maxtns + time_since_slc_cut &&
+         plane > sliceinfo[j].minplane - planebuffer &&
+         plane < sliceinfo[j].minplane + planebuffer){
 
-        // Just drop entire detector in this case. That's fine for the
-        // ND, but probably not for the FD, so come back here for that.
-        if(time_since_slc < time_since_slc_cut) continue;
+        if((*slice)[0].Cell(i)->View() == geo::kX){
+          if(cell > sliceinfo[j].mincellx - cellbuffer &&
+             cell < sliceinfo[j].maxcellx - cellbuffer) continue;
+        }
+        else{ // Y view
+          if(cell > sliceinfo[j].mincelly - cellbuffer &&
+             cell < sliceinfo[j].maxcelly - cellbuffer) continue;
+        }
       }
     }
 
@@ -617,8 +657,8 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
         const int eveni = j%2 == 0?j:i,
                   oddi  = j%2 == 1?j:i;
         printf("Bighitpair: %4d %4d  %4d %4d\n",
-               mhits[eveni].plane, mhits[eveni].cell,
-               mhits[oddi ].plane, mhits[oddi ].cell);
+               mhits[eveni].plane, mhits[eveni].cell, // y
+               mhits[oddi ].plane, mhits[oddi ].cell); // x
       #endif
 
       // Do not allow these hits to be used again.  (The first one is automatic
