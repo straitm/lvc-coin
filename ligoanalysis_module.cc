@@ -208,14 +208,8 @@ static ligohist lh_unslice4ddhits("unslice4ddhits", true);
 // My experience with my neutron capture analysis in the ND is that
 // things become well-behaved at about this level.
 static const double bighit_threshold_nd = 35; // PE
-static const double bighit_threshold_fd = 15;
+static const double bighit_threshold_fd = 30;
 static       double bighit_threshold    =  0; // set when we know det
-
-// At this point (in the ND) the hit is almost definitely physics.  It's about
-// 2/3 of a MIP, and is past the end of the steeply falling noise curve.
-static const double biggerhit_threshold_nd = 100; // PE
-static const double biggerhit_threshold_fd = 30;
-static       double biggerhit_threshold    =  0; // set when we know det
 
 // Number of unsliced hits that are over the above PE threshold
 static ligohist lh_unsliced_big_hits("unslicedbighits", true);
@@ -548,7 +542,6 @@ struct mhit{
 #ifdef PRINTCELL
   int cell;
 #endif
-  bool bigger; // True if PE over the biggerhit_threshold
 };
 
 // Minimal slice information, distilled from rb::Cluster
@@ -591,8 +584,11 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
   std::vector<mhit> mhits;
 
+  const float low_adc = 95, high_adc = 600;
+
   for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
-    if((*slice)[0].Cell(i)->PE() <= bighit_threshold) continue;
+    if((*slice)[0].Cell(i)->ADC() <=  low_adc) continue;
+    if((*slice)[0].Cell(i)->ADC() >= high_adc) continue;
 
     const int cell  = (*slice)[0].Cell(i)->Cell();
     const int plane = (*slice)[0].Cell(i)->Plane();
@@ -615,39 +611,52 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       if((*slice)[0].Cell(i)->View() == geo::kY && cell >= 80) continue;
     }
     else{ // far
-      if(plane <= 6) continue;
-      if(plane >= 890) continue;
+      const int nplaneedge = 2;
+      if(plane <= nplaneedge) continue;
+      if(plane >= 895-nplaneedge) continue;
 
-      // Surprisingly it doesn't seem to matter whether we're in x or y
-      // at the far.
-      if(cell <= 8 || cell >= 384 - 20) continue;
+      if((*slice)[0].Cell(i)->View() == geo::kY && cell >= 383 - 50)
+        continue;
+
+      const int ncelledge_x = 10;
+      if((*slice)[0].Cell(i)->View() == geo::kX &&
+         (cell <= ncelledge_x || cell >= 383 - ncelledge_x)) continue;
     }
 
     const float tns = (*slice)[0].Cell(i)->TNS();
 
+    bool pass = true;
+
     // Exclude a rectangular box around each slice for a given time
     // period before and after the slice, with a given spatial buffer.
     for(unsigned int j = 0; j < sliceinfo.size(); j++){
-      const float time_until_slc_cut =  1e3; // ~4 sigma in timing
-      const float time_since_slc_cut = 50e3; // 1 neutron, many muon lifetimes
-      const int planebuffer = 5;
-      const int cellbuffer = 9;
+      const float time_until_slc_cut =  4e3;
+      const float time_since_slc_cut = 13e3;
+
+      // Geometrically about correct, but perhaps should be scaled by density
+      // or radiation length or neutron cross section or something. Or not,
+      // since which of those is right depends on what you're looking at.
+      const double planes_per_cell = 76./39.;
+
+      const int planebuffer = 15;
+      const int cellbuffer = planebuffer * planes_per_cell;
 
       if(tns > sliceinfo[j].mintns - time_until_slc_cut &&
          tns < sliceinfo[j].maxtns + time_since_slc_cut &&
          plane > sliceinfo[j].minplane - planebuffer &&
-         plane < sliceinfo[j].minplane + planebuffer){
+         plane < sliceinfo[j].maxplane + planebuffer){
 
         if((*slice)[0].Cell(i)->View() == geo::kX){
           if(cell > sliceinfo[j].mincellx - cellbuffer &&
-             cell < sliceinfo[j].maxcellx - cellbuffer) continue;
+             cell < sliceinfo[j].maxcellx + cellbuffer) pass = false;
         }
         else{ // Y view
           if(cell > sliceinfo[j].mincelly - cellbuffer &&
-             cell < sliceinfo[j].maxcelly - cellbuffer) continue;
+             cell < sliceinfo[j].maxcelly + cellbuffer) pass = false;
         }
       }
     }
+    if(!pass) continue;
 
     mhit h;
     h.tns   = tns;
@@ -655,23 +664,18 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     #ifdef PRINTCELL
       h.cell = cell;
     #endif
-    h.bigger = (*slice)[0].Cell(i)->PE() > biggerhit_threshold;
 
     mhits.push_back(h);
   }
 
   std::sort(mhits.begin(), mhits.end(), mhit_by_time);
 
-  // Same cut as I use for clustering Michels and neutron capture hits
-  const float timewindow = 500.0; // ns
+  const float timewindow = 200.0; // ns
 
   unsigned int hitpairs = 0;
 
   for(unsigned int i = 0; i < mhits.size(); i++){
     for(unsigned int j = i+1; j < mhits.size(); j++){
-      // Require at least one to be pretty definite physics
-      if(!mhits[j].bigger && ! mhits[i].bigger) break;
-
       if(mhits[j].tns - mhits[i].tns > timewindow) break;
       if(abs(mhits[j].plane - mhits[i].plane) != 1) continue;
 
@@ -900,9 +904,6 @@ void ligoanalysis::produce(art::Event & evt)
 
   bighit_threshold = gDet == caf::kNEARDET?
     bighit_threshold_nd : bighit_threshold_fd;
-
-  biggerhit_threshold = gDet == caf::kNEARDET?
-    biggerhit_threshold_nd : biggerhit_threshold_fd;
 
   switch(fAnalysisClass){
     case NDactivity:
