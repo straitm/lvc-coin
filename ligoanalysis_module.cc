@@ -932,4 +932,4 @@ void ligoanalysis::produce(art::Event & evt)
   }
 }
 
-DEFINE_ART_MODULE(ligoanalysis);
+DEFINE_ART_MODULE(ligoanalysis)

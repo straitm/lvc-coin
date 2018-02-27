@@ -159,4 +159,4 @@ bool ligofilter::filter(art::Event & evt)
   if(inwindow) printf("In GW coincidence window\n");
   return inwindow;
 }
-DEFINE_ART_MODULE(ligofilter);
+DEFINE_ART_MODULE(ligofilter)
