@@ -560,6 +560,10 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    printf("Unexpected lack of slicer product!\n");
+    return;
+  }
 
   if(slice->empty()){
     printf("Unexpected event with zero slices!\n");
@@ -706,6 +710,10 @@ static void count_unsliced_big_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    printf("Unexpected lack of slicer product\n");
+    return;
+  }
 
   if(slice->empty()){
     printf("Unexpected event with zero slices!\n");
@@ -740,6 +748,10 @@ static void count_unslice4dd_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    printf("Unexpected lack of slicer product!\n");
+    return;
+  }
 
   if(slice->empty()){
     printf("Unexpected event with zero slices!\n");
@@ -756,7 +768,8 @@ static void count_unslice4dd_hits(const art::Event & evt)
 static void count_upmu(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Track> > upmu;
-  if(!evt.getByLabel("upmuanalysis", upmu)){
+  evt.getByLabel("upmuanalysis", upmu);
+  if(upmu.failedToGet()){
     printf("No UpMu product to read\n");
     _exit(1);
   }
@@ -771,9 +784,17 @@ static void count_tracks_containedslices(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    printf("Unexpected lack of slicer product!\n");
+    return;
+  }
 
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("breakpoint", tracks);
+  if(tracks.failedToGet()){
+    printf("Unexpected lack of breakpoint product!\n");
+    return;
+  }
 
   printf("Tracks in this event: %lu\n", tracks->size());
   THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
