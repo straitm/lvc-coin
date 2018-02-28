@@ -1,11 +1,14 @@
 #!/bin/bash
 
 if ! [ $1 ]; then
-  echo $(basename $0) [type] [time] [files]
+  echo "$(basename $0) [type] [time] {novaargs} [files]"
   echo "  type:  The analysis type, that is, the part of"
   echo "         the name of the fcl between ligojob_ and .fcl"
   echo "  time:  Unix time stamp of the GW event or whatever"
   echo "  files: Any number of art files"
+  echo "         must not start with a \"-\""
+  echo "  novaargs: extra arguments to the nova executable"
+  echo "            must start with a \"-\""
   exit 1
 fi
 
@@ -40,6 +43,11 @@ cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
 # Need to fail if nova fails in 'nova | tee'
 set -o pipefail
 
+if [ "${1:0:1}" == - ]; then
+  novaargs="$1"
+  shift
+fi
+
 if ! [ $1 ]; then
   echo You did not specify any files to processes.  Success\!
   exit 0
@@ -59,7 +67,7 @@ for f in $@; do
   log=$base.ligo.$type.log
   hist=$base.hists.root
   hists="$hists $hist"
-  if ! nova $f -c $fcl $recoopt -T $hist 2> /dev/stdout | tee $log; then
+  if ! nova $novaargs $f -c $fcl $recoopt -T $hist 2> /dev/stdout | tee $log; then
     exit 1
   fi
 done
