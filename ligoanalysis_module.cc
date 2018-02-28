@@ -324,20 +324,20 @@ static void getflatdaq(art::Handle< std::vector<rawdata::FlatDAQData> > & flatda
     evt.getByLabel("daq", flatdaq);
 }
 
-static void getrawtrigger(art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger,
+static void getrawtrigger(art::Handle< std::vector<rawdata::RawTrigger> > & trg,
                          const art::Event & evt)
 {
-  evt.getByLabel("minbias", rawtrigger);
-  if(rawtrigger.failedToGet())
-    evt.getByLabel("daq", rawtrigger);
+  evt.getByLabel("minbias", trg);
+  if(trg.failedToGet())
+    evt.getByLabel("daq", trg);
 }
 
-static void getrawdigits(art::Handle< std::vector<rawdata::RawDigit> > & rawdigits,
+static void getrawdigits(art::Handle< std::vector<rawdata::RawDigit> > & digits,
                          const art::Event & evt)
 {
-  evt.getByLabel("minbias", rawdigits);
-  if(rawdigits.failedToGet())
-    evt.getByLabel("daq", rawdigits);
+  evt.getByLabel("minbias", digits);
+  if(digits.failedToGet())
+    evt.getByLabel("daq", digits);
 }
 
 // Return the livetime in this event in seconds, as it is relevant for
