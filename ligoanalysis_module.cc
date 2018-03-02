@@ -588,7 +588,7 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
   std::vector<mhit> mhits;
 
-  const float low_adc = 95, high_adc = 600;
+  const float low_adc = 85, high_adc = 600;
 
   for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
     if((*slice)[0].Cell(i)->ADC() <=  low_adc) continue;
@@ -634,7 +634,7 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     // Exclude a rectangular box around each slice for a given time
     // period before and after the slice, with a given spatial buffer.
     for(unsigned int j = 0; j < sliceinfo.size(); j++){
-      const float time_until_slc_cut =  4e3;
+      const float time_until_slc_cut =  2e3;
       const float time_since_slc_cut = 13e3;
 
       // Geometrically about correct, but perhaps should be scaled by density
@@ -674,7 +674,10 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
   std::sort(mhits.begin(), mhits.end(), mhit_by_time);
 
-  const float timewindow = 200.0; // ns
+  // Intentionally bigger than optimum value suggested by MC (250ns) because
+  // we know that the data has a bigger time spread from, for instance, the
+  // very well known slice duration discrepancy.
+  const float timewindow = 350.0; // ns
 
   unsigned int hitpairs = 0;
 
