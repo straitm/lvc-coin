@@ -1,6 +1,13 @@
 ////////////////////////////////////////////////////////////////////////
-/// \brief   This module is named ligoanalysis and looks at GW coincidences
-/// \author  M. Strait
+/// \brief The ligoanalysis module looks at GW coincidences.
+///
+/// Given a time window, specified as an absolute time and a delta, it
+/// searches for a set of interesting event types so that you can see
+/// if there is a spike coincident with a gravitational wave event, or,
+/// more broadly, any sort of external event you might think of. The
+/// output is a set of histograms.
+///
+/// \author M. Strait
 ////////////////////////////////////////////////////////////////////////
 
 #include "art/Framework/Services/Optional/TFileService.h"
@@ -21,10 +28,9 @@
 
 #include "RecoBase/Track.h"
 
-#include "TH1.h"
+#include "TH2.h"
 
 #include <string>
-using std::string;
 #include <vector>
 #include <set>
 #include <algorithm>
@@ -62,7 +68,7 @@ class ligoanalysis : public art::EDProducer {
   ///
   /// Expressed in RFC-3339 format, always in UTC, always with a Z at
   /// the end (to emphasize that it is UTC).
-  string fGWEventTime;
+  std::string fGWEventTime;
 
   /// \brief The user-supplied length of the search window in seconds.
   ///
@@ -85,7 +91,7 @@ struct ligohist{
 
   // Base name for the histograms.  Name for the livetime histogram will be
   // this with "live" appended.
-  string name;
+  std::string name;
 
   // Answers the question "Are livetime histograms meaningful for this?"
   //
@@ -103,7 +109,20 @@ struct ligohist{
   // avoid ever having irrelevant output?)
   bool dolive;
 
-  ligohist(const string & name_, const bool dolive_)
+  ligohist(const std::string & name_, const bool dolive_)
+  {
+    name = name_;
+    dolive = dolive_;
+  }
+};
+
+// Variant of ligohist with 2D histograms.
+struct ligohist2d{
+  TH2D * sig = NULL, * live = NULL;
+  std::string name;
+  bool dolive;
+
+  ligohist2d(const std::string & name_, const bool dolive_)
   {
     name = name_;
     dolive = dolive_;
@@ -262,10 +281,10 @@ static void init_track_and_contained_hists()
 }
 
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
-  fGWEventTime(pset.get<string>("GWEventTime")),
+  fGWEventTime(pset.get<std::string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
-  const string analysis_class_string(pset.get<string>("AnalysisClass"));
+  const std::string analysis_class_string(pset.get<std::string>("AnalysisClass"));
 
   if     (analysis_class_string == "NDactivity") fAnalysisClass = NDactivity;
   else if(analysis_class_string == "LiveTime")   fAnalysisClass = LiveTime;
