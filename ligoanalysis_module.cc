@@ -531,17 +531,13 @@ static void count_hits(const art::Event & evt)
   THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
 }
 
-// Enable printing the cell and plane of each passed hit pair. Probably
-// disable in production, because it uses extra memory and time.
-#define PRINTCELL
-
 // Minimal hit information, distilled from CellHit
 struct mhit{
-  float tns;
+  float tns; // fine timing, in nanoseconds
+  float tpos; // transverse position
   uint16_t plane;
-#ifdef PRINTCELL
   int cell;
-#endif
+  bool used; // has this hit been used in a pair yet?
 };
 
 // Minimal slice information, distilled from rb::Cluster
@@ -551,13 +547,10 @@ struct mslice{
   uint16_t mincellx, maxcellx, mincelly, maxcelly;
 };
 
-static bool mhit_by_time(const mhit & a, const mhit & b)
-{
-  return a.tns < b.tns;
-}
-
 static void count_unsliced_hit_pairs(const art::Event & evt)
 {
+  art::ServiceHandle<geo::Geometry> geo;
+
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
   if(slice.failedToGet()){
@@ -663,28 +656,36 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     if(!pass) continue;
 
     mhit h;
+    h.used  = false;
     h.tns   = tns;
     h.plane = plane;
-    #ifdef PRINTCELL
-      h.cell = cell;
-    #endif
+    h.cell  = cell;
+    h.tpos  = geo->CellTpos(plane, cell);
 
     mhits.push_back(h);
   }
 
-  std::sort(mhits.begin(), mhits.end(), mhit_by_time);
-
-  // Intentionally bigger than optimum value suggested by MC (250ns) because
+  // Intentionally bigger than optimum value suggested by MC (150ns) because
   // we know that the data has a bigger time spread from, for instance, the
   // very well known slice duration discrepancy.
-  const float timewindow = 350.0; // ns
+  const float timewindow = 250; // ns
 
   unsigned int hitpairs = 0;
 
+  // Rough effective light speed in fiber
+  const float lightspeed = 17.; // cm/ns
+
   for(unsigned int i = 0; i < mhits.size(); i++){
-    for(unsigned int j = i+1; j < mhits.size(); j++){
-      if(mhits[j].tns - mhits[i].tns > timewindow) break;
+    for(unsigned int j = 0; j < mhits.size(); j++){
+      if(i == j) continue;
+      if(mhits[i].used || mhits[j].used) continue;
+
       if(abs(mhits[j].plane - mhits[i].plane) != 1) continue;
+
+      const float time_i_corr = mhits[i].tns + mhits[j].tpos / lightspeed;
+      const float time_j_corr = mhits[j].tns + mhits[i].tpos / lightspeed;
+
+      if(fabs(time_j_corr - time_i_corr) > timewindow) continue;
 
       hitpairs++;
 
@@ -696,9 +697,12 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
                mhits[oddi ].plane, mhits[oddi ].cell); // x
       #endif
 
-      // Do not allow these hits to be used again.  (The first one is automatic
-      // since we won't ever look at it again.) Is this hacky?  Yes.
-      mhits.erase(mhits.begin()+j);
+      // Do not allow these hits to be used again. This makes the number
+      // of pairs found slightly dependent on the order of the original
+      // list, for instance if the middle two of a group of four are
+      // picked first, you get one pair instead of two, but I think it
+      // is not a big deal.
+      mhits[i].used = mhits[j].used = true;
       break;
     }
   }
