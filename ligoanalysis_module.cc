@@ -547,25 +547,14 @@ struct mslice{
   uint16_t mincellx, maxcellx, mincelly, maxcelly;
 };
 
-static void count_unsliced_hit_pairs(const art::Event & evt)
+// Helper function for count_unsliced_hit_pairs().
+// Builds list of distilled slice information
+static std::vector<mslice> make_sliceinfo_list(
+  const art::Handle< std::vector<rb::Cluster> > & slice)
 {
-  art::ServiceHandle<geo::Geometry> geo;
-
-  art::Handle< std::vector<rb::Cluster> > slice;
-  evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    printf("Unexpected lack of slicer product!\n");
-    return;
-  }
-
-  if(slice->empty()){
-    printf("Unexpected event with zero slices!\n");
-    return;
-  }
-
-  // Make list of all times and locations of "physics" slices. Exclude
-  // other hits near them in time to drop Michels & maybe also neutrons.
   std::vector<mslice> sliceinfo;
+
+  // Start with slice number 1 because 0 is the "noise slice".
   for(unsigned int i = 1; i < slice->size(); i++){
     mslice slc;
     slc.mintns = (*slice)[i].MinTNS();
@@ -578,17 +567,26 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
     sliceinfo.push_back(slc);
   }
+  return sliceinfo;
+}
+
+// Helper function for count_unsliced_hit_pairs().  Selects hits that
+// are candidates to be put into hit pairs.
+static std::vector<mhit> select_hits_for_mev_search(
+  const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo)
+{
+  art::ServiceHandle<geo::Geometry> geo;
 
   std::vector<mhit> mhits;
 
   const float low_adc = 85, high_adc = 600;
 
-  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
-    if((*slice)[0].Cell(i)->ADC() <=  low_adc) continue;
-    if((*slice)[0].Cell(i)->ADC() >= high_adc) continue;
+  for(unsigned int i = 0; i < noiseslice.NCell(); i++){
+    if(noiseslice.Cell(i)->ADC() <=  low_adc) continue;
+    if(noiseslice.Cell(i)->ADC() >= high_adc) continue;
 
-    const int cell  = (*slice)[0].Cell(i)->Cell();
-    const int plane = (*slice)[0].Cell(i)->Plane();
+    const int cell  = noiseslice.Cell(i)->Cell();
+    const int plane = noiseslice.Cell(i)->Plane();
 
     if(gDet == caf::kNEARDET){
       if(plane == 0) continue;
@@ -605,22 +603,22 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       if(cell <= 2 || cell >= 95) continue;
 
       // At top of detector, stricter cut based on observed backgrounds
-      if((*slice)[0].Cell(i)->View() == geo::kY && cell >= 80) continue;
+      if(noiseslice.Cell(i)->View() == geo::kY && cell >= 80) continue;
     }
     else{ // far
       const int nplaneedge = 2;
       if(plane <= nplaneedge) continue;
       if(plane >= 895-nplaneedge) continue;
 
-      if((*slice)[0].Cell(i)->View() == geo::kY && cell >= 383 - 50)
+      if(noiseslice.Cell(i)->View() == geo::kY && cell >= 383 - 50)
         continue;
 
       const int ncelledge_x = 10;
-      if((*slice)[0].Cell(i)->View() == geo::kX &&
+      if(noiseslice.Cell(i)->View() == geo::kX &&
          (cell <= ncelledge_x || cell >= 383 - ncelledge_x)) continue;
     }
 
-    const float tns = (*slice)[0].Cell(i)->TNS();
+    const float tns = noiseslice.Cell(i)->TNS();
 
     bool pass = true;
 
@@ -643,7 +641,7 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
          plane > sliceinfo[j].minplane - planebuffer &&
          plane < sliceinfo[j].maxplane + planebuffer){
 
-        if((*slice)[0].Cell(i)->View() == geo::kX){
+        if(noiseslice.Cell(i)->View() == geo::kX){
           if(cell > sliceinfo[j].mincellx - cellbuffer &&
              cell < sliceinfo[j].maxcellx + cellbuffer) pass = false;
         }
@@ -664,10 +662,34 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
     mhits.push_back(h);
   }
+  return mhits;
+}
+
+static void count_unsliced_hit_pairs(const art::Event & evt)
+{
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    printf("Unexpected lack of slicer product!\n");
+    return;
+  }
+
+  if(slice->empty()){
+    printf("Unexpected event with zero slices!\n");
+    return;
+  }
+
+  // Make list of all times and locations of "physics" slices. Exclude
+  // other hits near them in time to drop Michels & maybe also neutrons.
+  const std::vector<mslice> sliceinfo = make_sliceinfo_list(slice);
+
+  // Find hits which we'll accept for possible membership in pairs.
+  // Return value is not const because we modify ::used below.
+  std::vector<mhit> mhits = select_hits_for_mev_search((*slice)[0], sliceinfo);
 
   // Intentionally bigger than optimum value suggested by MC (150ns) because
   // we know that the data has a bigger time spread from, for instance, the
-  // very well known slice duration discrepancy.
+  // very well known slice duration discrepancy (see, e.g., doc-19053).
   const float timewindow = 250; // ns
 
   unsigned int hitpairs = 0;
