@@ -316,6 +316,8 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
 /*                          The meat follows                          */
 /**********************************************************************/
 
+// Get the FlatDAQData, either from "minbias", in the case of supernova MC overlays,
+// or "daq", for everything else.
 static void getflatdaq(art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
                        const art::Event & evt)
 {
@@ -381,6 +383,8 @@ static int timebin(const art::Event & evt)
          + 1; // stupid ROOT 1-based numbering!
 }
 
+// Returns true if a point is "contained" for purposes of deciding if a track
+// or physics slice is contained.
 static bool contained(const TVector3 & v)
 {
   if(gDet == caf::kNEARDET)
@@ -400,10 +404,6 @@ static bool un_contained_track(const rb::Track & t)
   return !contained(t.Start()) && !contained(t.Stop());
 }
 
-static const int min_plane_extent = 10;
-
-static const double tan_track_cut = atan(15 * M_PI/180);
-
 // Check that the reconstruction (probably BreakPointFitter) doesn't think
 // either end of the track points nearly along a plane AND check that if we
 // just draw a line from one end of the track to the other, that that doesn't
@@ -411,6 +411,8 @@ static const double tan_track_cut = atan(15 * M_PI/180);
 // or end can't fool us into thinking it is well-contained.
 static bool good_track_direction(const rb::Track & t)
 {
+  static const double tan_track_cut = atan(15 * M_PI/180);
+
   const double tot_dx = t.Start().X() - t.Stop().X();
   const double tot_dy = t.Start().Y() - t.Stop().Y();
   const double tot_dz = t.Start().Z() - t.Stop().Z();
@@ -429,6 +431,10 @@ static bool good_track_direction(const rb::Track & t)
          fabs(rec_dz1/rec_dy1) > tan_track_cut &&
          fabs(rec_dz2/rec_dy2) > tan_track_cut;
 }
+
+// Fewest planes we'll accept a track having, or in the case of fully-contained
+// tracks, the fewest *contiguous* planes.
+static const int min_plane_extent = 10;
 
 // Returns true if the track starts AND stops inside the detector,
 // and we're pretty sure that this isn't artefactual.
