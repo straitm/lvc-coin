@@ -118,14 +118,28 @@ struct ligohist{
 
 // Variant of ligohist with 2D histograms.
 struct ligohist2d{
-  TH2D * sig = NULL, * live = NULL;
+  TH2D * sig = NULL;
+
+  // Binning in the second dimension
+  int nbins;
+  double low, high;
+
+  // Assume livetime is the same for all detector regions, or whatever
+  // we're using the second dimension for! I suppose this could be
+  // violated in exceptional cases, but I hope that never matters.
+  TH1D * live = NULL;
+
   std::string name;
   bool dolive;
 
-  ligohist2d(const std::string & name_, const bool dolive_)
+  ligohist2d(const std::string & name_, const bool dolive_,
+             const int nbins_, const double low_, const double high_)
   {
     name = name_;
     dolive = dolive_;
+    nbins = nbins_;
+    low = low_;
+    high = high_;
   }
 };
 
@@ -141,6 +155,24 @@ static void init_lh(ligohist & lh)
 
   lh.sig = t->make<TH1D>(lh.name.c_str(), "",
     window_size_s, -window_size_s/2, window_size_s/2);
+
+  if(lh.dolive)
+    lh.live = t->make<TH1D>(Form("%slive", lh.name.c_str()), "",
+      window_size_s, -window_size_s/2, window_size_s/2);
+}
+
+static void init_lh2d(ligohist2d & lh)
+{
+  if(lh.sig != NULL || lh.live != NULL){
+    fprintf(stderr, "%s already initialized.\n", lh.name.c_str());
+    exit(1);
+  }
+
+  art::ServiceHandle<art::TFileService> t;
+
+  lh.sig = t->make<TH2D>(lh.name.c_str(), "",
+    window_size_s, -window_size_s/2, window_size_s/2,
+    lh.nbins, lh.low, lh.high);
 
   if(lh.dolive)
     lh.live = t->make<TH1D>(Form("%slive", lh.name.c_str()), "",
@@ -238,6 +270,8 @@ static ligohist lh_unsliced_big_hits("unslicedbighits", true);
 // we select lots of pairs from noisy modules.  We could build a noise map
 // to fix that, but it would require two passes through the data.)
 static ligohist lh_unsliced_hit_pairs("unslicedhitpairs", true);
+static ligohist2d lh_unsliced_hit_pairs_plane
+  ("unslicedhitpairsplane", true, 28, 0, 28*32);
 
 // Raw number of tracks
 static ligohist lh_tracks("tracks", true);
@@ -270,6 +304,7 @@ static void init_mev_hists()
   init_lh(lh_unslice4ddhits);
   init_lh(lh_unsliced_big_hits);
   init_lh(lh_unsliced_hit_pairs);
+  init_lh2d(lh_unsliced_hit_pairs_plane);
 }
 
 static void init_track_and_contained_hists()
@@ -388,9 +423,23 @@ static void THplusequals(ligohist & lh, const int bin, const double sig,
 {
   // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
   // the bin number twice.
-  lh.sig ->SetBinContent(bin, lh.sig ->GetBinContent(bin) + sig);
+  lh.sig->SetBinContent(bin, lh.sig->GetBinContent(bin) + sig);
   if(lh.dolive)
     lh.live->SetBinContent(bin, lh.live->GetBinContent(bin) + live);
+}
+
+// Same as THplusequals for a ligohist2d. Note inconsistent arguments.
+// It wants the bin number for time, but the value of the variable for
+// the second dimension.
+static void THplusequals2d(ligohist2d & lh, const int timebin,
+                           const double othervalue, const double sig,
+                           const double live)
+{
+  const int otherbin = lh.sig->GetYaxis()->FindBin(othervalue);
+  lh.sig->SetBinContent(timebin, otherbin,
+                        lh.sig->GetBinContent(timebin, otherbin) + sig);
+  if(lh.dolive)
+    lh.live->SetBinContent(timebin, lh.live->GetBinContent(timebin) + live);
 }
 
 // Return the bin number for this event, i.e. the number of seconds from the
@@ -735,6 +784,9 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       if(fabs(time_j_corr - time_i_corr) > timewindow) continue;
 
       hitpairs++;
+
+      THplusequals2d(lh_unsliced_hit_pairs_plane, timebin(evt), mhits[i].plane,
+                     1, rawlivetime(evt));
 
       #ifdef PRINTCELL
         const int eveni = j%2 == 0?j:i,
