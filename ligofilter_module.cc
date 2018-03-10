@@ -68,7 +68,7 @@ void ligofilter::endJob()
   else if( risingEdge &&  fallingEdge) printf("Saw whole window :-)\n");
   else if( risingEdge && !fallingEdge) printf("Saw beginning of window :-\\\n");
   else if(!risingEdge &&  fallingEdge) printf("Saw end of window :-/\n");
-  else if(sawTheWindow)                printf("Saw middle of window >:-|\\n");
+  else if(sawTheWindow)                printf("Saw middle of window >:-|\n");
   else                                 printf("Saw no data in window :-(\n");
 }
 
