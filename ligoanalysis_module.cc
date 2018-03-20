@@ -653,9 +653,14 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   std::vector<mhit> mhits;
 
-  const float low_adc = 85, high_adc = 600;
 
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
+    const float fd_low_adc =  85, fd_high_adc =  600;
+    const float nd_low_adc = 107, nd_high_adc = 2500;
+
+    const float low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
+    const float high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
+
     if(noiseslice.Cell(i)->ADC() <=  low_adc) continue;
     if(noiseslice.Cell(i)->ADC() >= high_adc) continue;
 
@@ -663,33 +668,36 @@ static std::vector<mhit> select_hits_for_mev_search(
     const int plane = noiseslice.Cell(i)->Plane();
 
     if(gDet == caf::kNEARDET){
-      if(plane == 0) continue;
+      const int ndnplaneedge = 4;
 
-      // Exclude last regular plane and the whole muon catcher. Can't
-      // reasonably have a supernova-type event hit planes on each
-      // side of a steel plane, and while they might hit adjacent
-      // scintillator planes in the muon catcher, I don't want to deal
-      // with all the additional complications there.
-      if(plane > 190) continue;
-
-      // Drop outermost three cells. This excludes most muon tracks that
-      // just barely enter the detector, but don't get reconstructed.
-      if(cell <= 2 || cell >= 95) continue;
+      // Exclude the whole muon catcher. Can't reasonably have a
+      // supernova-type event hit planes on each side of a steel plane,
+      // and while they might hit adjacent scintillator planes in the
+      // muon catcher, I don't want to deal with all the additional
+      // complications there.
+      if(plane <= ndnplaneedge) continue;
+      if(plane >= 192-ndnplaneedge) continue;
 
       // At top of detector, stricter cut based on observed backgrounds
-      if(noiseslice.Cell(i)->View() == geo::kY && cell >= 80) continue;
+      if(noiseslice.Cell(i)->View() == geo::kY && cell >= 96 - 20) continue;
+
+      // Drop outermost cells. This excludes most muon tracks that
+      // just barely enter the detector, but don't get reconstructed.
+      const int ndncelledge_x = 4;
+      if(noiseslice.Cell(i)->View() == geo::kX &&
+         (cell <= ndncelledge_x || cell >= 96 - ndncelledge_x)) continue;
     }
     else{ // far
-      const int nplaneedge = 2;
-      if(plane <= nplaneedge) continue;
-      if(plane >= 895-nplaneedge) continue;
+      const int fdnplaneedge = 2;
+      if(plane <= fdnplaneedge) continue;
+      if(plane >= 895-fdnplaneedge) continue;
 
       if(noiseslice.Cell(i)->View() == geo::kY && cell >= 383 - 50)
         continue;
 
-      const int ncelledge_x = 10;
+      const int fdncelledge_x = 10;
       if(noiseslice.Cell(i)->View() == geo::kX &&
-         (cell <= ncelledge_x || cell >= 383 - ncelledge_x)) continue;
+         (cell <= fdncelledge_x || cell >= 383 - fdncelledge_x)) continue;
     }
 
     const float tns = noiseslice.Cell(i)->TNS();
@@ -699,6 +707,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     // Exclude a rectangular box around each slice for a given time
     // period before and after the slice, with a given spatial buffer.
     for(unsigned int j = 0; j < sliceinfo.size(); j++){
+      // Optimized for the FD.  The ND isn't sensitive to these.
       const float time_until_slc_cut =  2e3;
       const float time_since_slc_cut = 13e3;
 
@@ -707,6 +716,8 @@ static std::vector<mhit> select_hits_for_mev_search(
       // since which of those is right depends on what you're looking at.
       const double planes_per_cell = 76./39.;
 
+      // Optimized for the FD, and at the ND, you can set this to any
+      // positive value and it has the same result.
       const int planebuffer = 15;
       const int cellbuffer = planebuffer * planes_per_cell;
 
@@ -761,9 +772,10 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
   // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits = select_hits_for_mev_search((*slice)[0], sliceinfo);
 
-  // Intentionally bigger than optimum value suggested by MC (150ns) because
-  // we know that the data has a bigger time spread from, for instance, the
-  // very well known slice duration discrepancy (see, e.g., doc-19053).
+  // Intentionally bigger than optimum value suggested by MC (150ns FD,
+  // 10ns(!) ND) because we know that the data has a bigger time spread
+  // from, for instance, the very well known slice duration discrepancy
+  // (see, e.g., doc-19053).
   const float timewindow = 250; // ns
 
   unsigned int hitpairs = 0;

@@ -165,6 +165,12 @@ void upmuana::UpMuAnalysis::produce(art::Event & e)
   for (size_t i_track=0; i_track < tracks->size(); ++i_track){
 
     rb::Track theTrack = tracks->at(i_track);
+
+    double ra, dec;
+    fSunPos->GetTrackRaDec(theTrack.Dir(), ts.tv_sec, ra, dec);
+    printf("DEBUG: ra = %fh, dec = %f degrees\n",
+           ra * 12/M_PI, dec*180/M_PI);
+
     float containment = containmentType(theTrack);
 
     float slice=-1;
