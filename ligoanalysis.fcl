@@ -21,6 +21,10 @@ standard_ligoanalysis:
   # DDenergy:    for FD ddenergy
   # JustTrigger: for contained vertex, numu and fast monopole
   AnalysisClass: NDactivity
+
+  # LIGO/Virgo skymap file for analysis classes (above) that have
+  # pointing.  If not needed, leave it as the empty string.
+  SkyMap: ""
 }
 
 END_PROLOG

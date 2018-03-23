@@ -26,7 +26,7 @@ int main()
   // "Since GW150914 is a CBC event, we
   // consider the LALInference map to be the most accurate, au-
   // thoritative, and final localization for this event."
-  read_Healpix_map_from_fits("LALInference_skymap.fits", map);
+  read_Healpix_map_from_fits("~/LALInference_skymap.fits", map);
 
   double sumprob = 0;
 

@@ -1,5 +1,6 @@
 #include "ligoanalysis.fcl"
 #include "services.fcl"
+#include "CelestialLocator.fcl"
 
 process_name: ligoFTWnoreco
 
@@ -9,6 +10,7 @@ services:
   scheduler:    { wantTracer: false wantSummary: true }
   message:      @local::standard_out
   @table::standard_services
+  CelestialLocator:    @local::standard_celestial
 }
 
 source:

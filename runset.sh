@@ -5,10 +5,10 @@ if ! [ $1 ]; then
   echo "  type:  The analysis type, that is, the part of"
   echo "         the name of the fcl between ligojob_ and .fcl"
   echo "  time:  Unix time stamp of the GW event or whatever"
+  echo "  novaargs: optional extra arguments to the nova executable"
+  echo "            must start with a \"-\""
   echo "  files: Any number of art files"
   echo "         must not start with a \"-\""
-  echo "  novaargs: extra arguments to the nova executable"
-  echo "            must start with a \"-\""
   exit 1
 fi
 
@@ -24,6 +24,7 @@ shift
 
 export TZ=UTC
 rfctime=$(date "+%Y-%m-%dT%H:%M:%SZ" -d @$unixtime)
+skymap=/nashome/m/mstrait/LALInference_skymap.fits
 
 if [ $? -ne 0 ]; then
   exit 1
@@ -38,7 +39,8 @@ fi
 
 cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
   sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligofilter.GWEventTime: \"$rfctime\"" > $fcl
+      \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
+      \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $fcl
 
 # Need to fail if nova fails in 'nova | tee'
 set -o pipefail
@@ -67,6 +69,8 @@ for f in $@; do
   log=$base.ligo.$type.log
   hist=$base.hists.root
   hists="$hists $hist"
+  LD_LIBRARY_PATH+=$HOME/Healpix_3.31/lib
+  export LD_LIBRARY_PATH
   if ! nova $novaargs $f -c $fcl $recoopt -T $hist 2> /dev/stdout | tee $log; then
     exit 1
   fi

@@ -28,6 +28,9 @@
 
 #include "RecoBase/Track.h"
 
+#include "CelestialLocator/CelestialLocator.h"
+#include "NovaTimingUtilities/TimingUtilities.h"
+
 #include "TH2.h"
 
 #include <string>
@@ -38,6 +41,11 @@
 #include <signal.h>
 
 #include "func/timeutil.h"
+
+#include "healpix_base.h"
+#include "healpix_map.h"
+#include "healpix_map_fitsio.h"
+
 
 static const int TDC_PER_US = 64;
 static const int US_PER_MICROSLICE = 50; // I hope this is always true
@@ -58,6 +66,8 @@ class ligoanalysis : public art::EDProducer {
   virtual ~ligoanalysis() { }; // compiles, but does not run, without this
   void produce(art::Event& evt);
 
+  void beginJob();
+
   /// \brief User-supplied type of trigger being examined.
   ///
   /// Which histograms we make depends on this.
@@ -69,6 +79,10 @@ class ligoanalysis : public art::EDProducer {
   /// Expressed in RFC-3339 format, always in UTC, always with a Z at
   /// the end (to emphasize that it is UTC).
   std::string fGWEventTime;
+
+  /// The file name of the LIGO/Virgo skymap, or the empty string if this
+  /// analysis does not care about pointing or no map is available.
+  std::string fSkyMap;
 
   /// \brief The user-supplied length of the search window in seconds.
   ///
@@ -315,8 +329,61 @@ static void init_track_and_contained_hists()
   init_lh(lh_contained_slices);
 }
 
+static bool comp_ac_raw(const std::pair<double, double> & a,
+                        const std::pair<double, double> & b)
+{
+  return a.second > b.second;
+}
+
+
+void ligoanalysis::beginJob()
+{
+  Healpix_Map<float> map;
+
+  read_Healpix_map_from_fits(fSkyMap, map);
+  double sumprob = 0;
+
+  std::vector< std::pair<double, double> > vals; // area corrected, raw
+
+  int ni = 1000, nj = 1000;
+  for(int i = 1; i < ni; i++){
+    for(int j = 0; j < nj; j++){
+      const double theta = i*M_PI/ni,
+                   phi   = j*2.*M_PI/nj;
+      const float val = map.interpolated_value(
+        pointing(theta, // dec --pi, and dec is pi/2 to -pi/2
+                 phi    // ra - 0, 24h = 2pi
+                ));
+      sumprob += val * sin(theta);
+      vals.push_back(std::pair<double, double>(val*sin(theta), val));
+    }
+  }
+
+  sort(vals.begin(), vals.end(), comp_ac_raw);
+
+  float acc = 0;
+  float critval = 0;
+  for(unsigned int i = 0; i < vals.size(); i++){
+    acc += vals[i].first/sumprob;
+    if(acc > 0.9 /* CL */){
+      critval = vals[i].second;
+      break;
+    }
+  }
+
+  for(int i = 0; i < 80; i++){
+    for(int j = 159; j >= 0; j--){
+      const double theta = i*M_PI/80, phi = j*2*M_PI/160;
+      const float val = map.interpolated_value(pointing(theta, phi));
+      printf("%c", val > critval?'X':'-');
+    }
+    printf("\n");
+  }
+}
+
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<std::string>("GWEventTime")),
+  fSkyMap(pset.get<std::string>("SkyMap")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
   const std::string analysis_class_string(pset.get<std::string>("AnalysisClass"));
@@ -969,6 +1036,22 @@ static void count_tracks_containedslices(const art::Event & evt)
       slices_with_uc_tracks.insert(trk_slices[i]);
     if(half_uncontained_track((*tracks)[i]))
       slices_with_huc_tracks.insert(trk_slices[i]);
+
+    double ra, dec;
+    art::ServiceHandle<locator::CelestialLocator> fSunPos;
+
+    art::Handle<std::vector<rawdata::RawTrigger> > rawtrigger;
+    getrawtrigger(rawtrigger, evt);
+    if(rawtrigger->empty()) return;
+    unsigned long long event_time =
+      (*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
+    struct timespec ts;
+    novadaq::timeutils::
+      convertNovaTimeToUnixTime(event_time, ts);
+
+    fSunPos->GetTrackRaDec((*tracks)[i].Dir(), ts.tv_sec, ra, dec);
+    printf("DEBUG: ra = %fh, dec = %f degrees\n",
+           ra * 12/M_PI, dec*180/M_PI);
   }
 
   // Find any tracks that are half-contained/fully-contained and do not share a
