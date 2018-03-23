@@ -42,9 +42,19 @@
 
 #include "func/timeutil.h"
 
+// "`-._,-'"`-._,-'"`-._,-' BEGIN sky map stuff "`-._,-'"`-._,-'"`-._,-'
 #include "healpix_base.h"
 #include "healpix_map.h"
 #include "healpix_map_fitsio.h"
+
+// The sky map from LIGO/Virgo, if available and necessary, i.e. if we
+// are analyzing events with pointing
+static Healpix_Map<float> * healpix_skymap = NULL;
+
+// The critical probability density value in the sky map above which
+// we are in the 90% confidence level region.  Set in beginJob().
+static double skymap_crit_val = 0;
+// "`-._,-'"`-._,-'"`-._,-'  END sky map stuff  "`-._,-'"`-._,-'"`-._,-'
 
 
 static const int TDC_PER_US = 64;
@@ -260,6 +270,10 @@ static bool delta_and_length(int64_t & event_length_tdc,
   return true; // ok
 }
 
+/*********************************************************************/
+/************************* Begin histograms **************************/
+/*********************************************************************/
+
 // Count of triggers, with no examination of the data within
 static ligohist lh_rawtrigger("rawtrigger", false);
 
@@ -287,23 +301,9 @@ static ligohist lh_unsliced_hit_pairs("unslicedhitpairs", true);
 static ligohist2d lh_unsliced_hit_pairs_plane
   ("unslicedhitpairsplane", true, 28, 0, 28*32);
 
-// Raw number of tracks
-static ligohist lh_tracks("tracks", true);
-
-// Number of tracks with at least one contained endpoint, with some additional
-// sanity checks.
-static ligohist lh_halfcontained_tracks("halfcontained_tracks", true);
-
-// Number of tracks with at two contained endpoints, with some additional
-// sanity checks.
-static ligohist lh_fullycontained_tracks("fullycontained_tracks", true);
-
 // Count of slices with nothing around the edges, regardless of what sorts of
 // objects are inside.
 static ligohist lh_contained_slices("contained_slices", true);
-
-// Number of tracks that pass the Upmu analysis
-static ligohist lh_upmu_tracks("upmu_tracks", false);
 
 // Number of triggers above two cuts for DDEnergy, the first pair
 // in raw ADC, the second ADC per unit time.
@@ -311,6 +311,32 @@ static ligohist lh_ddenergy_locut("energy_low_cut", false);
 static ligohist lh_ddenergy_hicut("energy_high_cut", false);
 static ligohist lh_ddenergy_lopertime("energy_low_cut_pertime", false);
 static ligohist lh_ddenergy_hipertime("energy_high_cut_pertime", false);
+
+/********************** Histogram with pointing ***********************/
+
+// Raw number of tracks
+static ligohist lh_tracks("tracks", true);
+static ligohist lh_tracks_point("tracks_point", true);
+
+// Number of tracks with at least one contained endpoint, with some
+// additional sanity checks.
+static ligohist lh_halfcontained_tracks("halfcontained_tracks", true);
+static ligohist lh_halfcontained_tracks_point("halfcontained_tracks_point",
+                                              true);
+
+// Number of tracks with at two contained endpoints, with some additional
+// sanity checks.
+static ligohist lh_fullycontained_tracks("fullycontained_tracks", true);
+static ligohist lh_fullycontained_tracks_point("fullycontained_tracks_point",
+                                               true);
+
+// Number of tracks that pass the Upmu analysis
+static ligohist lh_upmu_tracks("upmu_tracks", false);
+static ligohist lh_upmu_tracks_point("upmu_tracks_point", false);
+
+/*********************************************************************/
+/**************************  End histograms **************************/
+/*********************************************************************/
 
 static void init_mev_hists()
 {
@@ -327,55 +353,78 @@ static void init_track_and_contained_hists()
   init_lh(lh_halfcontained_tracks);
   init_lh(lh_fullycontained_tracks);
   init_lh(lh_contained_slices);
+
+  init_lh(lh_tracks_point);
+  init_lh(lh_halfcontained_tracks_point);
+  init_lh(lh_fullycontained_tracks_point);
 }
 
-static bool comp_ac_raw(const std::pair<double, double> & a,
-                        const std::pair<double, double> & b)
+// Probabilities for a point in the sky map. One is the raw value and
+// the second is scaled by area, i.e. multiplied by sin(theta)
+struct ac_raw{
+  double raw;
+  double area_corrected;
+};
+
+static bool compare_ac_raw(const ac_raw & a, const ac_raw & b)
 {
-  return a.second > b.second;
+  return a.raw > b.raw;
 }
-
 
 void ligoanalysis::beginJob()
 {
-  Healpix_Map<float> map;
+  if(fSkyMap == "") return;
 
-  read_Healpix_map_from_fits(fSkyMap, map);
+  healpix_skymap = new Healpix_Map<float>;
+
+  try       { read_Healpix_map_from_fits(fSkyMap, *healpix_skymap); }
+  catch(...){ exit(1);                                             }
+
   double sumprob = 0;
 
-  std::vector< std::pair<double, double> > vals; // area corrected, raw
+  // We need to integrate the probability and find the critical value
+  // above which we are in the 90% CL region. The convenient way to
+  // retrieve probabilities from the map is interpolated values at
+  // unevenly spaced points. Scale these by their effective area to do
+  // the intergration, but set the critical value using unscaled values.
+  std::vector<ac_raw> vals;
 
   int ni = 1000, nj = 1000;
   for(int i = 1; i < ni; i++){
     for(int j = 0; j < nj; j++){
       const double theta = i*M_PI/ni,
                    phi   = j*2.*M_PI/nj;
-      const float val = map.interpolated_value(
-        pointing(theta, // dec --pi, and dec is pi/2 to -pi/2
-                 phi    // ra - 0, 24h = 2pi
-                ));
+      const float val = healpix_skymap->interpolated_value(
+        pointing(theta, // dec: except this is 0 to pi, and dec is pi/2 to -pi/2
+                 phi)); // ra: as normal: 0h, 24h = 2pi
       sumprob += val * sin(theta);
-      vals.push_back(std::pair<double, double>(val*sin(theta), val));
+      ac_raw new_ac_raw;
+      new_ac_raw.raw = val;
+      new_ac_raw.area_corrected = val*sin(theta);
+      vals.push_back(new_ac_raw);
     }
   }
 
-  sort(vals.begin(), vals.end(), comp_ac_raw);
+  sort(vals.begin(), vals.end(), compare_ac_raw);
+
+  const float CL = 0.9; // 90% confidence level
 
   float acc = 0;
-  float critval = 0;
   for(unsigned int i = 0; i < vals.size(); i++){
-    acc += vals[i].first/sumprob;
-    if(acc > 0.9 /* CL */){
-      critval = vals[i].second;
+    acc += vals[i].area_corrected/sumprob;
+    if(acc > CL){
+      skymap_crit_val = vals[i].raw;
       break;
     }
   }
 
-  for(int i = 0; i < 80; i++){
-    for(int j = 159; j >= 0; j--){
-      const double theta = i*M_PI/80, phi = j*2*M_PI/160;
-      const float val = map.interpolated_value(pointing(theta, phi));
-      printf("%c", val > critval?'X':'-');
+  // Print the map to the screen just so we know something is happening
+  printf("Sky map %.0f%% region:\n", CL*100);
+  for(int i = 0; i < 40; i++){
+    for(int j = 79; j >= 0; j--){
+      const double theta = i*M_PI/40, phi = j*2*M_PI/80;
+      const float val = healpix_skymap->interpolated_value(pointing(theta, phi));
+      printf("%c", val > skymap_crit_val?'X':'-');
     }
     printf("\n");
   }
@@ -413,6 +462,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       break;
     case UpMu:
       init_lh(lh_upmu_tracks);
+      init_lh(lh_upmu_tracks_point);
       break;
     case LiveTime:
       init_mev_hists();
@@ -981,8 +1031,11 @@ static void count_tracks_containedslices(const art::Event & evt)
     return;
   }
 
+  const int timbin = timebin(evt);
+  const double livetime = rawlivetime(evt);
+
   printf("Tracks in this event: %lu\n", tracks->size());
-  THplusequals(lh_tracks, timebin(evt), tracks->size(), rawlivetime(evt));
+  THplusequals(lh_tracks, timbin, tracks->size(), livetime);
 
   // Count tracks with either a contained start or end, but not if they are
   // very steep in x or y, since those probably aren't really contained and may
@@ -1030,6 +1083,10 @@ static void count_tracks_containedslices(const art::Event & evt)
       contained_shower_slices.insert(i);
   }
 
+  // After next loop, these are true if the corresponding track in 'tracks'
+  // points back to the sky region from LIGO/Virgo
+  std::vector<bool> track_point;
+
   for(unsigned int i = 0; i < tracks->size(); i++){
     trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice);
     if(un_contained_track((*tracks)[i]))
@@ -1037,26 +1094,55 @@ static void count_tracks_containedslices(const art::Event & evt)
     if(half_uncontained_track((*tracks)[i]))
       slices_with_huc_tracks.insert(trk_slices[i]);
 
-    double ra, dec;
-    art::ServiceHandle<locator::CelestialLocator> fSunPos;
+    bool track_points_to_event = false;
 
-    art::Handle<std::vector<rawdata::RawTrigger> > rawtrigger;
-    getrawtrigger(rawtrigger, evt);
-    if(rawtrigger->empty()) return;
-    unsigned long long event_time =
-      (*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
-    struct timespec ts;
-    novadaq::timeutils::
-      convertNovaTimeToUnixTime(event_time, ts);
+    if(healpix_skymap != NULL){
+      double ra, dec;
+      art::ServiceHandle<locator::CelestialLocator> fSunPos;
 
-    fSunPos->GetTrackRaDec((*tracks)[i].Dir(), ts.tv_sec, ra, dec);
-    printf("DEBUG: ra = %fh, dec = %f degrees\n",
-           ra * 12/M_PI, dec*180/M_PI);
+      art::Handle<std::vector<rawdata::RawTrigger> > rawtrigger;
+      getrawtrigger(rawtrigger, evt);
+      if(rawtrigger->empty()) return;
+      unsigned long long event_time =
+        (*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
+      struct timespec ts;
+      novadaq::timeutils::
+        convertNovaTimeToUnixTime(event_time, ts);
+
+      fSunPos->GetTrackRaDec((*tracks)[i].Dir(), ts.tv_sec, ra, dec);
+      printf("DEBUG: ra = %7.3fh, dec = %8.3f degrees\n",
+             ra * 12/M_PI, dec*180/M_PI);
+
+      // XXX double-check two things: Does pointing accept angles
+      // out of range and wrap around as expected?  And is its definition
+      // of declination, a.k.a. theta, really off by pi/2?
+      //
+      // XXX What are we going to do about the fact that our pointing
+      // resolution is only about 1 degree? If the sky map region is
+      // less than or about that size, we'll lose most of those tracks
+      // even if they truly point back at the event.
+      //
+      // Accept tracks that point in the reverse direction, since the
+      // orientation of the track is arbitrary.
+      track_points_to_event = skymap_crit_val < std::max(
+        healpix_skymap->interpolated_value(pointing( dec + M_PI_2, ra       )),
+        healpix_skymap->interpolated_value(pointing(-dec + M_PI_2, ra + M_PI)));
+    }
+    track_point.push_back(track_points_to_event);
   }
+
+  unsigned int ntracks_that_point = 0;
+  for(unsigned int i = 0; i < tracks->size(); i++)
+    if(track_point[i]) ntracks_that_point++;
+  THplusequals(lh_tracks_point, timbin, ntracks_that_point, livetime);
 
   // Find any tracks that are half-contained/fully-contained and do not share a
   // slice with any tracks that are, like, totally uncontained, man
   std::set<int> slices_with_hc_tracks, slices_with_fc_tracks;
+
+  // Same, but the tracks must point towards the LIGO/Virgo event
+  std::set<int> slices_with_hc_tracks_point, slices_with_fc_tracks_point;
+
   for(unsigned int i = 0; i < tracks->size(); i++){
     // Exclude 2D tracks
     if((*tracks)[i].Stop().X() == 0 || (*tracks)[i].Stop().Y() == 0) continue;
@@ -1064,8 +1150,11 @@ static void count_tracks_containedslices(const art::Event & evt)
     // To be called a slice with half-contained tracks, it must not have any
     // tracks that both enter and exit
     if(!slices_with_uc_tracks.count(trk_slices[i]) &&
-       half_contained_track((*tracks)[i]))
+       half_contained_track((*tracks)[i])){
       slices_with_hc_tracks.insert(trk_slices[i]);
+      if(track_point[i])
+        slices_with_hc_tracks_point.insert(trk_slices[i]);
+    }
 
     // To be called a slice with fully contained tracks, it must not have any
     // track that either enters or exits, and the slice itself must be
@@ -1075,32 +1164,38 @@ static void count_tracks_containedslices(const art::Event & evt)
        fully_contained_track((*tracks)[i]) &&
        contained_slices.count(trk_slices[i])){
       slices_with_fc_tracks.insert(trk_slices[i]);
-      printf("start cosx %6.3f cosy %6.3f\n",
-             (*tracks)[i].Dir().X(), (*tracks)[i].Dir().Y());
-      printf("stop  cosx %6.3f cosy %6.3f\n",
-             (*tracks)[i].StopDir().X(), (*tracks)[i].StopDir().Y());
+      if(track_point[i])
+        slices_with_fc_tracks_point.insert(trk_slices[i]);
     }
   }
 
-  printf("Slices with half-contained tracks: %lu\n",
-         slices_with_hc_tracks.size());
-  printf("Slices with fully-contained tracks: %lu\n",
-         slices_with_fc_tracks.size());
+  printf("Slices with half-contained tracks: %2lu (%lu pointing)\n",
+         slices_with_hc_tracks.size(), slices_with_hc_tracks_point.size());
+
+  printf("Slices with fully-contained tracks: %2lu (%lu pointing)\n",
+         slices_with_fc_tracks.size(), slices_with_fc_tracks_point.size());
   for(std::set<int>::iterator i = slices_with_fc_tracks.begin();
       i != slices_with_fc_tracks.end(); i++)
-    printf("  %3d\n", *i);
+    printf("  slice %3d\n", *i);
+
   printf("Contained GeV physics-like slices: %lu\n",
          contained_shower_slices.size());
   for(std::set<int>::iterator i = contained_shower_slices.begin();
       i != contained_shower_slices.end(); i++)
-    printf("  %3d\n", *i);
+    printf("  slice %3d\n", *i);
 
-  THplusequals(lh_halfcontained_tracks,  timebin(evt),
-               slices_with_hc_tracks.size(), rawlivetime(evt));
-  THplusequals(lh_fullycontained_tracks, timebin(evt),
-               slices_with_fc_tracks.size(), rawlivetime(evt));
-  THplusequals(lh_contained_slices, timebin(evt),
-               contained_shower_slices.size(), rawlivetime(evt));
+  THplusequals(
+    lh_halfcontained_tracks, timbin, slices_with_hc_tracks.size(), livetime);
+  THplusequals(
+    lh_fullycontained_tracks, timbin, slices_with_fc_tracks.size(), livetime);
+  THplusequals(
+    lh_halfcontained_tracks_point, timbin, slices_with_hc_tracks_point.size(),
+    livetime);
+  THplusequals(
+    lh_fullycontained_tracks_point, timbin, slices_with_fc_tracks_point.size(),
+    livetime);
+  THplusequals(
+    lh_contained_slices, timbin, contained_shower_slices.size(), livetime);
 }
 
 static void count_mev(art::Event & evt)

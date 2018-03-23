@@ -69,8 +69,6 @@ for f in $@; do
   log=$base.ligo.$type.log
   hist=$base.hists.root
   hists="$hists $hist"
-  LD_LIBRARY_PATH+=$HOME/Healpix_3.31/lib
-  export LD_LIBRARY_PATH
   if ! nova $novaargs $f -c $fcl $recoopt -T $hist 2> /dev/stdout | tee $log; then
     exit 1
   fi
