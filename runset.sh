@@ -24,7 +24,7 @@ shift
 
 export TZ=UTC
 rfctime=$(date "+%Y-%m-%dT%H:%M:%SZ" -d @$unixtime)
-skymap=/nashome/m/mstrait/LALInference_skymap.fits
+skymap=/nova/ana/users/mstrait/skymaps/LALInference_skymap-GW170817.fits
 
 if [ $? -ne 0 ]; then
   exit 1

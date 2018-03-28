@@ -47,6 +47,10 @@
 #include "healpix_map.h"
 #include "healpix_map_fitsio.h"
 
+#include "alm.h" // Alm<T>
+#include "alm_healpix_tools.h" // alm2map(), etc.
+#include "alm_powspec_tools.h" // smoothWithGauss()
+
 // The sky map from LIGO/Virgo, if available and necessary, i.e. if we
 // are analyzing events with pointing
 static Healpix_Map<float> * healpix_skymap = NULL;
@@ -371,6 +375,54 @@ static bool compare_ac_raw(const ac_raw & a, const ac_raw & b)
   return a.raw > b.raw;
 }
 
+// Takes a skymap and smears it with a gaussian to take into account our
+// detector resolution.
+//
+// Mostly copied from the example code in the Healpix package in
+// smoothing_cxx_module.cc
+//
+// I'd prefer to return a smeared map from the const& argument, but I
+// can't immediately see how to manage that.
+static void smear_skymap(Healpix_Map<float> * map)
+{
+  // Some power of two between 32 and 1024, by grepping.
+  // Is this a good value?
+  const int nlmax = 512;
+
+  // 3 or 5 in all examples, more often 3.
+  const int num_iter = 3;
+
+  const tsize nmod = map->replaceUndefWith0();
+  if(nmod!=0)
+    printf("smear_skymap() WARNING: replaced %lu undefined map pixels "
+           "with a value of 0\n", nmod);
+
+  const float avg = map->average();
+  map->Add(-avg);
+
+  // I *think* the LIGO/Virgo skymaps are not weighted, so this is
+  // easier than using get_right_weights(), which requires a paramfile.
+  arr<double> weight;
+  weight.alloc(2*healpix_skymap->Nside());
+  weight.fill(1);
+
+  Alm<xcomplex<float> > alm(nlmax, nlmax);
+  if(map->Scheme() == NEST) map->swap_scheme();
+
+  map2alm_iter(*map, alm, num_iter, weight);
+
+  // What really is the best resolution to use? We don't have a solid
+  // number, and obviously it is a function of energy, too. This "about
+  // 1 degree" is presumably 1 sigma, but it looks like smoothWithGauss
+  // takes FWHM.
+  const double fwhm = 1.0 /* 1 degree */ * 2.355 * M_PI/180.;
+
+  smoothWithGauss(alm, fwhm);
+  alm2map(alm, *map);
+
+  map->Add(avg);
+}
+
 void ligoanalysis::beginJob()
 {
   if(fSkyMap == "") return;
@@ -379,6 +431,8 @@ void ligoanalysis::beginJob()
 
   try       { read_Healpix_map_from_fits(fSkyMap, *healpix_skymap); }
   catch(...){ exit(1);                                             }
+
+  smear_skymap(healpix_skymap);
 
   double sumprob = 0;
 
@@ -420,9 +474,10 @@ void ligoanalysis::beginJob()
 
   // Print the map to the screen just so we know something is happening
   printf("Sky map %.0f%% region:\n", CL*100);
-  for(int i = 0; i < 40; i++){
-    for(int j = 79; j >= 0; j--){
-      const double theta = i*M_PI/40, phi = j*2*M_PI/80;
+  const int across = 80, down = 40;
+  for(int i = 0; i < down; i++){
+    for(int j = across-1; j >= 0; j--){
+      const double theta = i*M_PI/down, phi = j*2*M_PI/across;
       const float val = healpix_skymap->interpolated_value(pointing(theta, phi));
       printf("%c", val > skymap_crit_val?'X':'-');
     }
@@ -1116,12 +1171,6 @@ static void count_tracks_containedslices(const art::Event & evt)
       // XXX double-check two things: Does pointing accept angles
       // out of range and wrap around as expected?  And is its definition
       // of declination, a.k.a. theta, really off by pi/2?
-      //
-      // XXX What are we going to do about the fact that our pointing
-      // resolution is only about 1 degree? If the sky map region is
-      // less than or about that size, we'll lose most of those tracks
-      // even if they truly point back at the event.
-      //
       // Accept tracks that point in the reverse direction, since the
       // orientation of the track is arbitrary.
       track_points_to_event = skymap_crit_val < std::max(
