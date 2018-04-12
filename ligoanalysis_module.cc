@@ -575,6 +575,13 @@ static double rawlivetime(const art::Event & evt)
 {
   art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
   getflatdaq(flatdaq, evt);
+  if(flatdaq.failedToGet()){
+    static bool first = true;
+    if(first)
+      puts("No FlatDAQ. Probably unoverlayed MC. Returning zero live time");
+    first = false;
+    return 0;
+  }
 
   art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
@@ -1165,8 +1172,6 @@ static void count_tracks_containedslices(const art::Event & evt)
         convertNovaTimeToUnixTime(event_time, ts);
 
       fSunPos->GetTrackRaDec((*tracks)[i].Dir(), ts.tv_sec, ra, dec);
-      printf("DEBUG: ra = %7.3fh, dec = %8.3f degrees\n",
-             ra * 12/M_PI, dec*180/M_PI);
 
       // XXX double-check two things: Does pointing accept angles
       // out of range and wrap around as expected?  And is its definition
