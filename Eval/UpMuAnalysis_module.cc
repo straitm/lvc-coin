@@ -168,8 +168,6 @@ void upmuana::UpMuAnalysis::produce(art::Event & e)
 
     double ra, dec;
     fSunPos->GetTrackRaDec(theTrack.Dir(), ts.tv_sec, ra, dec);
-    printf("DEBUG: ra = %fh, dec = %f degrees\n",
-           ra * 12/M_PI, dec*180/M_PI);
 
     float containment = containmentType(theTrack);
 

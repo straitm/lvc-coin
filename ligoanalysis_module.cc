@@ -370,11 +370,11 @@ static void init_track_and_contained_hists()
   init_lh(lh_contained_slices);
 
   for(unsigned int q = 0; q < npointres; q++){
-    init_lh_name_live(lh_tracks_point[npointres],
+    init_lh_name_live(lh_tracks_point[q],
                       Form("tracks_point_%d", q), true);
-    init_lh_name_live(lh_halfcontained_tracks_point[npointres],
+    init_lh_name_live(lh_halfcontained_tracks_point[q],
                       Form("halfcontained_tracks_point_%d", q), true);
-    init_lh_name_live(lh_fullycontained_tracks_point[npointres],
+    init_lh_name_live(lh_fullycontained_tracks_point[q],
                       Form("fullycontained_tracks_point_%d", q), true);
   }
 }
@@ -481,10 +481,17 @@ static double find_critical_value(const Healpix_Map<float> * const map)
 
   // Print the map to the screen just so we know something is happening
   printf("Sky map %.0f%% region:\n", CL*100);
-  const int across = 80, down = 40;
+  const int down = 40;
   for(int i = 0; i < down; i++){
+    const double theta = i*M_PI/down;
+    const int maxacross = 2*down;
+    const int across = 2*int(down*sin(theta) + 0.5);
+
+    for(int j = 0; j < (maxacross - across)/2; j++)
+      printf(" ");
+
     for(int j = across-1; j >= 0; j--){
-      const double theta = i*M_PI/down, phi = j*2*M_PI/across;
+      const double phi = j*2*M_PI/across;
       const float val = map->interpolated_value(pointing(theta, phi));
       printf("%c", val > crit?'X':'-');
     }
@@ -500,7 +507,7 @@ void ligoanalysis::beginJob()
 
   for(unsigned int q = 0; q < npointres; q++){
     healpix_skymap[q] = new Healpix_Map<float>;
-    try       { read_Healpix_map_from_fits(fSkyMap, *healpix_skymap[0]); }
+    try       { read_Healpix_map_from_fits(fSkyMap, *healpix_skymap[q]); }
     catch(...){ exit(1);                                                 }
   }
 
@@ -508,7 +515,7 @@ void ligoanalysis::beginJob()
   smear_skymap(healpix_skymap[0], 1.3);
 
   /* doc-26828 */
-  smear_skymap(healpix_skymap[1], acos(0.95) * 180/M_PI /* ~18 degrees */);
+  smear_skymap(healpix_skymap[1], acos(0.96) * 180/M_PI /* ~16 degrees */);
 
   for(unsigned int q = 0; q < npointres; q++)
     skymap_crit_val[q] = find_critical_value(healpix_skymap[q]);
@@ -1093,9 +1100,50 @@ static void count_unslice4dd_hits(const art::Event & evt)
               rawlivetime(evt));
 }
 
+// Passes back the {ra, dec} of a track direction given an event and that direction.
+// Returns true if all went well.
+static bool track_ra_dec(double & ra, double & dec,
+                         const art::Event & evt, const TVector3 & dir)
+{
+  art::ServiceHandle<locator::CelestialLocator> celloc;
+
+  art::Handle<std::vector<rawdata::RawTrigger> > rawtrigger;
+  getrawtrigger(rawtrigger, evt);
+  if(rawtrigger->empty()){
+    fprintf(stderr, "Failed to read raw trigger! Don't know the time!\n");
+    return false;
+  }
+  unsigned long long event_time=(*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
+  struct timespec ts;
+  novadaq::timeutils::convertNovaTimeToUnixTime(event_time, ts);
+
+  celloc->GetTrackRaDec(dir, ts.tv_sec, ra, dec);
+  return true;
+}
+
+// Returns whether the given ra and dec are inside the 90% region of map number
+// 'mapi'.  If 'allow_backwards' accept tracks that point in the reverse
+// direction, since the orientation of the track is arbitrary.  Otherwise, take
+// the track orientation literally.
+static bool points(const double ra, const double dec, const int mapi,
+                   const bool allow_backwards)
+{
+  // XXX double-check two things: Does pointing accept angles out of range and
+  // wrap around as expected?  And is its definition of declination, a.k.a.
+  // theta, really off by pi/2?
+  if(allow_backwards)
+    return skymap_crit_val[mapi] < std::max(
+      healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     )),
+      healpix_skymap[mapi]->interpolated_value(pointing(-dec+M_PI_2, ra+M_PI)));
+  else
+    return skymap_crit_val[mapi] <
+      healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     ));
+}
+
 static void count_upmu(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Track> > upmu;
+
   evt.getByLabel("upmuanalysis", upmu);
   if(upmu.failedToGet()){
     printf("No UpMu product to read\n");
@@ -1104,6 +1152,33 @@ static void count_upmu(const art::Event & evt)
 
   THplusequals(lh_upmu_tracks, timebin(evt),
                upmu->size(), rawlivetime(evt));
+
+  int npoint[npointres] = { 0 };
+  for(unsigned int i = 0; i < upmu->size(); i++){
+    if(healpix_skymap[0] == NULL) continue;
+
+    // upmu tracks can still point the wrong way even though they have
+    // been selected to be upwards-going, because they are just copied
+    // from the input track array.
+    const TVector3 trackdir = (*upmu)[i].Dir();
+    TVector3 correctdir = trackdir;
+    if(trackdir.Z() < 0){
+      correctdir.SetX(-trackdir.X());
+      correctdir.SetY(-trackdir.Y());
+      correctdir.SetZ(-trackdir.Z());
+    }
+
+    double ra, dec;
+    if(track_ra_dec(ra, dec, evt, correctdir))
+      for(unsigned int q = 0; q < npointres; q++)
+        npoint[q] += points(ra, dec, q, false);
+  }
+
+  for(unsigned int q = 0; q < npointres; q++){
+    if(npoint[q]) printf("%d up-mu tracks point at region %d\n", npoint[q], q);
+    THplusequals(lh_upmu_tracks_point[q], timebin(evt),
+                 npoint[q], rawlivetime(evt));
+  }
 }
 
 // Counts tracks with various cuts and contained slices and adds the
@@ -1193,28 +1268,9 @@ static void count_tracks_containedslices(const art::Event & evt)
 
     if(healpix_skymap[0] != NULL){
       double ra, dec;
-      art::ServiceHandle<locator::CelestialLocator> fSunPos;
-
-      art::Handle<std::vector<rawdata::RawTrigger> > rawtrigger;
-      getrawtrigger(rawtrigger, evt);
-      if(rawtrigger->empty()) return;
-      unsigned long long event_time =
-        (*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
-      struct timespec ts;
-      novadaq::timeutils::
-        convertNovaTimeToUnixTime(event_time, ts);
-
-      fSunPos->GetTrackRaDec((*tracks)[i].Dir(), ts.tv_sec, ra, dec);
-
-      // XXX double-check two things: Does pointing accept angles
-      // out of range and wrap around as expected?  And is its definition
-      // of declination, a.k.a. theta, really off by pi/2?
-      // Accept tracks that point in the reverse direction, since the
-      // orientation of the track is arbitrary.
-      for(unsigned int q = 0; q < npointres; q++)
-        track_points_to_event[q] = skymap_crit_val[q] < std::max(
-          healpix_skymap[q]->interpolated_value(pointing( dec+M_PI_2, ra     )),
-          healpix_skymap[q]->interpolated_value(pointing(-dec+M_PI_2, ra+M_PI)));
+      if(track_ra_dec(ra, dec, evt, (*tracks)[i].Dir()))
+        for(unsigned int q = 0; q < npointres; q++)
+          track_points_to_event[q] = points(ra, dec, q, true);
     }
     for(unsigned int q = 0; q < npointres; q++)
       track_point[q].push_back(track_points_to_event[q]);
@@ -1266,13 +1322,16 @@ static void count_tracks_containedslices(const art::Event & evt)
     }
   }
 
-  printf("Slices with half-contained tracks: %2lu (%lu pointing)\n",
-         slices_with_hc_tracks.size(),
-         slices_with_hc_tracks_point[0].size());
+  printf("Slices with half-contained tracks: %2lu (",
+         slices_with_hc_tracks.size());
+  for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
+    slices_with_hc_tracks_point[q].size(), q==npointres-1?" pointing)\n":", ");
 
-  printf("Slices with fully-contained tracks: %2lu (%lu pointing)\n",
-         slices_with_fc_tracks.size(),
-         slices_with_fc_tracks_point[0].size());
+  printf("Slices with half-contained tracks: %2lu (",
+         slices_with_fc_tracks.size());
+  for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
+    slices_with_fc_tracks_point[q].size(), q==npointres-1?" pointing)\n":", ");
+
 
   for(std::set<int>::iterator i = slices_with_fc_tracks.begin();
       i != slices_with_fc_tracks.end(); i++)
