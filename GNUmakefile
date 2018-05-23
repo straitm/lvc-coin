@@ -17,7 +17,7 @@ LIBLINK := \
 -lGeometry_service \
 -lRecoBase
 
-override CPPFLAGS += -I$(HOME)/Healpix_3.31/src/cxx/optimized_gcc/include \
+override CPPFLAGS += -I$(HOME)/Healpix_3.31/src/cxx/basic_gcc/include \
                      -Wno-unknown-pragmas -fopenmp
 
 override LIBLIBS += $(LOADLIBES) \
