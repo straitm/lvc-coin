@@ -437,7 +437,7 @@ static void smear_skymap(Healpix_Map<float> * map, const double degrees)
   map->Add(avg);
 }
 
-static double find_critical_value(const Healpix_Map<float> * const map)
+static double find_critical_value(const int q)
 {
   double sumprob = 0;
 
@@ -453,7 +453,7 @@ static double find_critical_value(const Healpix_Map<float> * const map)
     for(int j = 0; j < nj; j++){
       const double theta = i*M_PI/ni,
                    phi   = j*2.*M_PI/nj;
-      const float val = map->interpolated_value(
+      const float val = healpix_skymap[q]->interpolated_value(
         pointing(theta, // dec: except this is 0 to pi, and dec is pi/2 to -pi/2
                  phi)); // ra: as normal: 0h, 24h = 2pi
       sumprob += val * sin(theta);
@@ -480,22 +480,35 @@ static double find_critical_value(const Healpix_Map<float> * const map)
   }
 
   // Print the map to the screen just so we know something is happening
-  printf("Sky map %.0f%% region:\n", CL*100);
-  const int down = 40;
-  for(int i = 0; i < down; i++){
-    const double theta = i*M_PI/down;
-    const int maxacross = 2*down;
-    const int across = 2*int(down*sin(theta) + 0.5);
+  for(int which = 0; which < 2; which++){
+    printf("Sky map %.0f%% region, in %s:\n", CL*100, which == 0?"ra/dec":"zen/azi");
+    const int down = 40;
+    for(int i = 0; i < down; i++){
+      const double theta = i*M_PI/down;
+      const int maxacross = 2*down;
+      const int across = 2*int(down*sin(theta) + 0.5);
 
-    for(int j = 0; j < (maxacross - across)/2; j++)
-      printf(" ");
+      for(int j = 0; j < (maxacross - across)/2; j++)
+        printf(" ");
 
-    for(int j = across-1; j >= 0; j--){
-      const double phi = j*2*M_PI/across;
-      const float val = map->interpolated_value(pointing(theta, phi));
-      printf("%c", val > crit?'X':'-');
+      for(int j = across-1; j >= 0; j--){
+        const double phi = j*2*M_PI/across;
+
+        // If which == 0, then theta and phi are ra and dec.
+        // Otherwise, they are the zen and azi, and we need to find the ra and dec.
+        double ra = 0, dec = 0;
+        if(which == 1){
+          art::ServiceHandle<locator::CelestialLocator> celloc;
+          celloc->GetRaDec(theta, phi, (time_t)gwevent_unix_double_time, ra, dec);
+        }
+
+        const float val = healpix_skymap[q]->interpolated_value(
+          which == 0?pointing(theta, phi)
+                    :pointing(dec+M_PI_2, ra));
+        printf("%c", val > crit?'X':'-');
+      }
+      printf("\n");
     }
-    printf("\n");
   }
 
   return crit;
@@ -518,7 +531,7 @@ void ligoanalysis::beginJob()
   smear_skymap(healpix_skymap[1], acos(0.96) * 180/M_PI /* ~16 degrees */);
 
   for(unsigned int q = 0; q < npointres; q++)
-    skymap_crit_val[q] = find_critical_value(healpix_skymap[q]);
+    skymap_crit_val[q] = find_critical_value(q);
 }
 
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
