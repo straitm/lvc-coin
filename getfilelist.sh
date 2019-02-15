@@ -136,6 +136,8 @@ else
   done
 fi
 
+setup_fnal_security
+
 for i in {0..4}; do
   def=$defbase-${triggers[i]}
   if ! samweb list-definitions | grep -qE "^$def$"; then
@@ -143,6 +145,11 @@ for i in {0..4}; do
   fi
   cachedpercent=$(cache_state.py -d $def | tee /dev/stderr | \
     awk '/Cached:/{split($3, n, "("); print n[2]*1;}')
+
+  if ! [ $cachedpercent ]; then
+    echo Could not see how many files were cached
+    continue
+  fi
 
   if [ "$cachedpercent" -lt 100 ]; then
     echo Not all files are cached.  Caching...
