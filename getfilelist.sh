@@ -77,7 +77,7 @@ havealldefs()
 }
 
 if havealldefs; then
-  echo Have all SAM definitions already
+  echo Have all SAM definitions already.  Doing no queries.
 else
   if ! [ -e allfiles.$t ]; then
     # I want a 1000 second window, but also add a 50 second buffer on each
@@ -143,8 +143,13 @@ for i in {0..4}; do
   if ! samweb list-definitions | grep -qE "^$def$"; then
     continue
   fi
+
+  # If there's only one file in the set, it says CACHED or NOT
+  # CACHED.  Otherwise it says "Cached:" and gives a percent.
   cachedpercent=$(cache_state.py -d $def | tee /dev/stderr | \
-    awk '/Cached:/{split($3, n, "("); print n[2]*1;}')
+    awk '/^CACHED$/  {print 100;}\
+         /NOT CACHED/{print 0;}\
+         /Cached:/   {split($3, n, "("); print n[2]*1;}')
 
   if ! [ $cachedpercent ]; then
     echo Could not see how many files were cached

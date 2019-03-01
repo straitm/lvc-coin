@@ -24,6 +24,8 @@ shift
 
 export TZ=UTC
 rfctime=$(date "+%Y-%m-%dT%H:%M:%SZ" -d @$unixtime)
+
+# CHANGE THIS to the appropriate skymap
 skymap=/nova/ana/users/mstrait/skymaps/LALInference_skymap-GW170817.fits
 
 if [ $? -ne 0 ]; then
