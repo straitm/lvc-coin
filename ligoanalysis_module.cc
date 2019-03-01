@@ -292,7 +292,7 @@ static bool delta_and_length(int64_t & event_length_tdc,
 /*********************************************************************/
 
 // Count of triggers, with no examination of the data within
-static ligohist lh_rawtrigger("rawtrigger", false);
+static ligohist lh_rawtrigger("rawtrigger", true);
 
 // Number of hits, with no filtering of any sort
 static ligohist lh_rawhits("rawhits", true);
@@ -796,7 +796,11 @@ static int which_slice_is_this_track_in(
 // Put put raw triggers into a histogram
 static void count_triggers(const art::Event & evt)
 {
-  THplusequals(lh_rawtrigger, timebin(evt), 1, 1);
+  const double rawtime = rawlivetime(evt);
+
+  // rawtime doesn't make sense for counting, e.g. DDEnergy triggers, but it is
+  // a useful diagonistic for seeing if we're within a long SNEWS/LIGO trigger.
+  THplusequals(lh_rawtrigger, timebin(evt), 1, rawtime);
 }
 
 static void count_ddenergy(const art::Event & evt)
