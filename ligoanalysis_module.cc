@@ -516,6 +516,9 @@ static double find_critical_value(const int q)
 
 void ligoanalysis::beginJob()
 {
+  if(fAnalysisClass == JustTrigger ||
+     fAnalysisClass == MeV) return;
+
   if(fSkyMap == "") return;
 
   for(unsigned int q = 0; q < npointres; q++){
