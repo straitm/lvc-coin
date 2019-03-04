@@ -10,8 +10,7 @@
 #include "CelestialLocator.fcl"
 #include "UpMuAnalysis.fcl"
 
-process_name: ligoFTW
-
+process_name: ligoupmu
 services:
 {
   TFileService: { fileName: "histos.root" }

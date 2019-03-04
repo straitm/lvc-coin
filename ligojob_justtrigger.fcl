@@ -3,7 +3,7 @@
 #include "RemoveBeamSpills.fcl"
 #include "services.fcl"
 
-process_name: ligoFTW
+process_name: ligojusttrigger
 
 services:
 {

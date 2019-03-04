@@ -10,7 +10,7 @@
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
-process_name: ligoFTW
+process_name: ligolivetime
 
 services:
 {

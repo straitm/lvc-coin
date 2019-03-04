@@ -2,7 +2,7 @@
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
-process_name: ligoFTWnoreco
+process_name: ligolivetimenoreco
 
 services:
 {

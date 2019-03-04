@@ -1,7 +1,7 @@
 #include "ligoanalysis.fcl"
 #include "services.fcl"
 
-process_name: ligoFTWnoreco
+process_name: ligoupmunoreco
 
 services:
 {
