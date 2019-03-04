@@ -24,7 +24,8 @@ unixtime=$1
 shift
 
 export TZ=UTC
-rfctime=$(date "+%Y-%m-%dT%H:%M:%SZ" -d @$unixtime)
+fracsec=$(cut -d. -f 2 <<< $unixtime)
+rfctime=$(date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 
 # CHANGE THIS to the appropriate skymap
 # TODO: should be a command line argument
@@ -51,19 +52,23 @@ if ! [ $1 ]; then
   exit 0
 fi
 
+out=$type.ligohists.root
+
 for f in $@; do
   if ! [ -e "$f" ]; then
     echo $f does not exist > /dev/stderr
     exit 1
   fi
+done
 
-  base=$(basename $f .artdaq.root)
-  reco=$base.ligo.root
+for f in $@; do
+  base=$(basename $(basename $(basename $f .root) .raw) .artdaq)
+  reco=$base.ligo${type}.root
   if echo $type | grep -q noreco; then
     reco=/dev/null
   fi
   log=$base.ligo.$type.log
-  hist=$base.hists.root
+  hist=$base.hists.$type.root
   hists="$hists $hist"
 
   if [ -e $hist ]; then
@@ -79,7 +84,7 @@ for f in $@; do
   echo $SRT_PRIVATE_CONTEXT/ligo/runone.sh $f $fcl $reco $hist $log
 done | ~mstrait/bin/parallel -j 3 --line-buffer
 
-out=$type.ligohists.root
-
-hadd -f $out $hists
-echo Full histograms in $out
+if [ $? -eq 0 ]; then
+  hadd -f $out $hists
+  echo Full histograms in $out
+fi
