@@ -1386,11 +1386,11 @@ static void count_mev(art::Event & evt)
   count_unsliced_hit_pairs(evt);
 }
 
-// TODO Somehow deal with overlapping triggers?  I found a case where a NuMI
+// XXX Somehow deal with overlapping triggers!  I found a case where a NuMI
 // spill caused three overlapping ddactivity1 triggers, each offset slightly.
 // And I noticed it because RemoveBeamSpills fails to remove it.  Ideally, I'd
 // drop all the hits that were seen before and only reconstruct the new ones,
-// but that is non-trivial.
+// but that is non-trivial.  Also a problem with SNEWS/LIGO triggers.
 void ligoanalysis::produce(art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
