@@ -1,16 +1,17 @@
 #!/bin/bash
 
 if ! [ $1 ]; then
-  echo "$(basename $0) [type] [time] {novaargs} [files]"
+  echo "$(basename $0) [type] [time] [files]"
   echo "  type:  The analysis type, that is, the part of"
   echo "         the name of the fcl between ligojob_ and .fcl"
   echo "  time:  Unix time stamp of the GW event or whatever"
-  echo "  novaargs: optional extra arguments to the nova executable"
-  echo "            must start with a \"-\""
   echo "  files: Any number of art files"
-  echo "         must not start with a \"-\""
   exit 1
 fi
+
+# Should only be needed temporarily
+CET_PLUGIN_PATH+=:$SRT_PRIVATE_CONTEXT/lib/Linux2.6-GCC-maxopt
+export CET_PLUGIN_PATH
 
 type=$1
 shift
@@ -26,6 +27,7 @@ export TZ=UTC
 rfctime=$(date "+%Y-%m-%dT%H:%M:%SZ" -d @$unixtime)
 
 # CHANGE THIS to the appropriate skymap
+# TODO: should be a command line argument
 skymap=/nova/ana/users/mstrait/skymaps/LALInference_skymap-GW170817.fits
 
 if [ $? -ne 0 ]; then
@@ -44,37 +46,38 @@ cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
       \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
       \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $fcl
 
-# Need to fail if nova fails in 'nova | tee'
-set -o pipefail
-
-if [ "${1:0:1}" == - ]; then
-  novaargs="$1"
-  shift
-fi
-
 if ! [ $1 ]; then
-  echo You did not specify any files to processes.  Success\!
+  echo You did not specify any files to processes.  Technical success\!
   exit 0
 fi
 
 for f in $@; do
   if ! [ -e "$f" ]; then
-    echo $f does not exist
+    echo $f does not exist > /dev/stderr
     exit 1
   fi
 
   base=$(basename $f .artdaq.root)
   reco=$base.ligo.root
-  if ! echo $type | grep -q noreco; then
-    recoopt="-o $reco"
+  if echo $type | grep -q noreco; then
+    reco=/dev/null
   fi
   log=$base.ligo.$type.log
   hist=$base.hists.root
   hists="$hists $hist"
-  if ! nova $novaargs $f -c $fcl $recoopt -T $hist 2> /dev/stdout | tee $log; then
-    exit 1
+
+  if [ -e $hist ]; then
+    echo $hist already exists. Skipping $base. Will still include in sum. > /dev/stderr
+    continue
   fi
-done
+
+  if [ -e $log ]; then
+    echo $log already exists. Skipping $base. Will still include in sum. > /dev/stderr
+    continue
+  fi
+
+  echo $SRT_PRIVATE_CONTEXT/ligo/runone.sh $f $fcl $reco $hist $log
+done | ~mstrait/bin/parallel -j 3 --line-buffer
 
 out=$type.ligohists.root
 

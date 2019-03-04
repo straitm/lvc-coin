@@ -44,7 +44,7 @@ fi
 # Change "ddsnews" to "ligo" when ligo files are available
 filepatterns=(
   'neardet.*_ddsnews_.*data.artdaq'
-  'fardet.*_ddsnews_.*data.artdaq'
+  'fardet.*_DDsnews.raw'
   'fardet.*_t02_.*data.artdaq'
   'fardet.*_ddenergy_.*data.artdaq'
   'neardet.*_ddactivity1_.*data.artdaq'
@@ -85,6 +85,14 @@ else
     # events are out of order on the scale of 10 seconds and the metadata
     # variables don't seem to know that.
     #
+    # Also add more time at the end because the Online.SubRun*Time means
+    # the times the triggers were issued, not the time of the data.  Experimentally,
+    # using the 8:30 SNEWS trigger on 2 Feb 2019 as an example, the last
+    # SubRunStartTime was 717 seconds after the trigger time, where there is
+    # about a 1 minute offset between the trigger time and the data time, so
+    # if we could get the trigger as much as 15 minutes after the time it
+    # wants, we need 717 - 60 + 15*60 seconds = 1557s, at least. Round up.
+    #
     # Fantastically slow
     echo Asking SAM for a list of files. This typically takes a
     echo substantial fraction of the age of the universe to complete.
@@ -95,10 +103,10 @@ else
     samweb list-files \
            'Online.SubRunEndTime   > '$((t-550))\
       ' and ( '\
-      ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((t+550))\
+      ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((t+2000))\
       ' ) or '\
       ' ( Online.SubRunStartTime = 0 and Online.RunStartTime > 0 and '\
-      '                                  Online.RunStartTime < '$((t+550))\
+      '                                  Online.RunStartTime < '$((t+2000))\
       ' ) )' \
        > allfiles.$t
   fi
@@ -136,7 +144,7 @@ else
   done
 fi
 
-setup_fnal_security
+setup_fnal_security > /dev/null
 
 for i in {0..4}; do
   def=$defbase-${triggers[i]}
