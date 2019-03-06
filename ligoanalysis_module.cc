@@ -222,6 +222,26 @@ static void init_lh2d(ligohist2d & lh)
 
 /**********************************************************************/
 
+static int trigger(
+  const art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger)
+{
+  if(rawtrigger->empty()) return -1;
+  return (*rawtrigger)[0].fTriggerMask_TriggerType;
+}
+
+static bool goodtriggertype(const int trigger)
+{
+  // See DAQDataFormats/cxx/include/TriggerDefines.h, and note the
+  // off-by-one error between those defines and what appears in files
+
+  // Ignore SNEWS fast beat and LIGO fast beat, because they will
+  // overlap with real SNEWS/LIGO triggers, and slow beat SNEWS/LIGO
+  // and be in the same files.
+  if(trigger+1 == 27) return false;
+  if(trigger+1 == 43) return false;
+  return true;
+}
+
 /*
   Get the length of the event in TDC ticks, typically 550*64, and
   "delta_tdc", the time between the trigger time and the time the event
@@ -1395,6 +1415,12 @@ void ligoanalysis::produce(art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
+
+  {
+    art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+    getrawtrigger(rawtrigger, evt);
+    if(!goodtriggertype(trigger(rawtrigger))) return;
+  }
 
   art::ServiceHandle<geo::Geometry> geo;
   gDet = geo->DetId();
