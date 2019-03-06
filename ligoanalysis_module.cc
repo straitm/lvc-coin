@@ -176,6 +176,38 @@ struct ligohist2d{
   }
 };
 
+// Given the livetime of the event in seconds and the TDC count, return true if
+// this object should be accepted:
+//
+// If the livetime is under 0.005 seconds, then this is not part of a
+// multi-sub-trigger trigger, so there is no risk of overlapping data (not
+// generally true, but true for the files we are choosing to read and the
+// trigger bits we're accepting!), so return true.
+//
+// If the livetime is 0.005 seconds (the maximum possible), then return true if
+// the TDC is non-negative (at a time equal to or greater than the time
+// requested for this sub-trigger) and less than 5000*64, so as to exclude the
+// parts of the first and last microslice that we'll use in the adjacent
+// subtriggers.
+static bool uniquedata_tdc(const double livetime, const int tdc)
+{
+  if(livetime < 0.005) return true;
+  return tdc >= 0 && tdc < 5000 * TDC_PER_US;
+}
+
+// Same as uniquedata_tns but for a floating point time.  This is for deciding
+// whether to keep tracks and clusters, and is necessarily sloppier than hit
+// timing.  But probably slices and tracks are reconstructed exactly the same
+// way most of the time regardless of adjacent microslices, so we should accept
+// them exactly once.  It's probably possible to end up accepting the same track
+// twice (or zero times), though, in unlucky cases.
+__attribute__((unused)) static bool uniquedata_tns(const double livetime,
+                                                   const double tns)
+{
+  if(livetime < 0.005) return true;
+  return tns >= 0 && tns < 5e6;
+}
+
 // Construct the histograms and hook them up with TFileService to be saved
 static void init_lh(ligohist & lh)
 {
@@ -667,7 +699,15 @@ static double rawlivetime(const art::Event & evt)
   if(!delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger))
     return -1;
 
-  return event_length_tdc / TDC_PER_US * 1e-6;
+  const double wholeevent = event_length_tdc / TDC_PER_US * 1e-6;
+
+  // Special case: If this is a 5ms subtrigger of a long trigger,
+  // we are going to ignore the overlapping portions for the usual
+  // case in which we get 0.00505 seconds, so report a livetime of
+  // only the unignored portion.
+  if(wholeevent > 0.005) return 0.005;
+
+  return wholeevent;
 }
 
 // Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
@@ -857,9 +897,16 @@ static void count_hits(const art::Event & evt)
   art::Handle< std::vector<rawdata::RawDigit> > rawhits;
   getrawdigits(rawhits, evt);
 
-  printf("Hits in this event: %lu\n", rawhits->size());
+  const double livetime = rawlivetime(evt);
 
-  THplusequals(lh_rawhits, timebin(evt), rawhits->size(), rawlivetime(evt));
+  unsigned int count = 0;
+  for(unsigned int i = 0; i < rawhits->size(); i++)
+    if(uniquedata_tdc(livetime, (*rawhits)[i].TDC()))
+      count++;
+
+  printf("Hits in this event (accepted): %lu (%u)\n", rawhits->size(), count);
+
+  THplusequals(lh_rawhits, timebin(evt), count, livetime);
 }
 
 // Minimal hit information, distilled from CellHit
@@ -896,6 +943,10 @@ static std::vector<mslice> make_sliceinfo_list(
     slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
     slc.mincelly = (*slice)[i].MinCell(geo::kY);
     slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
+
+    // Take all slices, even if they are outside the 5ms window for
+    // long trigger sub-triggers, because this is a list of things to
+    // *exclude*.
     sliceinfo.push_back(slc);
   }
   return sliceinfo;
@@ -904,7 +955,8 @@ static std::vector<mslice> make_sliceinfo_list(
 // Helper function for count_unsliced_hit_pairs().  Selects hits that
 // are candidates to be put into hit pairs.
 static std::vector<mhit> select_hits_for_mev_search(
-  const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo)
+  const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
+  const double livetime)
 {
   art::ServiceHandle<geo::Geometry> geo;
 
@@ -912,6 +964,8 @@ static std::vector<mhit> select_hits_for_mev_search(
 
 
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
+    if(!uniquedata_tdc(livetime, noiseslice.Cell(i)->TDC())) continue;
+
     const float fd_low_adc =  85, fd_high_adc =  600;
     const float nd_low_adc = 107, nd_high_adc = 2500;
 
@@ -1021,13 +1075,16 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
     return;
   }
 
+  const double livetime = rawlivetime(evt);
+
   // Make list of all times and locations of "physics" slices. Exclude
   // other hits near them in time to drop Michels & maybe also neutrons.
   const std::vector<mslice> sliceinfo = make_sliceinfo_list(slice);
 
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
-  std::vector<mhit> mhits = select_hits_for_mev_search((*slice)[0], sliceinfo);
+  std::vector<mhit> mhits =
+    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime);
 
   // Intentionally bigger than optimum value suggested by MC (150ns FD,
   // 10ns(!) ND) because we know that the data has a bigger time spread
@@ -1055,7 +1112,7 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
       hitpairs++;
 
       THplusequals2d(lh_unsliced_hit_pairs_plane, timebin(evt), mhits[i].plane,
-                     1, rawlivetime(evt));
+                     1, livetime);
 
       #ifdef PRINTCELL
         const int eveni = j%2 == 0?j:i,
@@ -1077,8 +1134,7 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
 
   printf("Big hit pairs in the noise slice: %u\n", hitpairs);
 
-  THplusequals(lh_unsliced_hit_pairs, timebin(evt), hitpairs,
-               rawlivetime(evt));
+  THplusequals(lh_unsliced_hit_pairs, timebin(evt), hitpairs, livetime);
 }
 
 static void count_unsliced_big_hits(const art::Event & evt)
@@ -1097,25 +1153,17 @@ static void count_unsliced_big_hits(const art::Event & evt)
 
   unsigned int bighits = 0;
 
-//#define PRINTPE
+  const double livetime = rawlivetime(evt);
 
   for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
-    bighits += (*slice)[0].Cell(i)->PE() > bighit_threshold;
-#ifdef PRINTPE
-    printf("unslicedPE: %f\n", (*slice)[0].Cell(i)->PE());
-#endif
-  }
+    if(!uniquedata_tdc(livetime, (*slice)[0].Cell(i)->TDC())) continue;
 
-#ifdef PRINTPE
-  for(unsigned int j = 1; j < slice->size(); j++)
-    for(unsigned int i = 0; i < (*slice)[i].NCell(); i++)
-      printf("slicedPE: %f\n", (*slice)[i].Cell(i)->PE());
-#endif
+    bighits += (*slice)[0].Cell(i)->PE() > bighit_threshold;
+  }
 
   printf("Big hits in this event in the noise slice: %u\n", bighits);
 
-  THplusequals(lh_unsliced_big_hits, timebin(evt), bighits,
-               rawlivetime(evt));
+  THplusequals(lh_unsliced_big_hits, timebin(evt), bighits, livetime);
 }
 
 // Counts hits in the noise slices and adds the results to the output histograms
@@ -1133,11 +1181,18 @@ static void count_unslice4dd_hits(const art::Event & evt)
     return;
   }
 
-  printf("Hits in this event in the Slicer4D noise slice: %d\n",
-         (*slice)[0].NCell());
+  unsigned int count = 0;
 
-  THplusequals(lh_unslice4ddhits, timebin(evt), (*slice)[0].NCell(),
-              rawlivetime(evt));
+  const double livetime = rawlivetime(evt);
+
+  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++)
+    if(uniquedata_tdc(livetime, (*slice)[0].Cell(i)->TDC()))
+      count++;
+
+  printf("Hits in this event in the Slicer4D noise slice (accepted): %d (%u)\n",
+         (*slice)[0].NCell(), count);
+
+  THplusequals(lh_unslice4ddhits, timebin(evt), count, livetime);
 }
 
 // Passes back the {ra, dec} of a track direction given an event and that direction.
@@ -1190,11 +1245,19 @@ static void count_upmu(const art::Event & evt)
     _exit(1);
   }
 
-  THplusequals(lh_upmu_tracks, timebin(evt),
-               upmu->size(), rawlivetime(evt));
+  const double livetime = rawlivetime(evt);
+
+  unsigned int upmucount = 0;
+  for(unsigned int i = 0; i < upmu->size(); i++)
+    if(uniquedata_tns(livetime, (*upmu)[i].MeanTNS()))
+      upmucount++;
+
+  THplusequals(lh_upmu_tracks, timebin(evt), upmucount, livetime);
 
   int npoint[npointres] = { 0 };
   for(unsigned int i = 0; i < upmu->size(); i++){
+    if(!uniquedata_tns(livetime, (*upmu)[i].MeanTNS())) continue;
+
     if(healpix_skymap[0] == NULL) continue;
 
     // upmu tracks can still point the wrong way even though they have
@@ -1242,8 +1305,13 @@ static void count_tracks_containedslices(const art::Event & evt)
   const int timbin = timebin(evt);
   const double livetime = rawlivetime(evt);
 
-  printf("Tracks in this event: %lu\n", tracks->size());
-  THplusequals(lh_tracks, timbin, tracks->size(), livetime);
+  unsigned int counttracks = 0;
+  for(unsigned int i = 0; i < tracks->size(); i++)
+    if(uniquedata_tns(livetime, (*tracks)[i].MeanTNS()))
+      counttracks++;
+
+  printf("Tracks in this event: %u\n", counttracks);
+  THplusequals(lh_tracks, timbin, counttracks, livetime);
 
   // Count tracks with either a contained start or end, but not if they are
   // very steep in x or y, since those probably aren't really contained and may
@@ -1260,6 +1328,8 @@ static void count_tracks_containedslices(const art::Event & evt)
   for(unsigned int i = 0; i < slice->size(); i++){
     if(!(*slice)[i].NCell(geo::kX) || !(*slice)[i].NCell(geo::kY))
       continue;
+
+    if(!uniquedata_tns(livetime, (*slice)[i].MeanTNS())) continue;
 
     if(!contained((*slice)[i].MinXYZ()) ||
        !contained((*slice)[i].MaxXYZ())) continue;
@@ -1298,6 +1368,8 @@ static void count_tracks_containedslices(const art::Event & evt)
   std::vector<bool> track_point[npointres];
 
   for(unsigned int i = 0; i < tracks->size(); i++){
+    if(!uniquedata_tns(livetime, (*tracks)[i].MeanTNS())) continue;
+
     trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice);
     if(un_contained_track((*tracks)[i]))
       slices_with_uc_tracks.insert(trk_slices[i]);
@@ -1335,6 +1407,8 @@ static void count_tracks_containedslices(const art::Event & evt)
                 slices_with_fc_tracks_point[npointres];
 
   for(unsigned int i = 0; i < tracks->size(); i++){
+    if(!uniquedata_tns(livetime, (*tracks)[i].MeanTNS())) continue;
+
     // Exclude 2D tracks
     if((*tracks)[i].Stop().X() == 0 || (*tracks)[i].Stop().Y() == 0) continue;
 
@@ -1406,11 +1480,9 @@ static void count_mev(art::Event & evt)
   count_unsliced_hit_pairs(evt);
 }
 
-// XXX Somehow deal with overlapping triggers!  I found a case where a NuMI
-// spill caused three overlapping ddactivity1 triggers, each offset slightly.
-// And I noticed it because RemoveBeamSpills fails to remove it.  Ideally, I'd
-// drop all the hits that were seen before and only reconstruct the new ones,
-// but that is non-trivial.  Also a problem with SNEWS/LIGO triggers.
+// XXX Deal with generic overlapping triggers (i.e. other than long readouts),
+// notably ddactivity1.  Ideally, I'd drop all the hits that were seen before
+// and only reconstruct the new ones, but that is non-trivial.
 void ligoanalysis::produce(art::Event & evt)
 {
   // Must be called on every event to prevent SIGPIPE loops.
