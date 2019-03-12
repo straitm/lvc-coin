@@ -683,6 +683,10 @@ static double rawlivetime(const art::Event & evt)
 
   art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
+  if(flatdaq.failedToGet()){
+    fprintf(stderr, "Unexpectedly failed to get flatdaq, returning -1\n");
+    return -1;
+  }
 
   if(rawtrigger->empty()) return -1;
 
@@ -1501,7 +1505,6 @@ void ligoanalysis::produce(art::Event & evt)
 
   switch(fAnalysisClass){
     case NDactivity:
-      count_triggers(evt);
       count_tracks_containedslices(evt);
       break;
     case DDenergy:
