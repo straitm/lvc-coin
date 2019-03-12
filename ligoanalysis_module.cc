@@ -74,8 +74,8 @@ static long long window_size_s = 1000;
 static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
-enum analysis_class_t { NDactivity, LiveTime, UpMu, DDenergy,
-                        JustTrigger, MeV, MAX_ANALYSIS_CLASS };
+enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND, 
+                        MAX_ANALYSIS_CLASS };
 
 class ligoanalysis : public art::EDProducer {
   public:
@@ -568,8 +568,7 @@ static double find_critical_value(const int q)
 
 void ligoanalysis::beginJob()
 {
-  if(fAnalysisClass == JustTrigger ||
-     fAnalysisClass == MeV) return;
+  if(fAnalysisClass == DDenergy) return;
 
   if(fSkyMap == "") return;
 
@@ -597,11 +596,9 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   const std::string analysis_class_string(pset.get<std::string>("AnalysisClass"));
 
   if     (analysis_class_string == "NDactivity") fAnalysisClass = NDactivity;
-  else if(analysis_class_string == "LiveTime")   fAnalysisClass = LiveTime;
-  else if(analysis_class_string == "UpMu")       fAnalysisClass = UpMu;
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
-  else if(analysis_class_string == "JustTrigger")fAnalysisClass = JustTrigger;
-  else if(analysis_class_string == "MeV")        fAnalysisClass = MeV;
+  else if(analysis_class_string == "MinBiasFD")  fAnalysisClass = MinBiasFD;
+  else if(analysis_class_string == "MinBiasND")  fAnalysisClass = MinBiasND;
   else{
     fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
             "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
@@ -613,20 +610,6 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
 
   switch(fAnalysisClass){
     case NDactivity:
-      init_lh(lh_rawtrigger);
-      init_track_and_contained_hists();
-      break;
-    case JustTrigger:
-      init_lh(lh_rawtrigger);
-      break;
-    case UpMu:
-      init_lh(lh_upmu_tracks);
-      for(unsigned int q = 0; q < npointres; q++)
-        init_lh_name_live(lh_upmu_tracks_point[q],
-                          Form("upmu_tracks_point_%d",q), false);
-      break;
-    case LiveTime:
-      init_mev_hists();
       init_track_and_contained_hists();
       break;
     case DDenergy:
@@ -636,8 +619,17 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_ddenergy_lopertime);
       init_lh(lh_ddenergy_hipertime);
       break;
-    case MeV:
+    case MinBiasFD:
       init_mev_hists();
+      init_track_and_contained_hists();
+      init_lh(lh_upmu_tracks);
+      for(unsigned int q = 0; q < npointres; q++)
+        init_lh_name_live(lh_upmu_tracks_point[q],
+                          Form("upmu_tracks_point_%d",q), false);
+      break;
+    case MinBiasND:
+      init_mev_hists();
+      init_track_and_contained_hists();
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
@@ -737,6 +729,9 @@ static void THplusequals2d(ligohist2d & lh, const int timebin,
 
 // Return the bin number for this event, i.e. the number of seconds from the
 // beginning of the window, plus 1.
+//
+// XXX This does not handle an event overlapping a bin boundary. Does
+// this matter?
 static int timebin(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
@@ -1505,22 +1500,18 @@ void ligoanalysis::produce(art::Event & evt)
       count_triggers(evt);
       count_tracks_containedslices(evt);
       break;
-    case JustTrigger:
-      count_triggers(evt);
-      break;
-    case UpMu:
-      count_upmu(evt);
-      break;
-    case LiveTime:
-      count_mev(evt);
-      count_tracks_containedslices(evt);
-      break;
     case DDenergy:
       count_triggers(evt);
       count_ddenergy(evt);
       break;
-    case MeV:
+    case MinBiasFD:
       count_mev(evt);
+      count_tracks_containedslices(evt);
+      count_upmu(evt);
+      break;
+    case MinBiasND:
+      count_mev(evt);
+      count_tracks_containedslices(evt);
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
