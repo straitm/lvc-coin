@@ -1363,7 +1363,11 @@ static void count_tracks_containedslices(const art::Event & evt)
   std::vector<bool> track_point[npointres];
 
   for(unsigned int i = 0; i < tracks->size(); i++){
-    if(!uniquedata_tns(livetime, (*tracks)[i].MeanTNS())) continue;
+    if(!uniquedata_tns(livetime, (*tracks)[i].MeanTNS())){
+      for(unsigned int q = 0; q < npointres; q++)
+        track_point[q].push_back(false);
+      continue;
+    }
 
     trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice);
     if(un_contained_track((*tracks)[i]))
