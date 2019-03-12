@@ -8,6 +8,7 @@
 #include "BreakPoint.fcl"
 #include "RemoveBeamSpills.fcl"
 #include "services.fcl"
+#include "CelestialLocator.fcl"
 
 process_name: ligondactivity
 
@@ -17,6 +18,7 @@ services:
   scheduler:    { wantTracer: false wantSummary: true }
   message:      @local::standard_out
   @table::standard_services
+  CelestialLocator:    @local::standard_celestial
 }
 
 # Cargo-culting this line.  Ok, not entirely cargo-culting, because I
