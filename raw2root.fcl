@@ -1,3 +1,5 @@
+#include "services.fcl"
+
 process_name: raw2root
 
 services.TimeTracker: { }

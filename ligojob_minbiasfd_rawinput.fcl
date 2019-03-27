@@ -17,13 +17,11 @@
 
 process_name: ligominbiasfd
 
-services.TimeTracker: { }
-services.scheduler.wantSummary: true
-
 services:
 {
   TFileService: { fileName: "histos.root" }
   scheduler:    { wantTracer: false wantSummary: true }
+  TimeTracker:  { printSummary: true }
   message:      @local::standard_out
   @table::standard_services
   CelestialLocator:    @local::standard_celestial
