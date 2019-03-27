@@ -1,0 +1,36 @@
+process_name: raw2root
+
+services.TimeTracker: { }
+services.scheduler.wantSummary: true
+
+services:
+{
+  scheduler:    { wantTracer: false wantSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+}
+
+source:
+{
+  module_type: NOvARawInputSource
+  DoFillFlatDAQData: true
+  FilterCorruptedNanoslices: true
+}
+
+physics:
+{
+  reco: []
+
+ stream1: [ out1 ]
+
+ end_paths: [ stream1 ]
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fileName:    "ligo.root"
+  }
+}

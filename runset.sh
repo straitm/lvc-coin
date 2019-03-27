@@ -10,7 +10,7 @@ if ! [ $1 ]; then
 fi
 
 # Should only be needed temporarily
-CET_PLUGIN_PATH+=:$SRT_PRIVATE_CONTEXT/lib/Linux2.6-GCC-maxopt
+CET_PLUGIN_PATH+=:$SRT_PRIVATE_CONTEXT/lib/$SRT_SUBDIR
 export CET_PLUGIN_PATH
 
 type=$1

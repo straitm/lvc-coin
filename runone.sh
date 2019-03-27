@@ -11,6 +11,6 @@ hist=$4
 log=$5
 
 if ! nova $infile -c $fcl -o $reco -T $hist 2> /dev/stdout | tee $log; then
-  printf failed to process $infile
+  echo failed to process $infile
   exit 1
 fi
