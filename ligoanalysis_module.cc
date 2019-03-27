@@ -1065,12 +1065,12 @@ static void count_unsliced_hit_pairs(const art::Event & evt)
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
   if(slice.failedToGet()){
-    printf("Unexpected lack of slicer product!\n");
+    fprintf(stderr, "Unexpected lack of slicer product!\n");
     return;
   }
 
   if(slice->empty()){
-    printf("Unexpected event with zero slices!\n");
+    fprintf(stderr, "Unexpected event with zero slices!\n");
     return;
   }
 
@@ -1141,12 +1141,12 @@ static void count_unsliced_big_hits(const art::Event & evt)
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
   if(slice.failedToGet()){
-    printf("Unexpected lack of slicer product\n");
+    fprintf(stderr, "Unexpected lack of slicer product\n");
     return;
   }
 
   if(slice->empty()){
-    printf("Unexpected event with zero slices!\n");
+    fprintf(stderr, "Unexpected event with zero slices!\n");
     return;
   }
 
@@ -1171,12 +1171,12 @@ static void count_unslice4dd_hits(const art::Event & evt)
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
   if(slice.failedToGet()){
-    printf("Unexpected lack of slicer product!\n");
+    fprintf(stderr, "Unexpected lack of slicer product!\n");
     return;
   }
 
   if(slice->empty()){
-    printf("Unexpected event with zero slices!\n");
+    fprintf(stderr, "Unexpected event with zero slices!\n");
     return;
   }
 
@@ -1240,8 +1240,8 @@ static void count_upmu(const art::Event & evt)
 
   evt.getByLabel("upmuanalysis", upmu);
   if(upmu.failedToGet()){
-    printf("No UpMu product to read\n");
-    _exit(1);
+    fprintf(stderr, "No UpMu product to read\n");
+    return;
   }
 
   const double livetime = rawlivetime(evt);
@@ -1290,14 +1290,14 @@ static void count_tracks_containedslices(const art::Event & evt)
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
   if(slice.failedToGet()){
-    printf("Unexpected lack of slicer product!\n");
+    fprintf(stderr, "Unexpected lack of slicer product!\n");
     return;
   }
 
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("breakpoint", tracks);
   if(tracks.failedToGet()){
-    printf("Unexpected lack of breakpoint product!\n");
+    fprintf(stderr, "Unexpected lack of breakpoint product!\n");
     return;
   }
 
@@ -1473,6 +1473,7 @@ static void count_tracks_containedslices(const art::Event & evt)
     THplusequals(lh_fullycontained_tracks_point[q], timbin,
                  slices_with_fc_tracks_point[q].size(), livetime);
   }
+  fflush(stdout);
 }
 
 static void count_mev(art::Event & evt)
