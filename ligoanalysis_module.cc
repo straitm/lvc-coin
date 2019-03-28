@@ -1251,6 +1251,8 @@ static void count_upmu(const art::Event & evt)
     if(uniquedata_tns(livetime, (*upmu)[i].MeanTNS()))
       upmucount++;
 
+  printf("Up-mu tracks: %d\n", upmucount);
+
   THplusequals(lh_upmu_tracks, timebin(evt), upmucount, livetime);
 
   int npoint[npointres] = { 0 };
