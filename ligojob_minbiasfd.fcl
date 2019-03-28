@@ -13,7 +13,7 @@
 
 # For up-mu
 #include "CosmicTrack.fcl"
-#include "UpMuAnalysis.fcl"
+#include "MattUpMuAnalysis.fcl"
 
 process_name: ligominbiasfd
 
@@ -67,18 +67,29 @@ physics:
     fuzzykvertex: @local::standard_fuzzykvertex
     breakpoint: @local::thisone_breakpoint_here
     windowtrack: @local::window_cosmictrack
-    upmuanalysis: @local::standard_upmuanalysis
     ligoanalysis: @local::this_here_ligoanalysis
+    upmuanalysis: @local::standard_matt_upmuanalysis
   }
 
-  reco: [ removebeam, ligofilter,
-          calhit,
-          slicer,
-          multihough, # for breakpoint
-          elasticarmshs, # for breakpoint
-          fuzzykvertex, # for breakpoint
-          breakpoint,
-          ligoanalysis ]
+  reco: [ #removebeam,
+          ligofilter
+          ,
+          calhit
+          ,
+          slicer
+          ,
+          multihough
+                    , # for breakpoint
+          elasticarmshs
+                    , # for breakpoint
+          fuzzykvertex
+                    , # for breakpoint
+          breakpoint
+                    ,
+          windowtrack, upmuanalysis
+                     ,
+          ligoanalysis
+          ]
 
  stream1: [ out1 ]
 

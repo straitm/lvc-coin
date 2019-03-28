@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////
-// Class:       UpMuAnalysis
+// Class:       MattUpMuAnalysis
 // Module Type: producer
-// File:        UpMuAnalysis_module.cc
+// File:        MattUpMuAnalysis_module.cc
 //
 // Generated at Mon May 16 20:16:31 2016 by Aristeidis Tsaris using artmod
 // from cetpkgsupport v1_08_07.
@@ -32,7 +32,7 @@
 #include "TH1.h"
 
 namespace upmuana {
-  class UpMuAnalysis;
+  class MattUpMuAnalysis;
 
   inline double getErr(double PE) {
     return 165143/(1882.9+pow(PE,2.11447)) + 10.4321;
@@ -59,9 +59,9 @@ namespace upmuana {
   }
 }
 
-class upmuana::UpMuAnalysis : public art::EDProducer {
+class upmuana::MattUpMuAnalysis : public art::EDProducer {
 public:
-  explicit UpMuAnalysis(fhicl::ParameterSet const & p);
+  explicit MattUpMuAnalysis(fhicl::ParameterSet const & p);
   void produce(art::Event & e) override;
   void beginJob() override;
 
@@ -101,7 +101,7 @@ private:
   TNtuple* ntp_track;
 };
 
-upmuana::UpMuAnalysis::UpMuAnalysis(fhicl::ParameterSet const & p)
+upmuana::MattUpMuAnalysis::MattUpMuAnalysis(fhicl::ParameterSet const & p)
   :
   EDProducer()
   , trackTag_(p.get<std::string>("trackInputTag"))
@@ -112,14 +112,14 @@ upmuana::UpMuAnalysis::UpMuAnalysis(fhicl::ParameterSet const & p)
   produces< std::vector<rb::Track> >();
 }
 
-void upmuana::UpMuAnalysis::beginJob()
+void upmuana::MattUpMuAnalysis::beginJob()
 {
   // Implementation of optional member function here.
   art::ServiceHandle<art::TFileService> tfs;
   ntp_track = tfs->make<TNtuple>( "ntp_track", "Track Ntuple", "Run:SubRun:Event:SliceID:TrackID:Nhits:NRecohits:NOutliers:ProbUp:ProbDn:LLR:Chi2:Slope:LLRX:Chi2X:SlopeX:LLRY:Chi2Y:SlopeY:R2X:R2Y:StartX:StartY:StartZ:StartT:EndX:EndY:EndZ:EndT:TrackHitsX:TrackHitsY:Length:dirX:dirY:dirZ:eleAngle:totalE:containment:avgTX:avgTY:totalMSlices:SunZen:SunAzi:CosTheta:Azimuth:dotSun:zen_trk:azi_trk:event_time:chi2X_fit:chi2Y_fit:trackX_fromfit:trackY_fromfit:trackX_fromfit_slice:trackY_fromfit_slice");
 }
 
-void upmuana::UpMuAnalysis::produce(art::Event & e)
+void upmuana::MattUpMuAnalysis::produce(art::Event & e)
 {
   // Get all slices
   art::Handle< std::vector<rb::Cluster > > slicecol;
@@ -431,7 +431,7 @@ void upmuana::UpMuAnalysis::produce(art::Event & e)
 }
 
 // Creates unit vector pointing to a point on unit sphere with theta=zen, phi = azi
-TVector3 upmuana::UpMuAnalysis::AnglesToVector(double zen, double azi) const
+TVector3 upmuana::MattUpMuAnalysis::AnglesToVector(double zen, double azi) const
 {
   zen *= M_PI / 180;
   azi *= M_PI / 180;
@@ -439,7 +439,7 @@ TVector3 upmuana::UpMuAnalysis::AnglesToVector(double zen, double azi) const
   return TVector3(sin(zen)*cos(azi), sin(zen)*sin(azi), cos(zen));
 }
 
-float upmuana::UpMuAnalysis::containmentType(rb::Track theTrack)
+float upmuana::MattUpMuAnalysis::containmentType(rb::Track theTrack)
 {
   TVector3 start = theTrack.Start();
   TVector3 stop  = theTrack.Stop();
@@ -464,7 +464,7 @@ float upmuana::UpMuAnalysis::containmentType(rb::Track theTrack)
 
 }
 
-double upmuana::UpMuAnalysis::getLLR(std::set< std::pair<rb::CellHit,rb::RecoHit>,
+double upmuana::MattUpMuAnalysis::getLLR(std::set< std::pair<rb::CellHit,rb::RecoHit>,
 				    bool(*)(std::pair<rb::CellHit,rb::RecoHit>,
 					    std::pair<rb::CellHit,rb::RecoHit>)>
 				    sortedHits,
@@ -515,7 +515,7 @@ double upmuana::UpMuAnalysis::getLLR(std::set< std::pair<rb::CellHit,rb::RecoHit
   return log(P_up/P_dn);
 }
 
-void upmuana::UpMuAnalysis::LLR(std::vector<double>& eT,
+void upmuana::MattUpMuAnalysis::LLR(std::vector<double>& eT,
                                std::vector<double>& mT,
                                std::vector<double>& wgts, double& slope,
                                double& chi2, double& P_up, double& P_dn,
@@ -607,7 +607,7 @@ void upmuana::UpMuAnalysis::LLR(std::vector<double>& eT,
   P_dn = prob_dn;
 }
 
-void upmuana::UpMuAnalysis::LinFit(const std::vector<double>& x_val, const std::vector<double>& y_val, double *fitpar){
+void upmuana::MattUpMuAnalysis::LinFit(const std::vector<double>& x_val, const std::vector<double>& y_val, double *fitpar){
 
   const auto n    = x_val.size();
   const auto x  = (std::accumulate(x_val.begin(), x_val.end(), 0.0))/n;                       // <x>
@@ -624,7 +624,7 @@ void upmuana::UpMuAnalysis::LinFit(const std::vector<double>& x_val, const std::
   fitpar[2] = r*r;
 }
 
-void upmuana::UpMuAnalysis::LinFit(const std::vector<double>& x_val, const std::vector<double>& y_val, const std::vector<double>& y_err, double *fitpar){
+void upmuana::MattUpMuAnalysis::LinFit(const std::vector<double>& x_val, const std::vector<double>& y_val, const std::vector<double>& y_err, double *fitpar){
 
   int n    = x_val.size();
   double x = 0;
@@ -652,4 +652,4 @@ void upmuana::UpMuAnalysis::LinFit(const std::vector<double>& x_val, const std::
   fitpar[2] = r*r;
 }
 
-DEFINE_ART_MODULE(upmuana::UpMuAnalysis)
+DEFINE_ART_MODULE(upmuana::MattUpMuAnalysis)
