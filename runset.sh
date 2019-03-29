@@ -23,13 +23,13 @@ fi
 unixtime=$1
 shift
 
-export TZ=UTC
-fracsec=$(cut -d. -f 2 <<< $unixtime)
-rfctime=$(date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
-
 # CHANGE THIS to the appropriate skymap
 # TODO: should be a command line argument
 skymap=/nova/ana/users/mstrait/skymaps/LALInference_skymap-GW170817.fits
+
+export TZ=UTC
+fracsec=$(cut -d. -f 2 <<< $unixtime)
+rfctime=$(date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 
 if [ $? -ne 0 ]; then
   exit 1

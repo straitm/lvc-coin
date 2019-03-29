@@ -76,6 +76,8 @@ havealldefs()
   return $need
 }
 
+setup_fnal_security &> /dev/null
+
 if havealldefs; then
   echo Have all SAM definitions already.  Doing no queries.
 else
@@ -143,8 +145,6 @@ else
     fi
   done
 fi
-
-setup_fnal_security > /dev/null
 
 for i in {0..4}; do
   def=$defbase-${triggers[i]}
