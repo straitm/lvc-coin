@@ -398,7 +398,7 @@ static ligohist lh_fullycontained_tracks("fullycontained_tracks", true);
 static ligohist lh_fullycontained_tracks_point[npointres];
 
 // Number of tracks that pass the Upmu analysis
-static ligohist lh_upmu_tracks("upmu_tracks", false);
+static ligohist lh_upmu_tracks("upmu_tracks", true);
 static ligohist lh_upmu_tracks_point[2];
 
 /*********************************************************************/
