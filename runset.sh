@@ -35,17 +35,11 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-fcl=ligojob_$type.$rfctime.fcl
-
-if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
-  echo Analysis type $type not supported
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $unixtime $skymap; then
   exit 1
 fi
 
-cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
-  sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $fcl
+fcl=ligojob_$type.$rfctime.fcl
 
 if ! [ $1 ]; then
   echo You did not specify any files to processes.  Technical success\!
@@ -68,7 +62,7 @@ for f in $@; do
     reco=/dev/null
   fi
   log=$base.ligo.$type.log
-  hist=$base.hists.$type.root
+  hist=$base.hists.root
   hists="$hists $hist"
 
   if [ -e $hist ]; then
