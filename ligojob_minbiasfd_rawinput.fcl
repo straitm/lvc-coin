@@ -13,7 +13,7 @@
 
 # For up-mu
 #include "CosmicTrack.fcl"
-#include "UpMuAnalysis.fcl"
+#include "MattUpMuAnalysis.fcl"
 
 process_name: ligominbiasfd
 
@@ -40,6 +40,7 @@ source:
   DoFillFlatDAQData: true
   FilterCorruptedNanoslices: true
 }
+
 
 thisone_breakpoint_here: @local::standard_breakpoint
 thisone_breakpoint_here.FitAsPion: false
@@ -69,22 +70,28 @@ physics:
     breakpoint: @local::thisone_breakpoint_here
     windowtrack: @local::window_cosmictrack
     ligoanalysis: @local::this_here_ligoanalysis
+    upmuanalysis: @local::standard_matt_upmuanalysis
   }
 
-  analyzers:
-  {
-    upmuanalysis: @local::standard_upmuanalysis
-  }
-
-  reco: [ removebeam, ligofilter,
-          calhit,
-          slicer,
-          multihough, # for breakpoint
-          elasticarmshs, # for breakpoint
-          fuzzykvertex, # for breakpoint
-          breakpoint,
-          # upmuanalysis, XXX broken
-          ligoanalysis ]
+  reco: [ #removebeam,
+          ligofilter
+          ,
+          calhit
+          ,
+          slicer
+          ,
+          multihough
+                    , # for breakpoint
+          elasticarmshs
+                    , # for breakpoint
+          fuzzykvertex
+                    , # for breakpoint
+          breakpoint
+                    ,
+          windowtrack, upmuanalysis
+                     ,
+          ligoanalysis
+          ]
 
  stream1: [ out1 ]
 

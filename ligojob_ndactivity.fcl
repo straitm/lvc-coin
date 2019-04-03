@@ -64,7 +64,8 @@ physics:
     ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ removebeam, ligofilter,
+  reco: [ removebeam,
+          ligofilter,
           calhit,
           slicer,
           multihough, # for breakpoint

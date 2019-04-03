@@ -169,3 +169,5 @@ for i in {0..4}; do
     samweb prestage-dataset --defname=$def --parallel 4
   fi
 done
+
+rm -f allfiles.$t selectedfiles.$t

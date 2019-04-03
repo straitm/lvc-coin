@@ -1,27 +1,41 @@
 #!/bin/bash
 
-if [ $# -ne 1 ] && [ $# -ne 2 ]; then
-  echo Syntax: $(basename $0) sam_definition {skymap}
+if [ $# -ne 2 ] && [ $# -ne 3 ] && [ $# -ne 4 ]; then
+  echo Syntax: $(basename $0) unixtime analysis_type {skymap} {def}
+  echo Where analysis_type is fardet-t02, fardet-ddsnews, fardet-ddenergy
+  echo neardet-ddactivity1 or neardet-ddsnews.
   echo I will use a dummy skymap if you dont give one
+  echo Override the definition derived from unixtime with def.
   exit 1
 fi
 
-def=$1
-skymap=$2
+unixtime=$1
+analysis_type_key=$2
 
-unixtime=$(printf $def | cut -d- -f 5)
-analysis_type_key=$(printf $def | cut -d- -f 6-7)
+def=strait-ligo-coincidence-artdaq-${unixtime}-${analysis_type_key}
+skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-GW170817.fits
+if [ $3 ]; then
+  skymap=$3
+fi
+if [ $4 ]; then
+  def=$4
+fi
 
 if [ $analysis_type_key == fardet-t02 ]; then
   type=minbiasfd
+  lifetime=10000
 elif [ $analysis_type_key == fardet-ddsnews ]; then
-  type=minbiasfd
+  type=minbiasfd_rawinput
+  lifetime=86400
 elif [ $analysis_type_key == fardet-ddenergy ]; then
   type=ddenergy
+  lifetime=7200
 elif [ $analysis_type_key == neardet-ddactivity1 ]; then
   type=ndactivity
+  lifetime=7200
 elif [ $analysis_type_key == neardet-ddsnews ]; then
   type=minbiasnd
+  lifetime=7200
 else
   echo I cannot figure out what analysis type to run for $analysis_type_key
   echo which I got from $def
@@ -39,10 +53,15 @@ njobs=$(samweb list-files defname: $def | wc -l)
 tag=$(cat $SRT_PRIVATE_CONTEXT/.base_release)
 testrel=/nova/app/users/mstrait/novasoft-ligo/
 
+outdir=/pnfs/nova/scratch/users/mstrait/ligo/$rfctime-$analysis_type_key
+
+mkdir -p $outdir
+
 # Remember to take out "--test_submission" and/or --nevts and/or set --njobs to
 # $njobs
 
 submit_nova_art.py \
+--inputfile $skymap \
 --opportunistic \
 --maxopt \
 --logs \
@@ -55,5 +74,5 @@ submit_nova_art.py \
 --tag $tag \
 --testrel $testrel \
 --config $fcl \
---dest /pnfs/nova/scratch/users/mstrait/ligo/ \
---expected_lifetime 7200
+--dest $outdir \
+--expected_lifetime $lifetime
