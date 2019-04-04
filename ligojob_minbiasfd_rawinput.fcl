@@ -6,7 +6,7 @@
 #include "ElasticArmsHS.fcl"
 #include "FuzzyKVertex.fcl"
 #include "BreakPoint.fcl"
-#include "RemoveBeamSpills.fcl"
+#include "MattRemoveBeamSpills.fcl"
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
@@ -32,7 +32,7 @@ services:
 # it does.
 services.IFBeam: {}
 
-this_here_removebeam: @local::standard_removebeamspills
+this_here_removebeam: @local::standard_mattremovebeamspills
 
 source:
 {
@@ -73,7 +73,7 @@ physics:
     upmuanalysis: @local::standard_matt_upmuanalysis
   }
 
-  reco: [ #removebeam,
+  reco: [ removebeam,
           ligofilter
           ,
           calhit
