@@ -887,7 +887,7 @@ static void count_ddenergy(const art::Event & evt)
     THplusequals(lh_ddenergy_lopertime, timebin(evt), 1, rawtime);
   if(sumadc/rawtime > 5e11)
     THplusequals(lh_ddenergy_hipertime, timebin(evt), 1, rawtime);
-  if(sumadc/rawtime > 5e11)
+  if(sumadc/rawtime > 5e12)
     THplusequals(lh_ddenergy_vhipertime, timebin(evt), 1, rawtime);
 
   if(sumadc > 5e6)
