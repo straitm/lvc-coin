@@ -114,9 +114,10 @@ upmuana::MattUpMuAnalysis::MattUpMuAnalysis(fhicl::ParameterSet const & p)
 
 void upmuana::MattUpMuAnalysis::beginJob()
 {
-  // Implementation of optional member function here.
+#if NTUPLE
   art::ServiceHandle<art::TFileService> tfs;
   ntp_track = tfs->make<TNtuple>( "ntp_track", "Track Ntuple", "Run:SubRun:Event:SliceID:TrackID:Nhits:NRecohits:NOutliers:ProbUp:ProbDn:LLR:Chi2:Slope:LLRX:Chi2X:SlopeX:LLRY:Chi2Y:SlopeY:R2X:R2Y:StartX:StartY:StartZ:StartT:EndX:EndY:EndZ:EndT:TrackHitsX:TrackHitsY:Length:dirX:dirY:dirZ:eleAngle:totalE:containment:avgTX:avgTY:totalMSlices:SunZen:SunAzi:CosTheta:Azimuth:dotSun:zen_trk:azi_trk:event_time:chi2X_fit:chi2Y_fit:trackX_fromfit:trackY_fromfit:trackX_fromfit_slice:trackY_fromfit_slice");
+#endif
 }
 
 void upmuana::MattUpMuAnalysis::produce(art::Event & e)
@@ -382,7 +383,7 @@ void upmuana::MattUpMuAnalysis::produce(art::Event & e)
 
     const double tdotSun = AnglesToVector(zen, azi).Dot(AnglesToVector(tzen_trk, tazi_trk));
 
-    float track_entries[55] =
+    __attribute__((unused)) float track_entries[55] =
       {
 	(float)e.id().run(), (float)e.id().subRun(), (float)e.id().event(),
 	slice, (float)i_track, (float)trackHits.size(), (float)sortedTrackHits.size(),
@@ -396,7 +397,9 @@ void upmuana::MattUpMuAnalysis::produce(art::Event & e)
 	tCosTheta, tAzimuth, (float)tdotSun, (float)tzen_trk, (float)tazi_trk,
 	(float)event_time, (float)chi2X_fit, (float)chi2Y_fit,(float)trackX_fromfit, (float)trackY_fromfit, (float)trackX_fromfit_slice, (float)trackY_fromfit_slice
       };
+#ifdef NTUPLE
     ntp_track->Fill(track_entries);
+#endif
 
     /*****************************************************************/
     /*  Matt Strait added this for the LIGO GW coincidence analysis  */
