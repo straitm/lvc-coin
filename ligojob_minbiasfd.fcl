@@ -34,6 +34,11 @@ services.IFBeam: {}
 
 this_here_removebeam: @local::standard_mattremovebeamspills
 
+# Only concerned about NuMI events getting into up-mu.  Our longest
+# readouts are 5ms.  Add 3ms as per comments in MattRemoveBeamSpills.fcl
+# Could be smaller for t02, but not worth the complexity for sub-percent gain.
+this_here_removebeam.VetoWindow: 0.008
+
 source:
 {
   module_type: RootInput
@@ -72,22 +77,15 @@ physics:
   }
 
   reco: [ removebeam,
-          ligofilter
-          ,
-          calhit
-          ,
-          slicer
-          ,
-          multihough
-                    , # for breakpoint
-          elasticarmshs
-                    , # for breakpoint
-          fuzzykvertex
-                    , # for breakpoint
-          breakpoint
-                    ,
-          windowtrack, upmuanalysis
-                     ,
+          ligofilter,
+          calhit,
+          slicer,
+          multihough, # for breakpoint
+          elasticarmshs, # for breakpoint
+          fuzzykvertex, # for breakpoint
+          breakpoint,
+          windowtrack, # for upmu
+          upmuanalysis,
           ligoanalysis
           ]
 

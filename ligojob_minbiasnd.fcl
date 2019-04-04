@@ -29,6 +29,12 @@ services.IFBeam: {}
 
 this_here_removebeam: @local::standard_mattremovebeamspills
 
+# Concerned about prompt NuMI events and delayed low energy activity.
+# readouts are 5ms.  Add 3ms as per comments in MattRemoveBeamSpills.fcl
+# to make it 8ms.  Add another 1ms to get rid of all beam neutrons.
+# Consider adding another 20ms to get rid of 2/3 of B-12.
+this_here_removebeam.VetoWindow: 0.009
+
 source:
 {
   module_type: RootInput

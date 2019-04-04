@@ -74,22 +74,15 @@ physics:
   }
 
   reco: [ removebeam,
-          ligofilter
-          ,
-          calhit
-          ,
-          slicer
-          ,
-          multihough
-                    , # for breakpoint
-          elasticarmshs
-                    , # for breakpoint
-          fuzzykvertex
-                    , # for breakpoint
-          breakpoint
-                    ,
-          windowtrack, upmuanalysis
-                     ,
+          ligofilter,
+          calhit,
+          slicer,
+          multihough, # for breakpoint
+          elasticarmshs, # for breakpoint
+          fuzzykvertex, # for breakpoint
+          breakpoint,
+          windowtrack, # for upmu
+          upmuanalysis,
           ligoanalysis
           ]
 

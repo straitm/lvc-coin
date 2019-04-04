@@ -29,6 +29,11 @@ services.IFBeam: {}
 
 this_here_removebeam: @local::standard_mattremovebeamspills
 
+# Only concerned about prompt NuMI events that would trigger ddenergy1.
+# readouts are 0.05ms.  Add 3ms as per comments in MattRemoveBeamSpills.fcl
+# and round up to be safe.
+this_here_removebeam.VetoWindow: 0.004
+
 source:
 {
   module_type: RootInput
