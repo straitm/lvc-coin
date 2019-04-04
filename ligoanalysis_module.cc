@@ -378,8 +378,10 @@ static ligohist lh_contained_slices("contained_slices", true);
 // in raw ADC, the second ADC per unit time.
 static ligohist lh_ddenergy_locut("energy_low_cut", false);
 static ligohist lh_ddenergy_hicut("energy_high_cut", false);
+static ligohist lh_ddenergy_vhicut("energy_vhigh_cut", false);
 static ligohist lh_ddenergy_lopertime("energy_low_cut_pertime", false);
 static ligohist lh_ddenergy_hipertime("energy_high_cut_pertime", false);
+static ligohist lh_ddenergy_vhipertime("energy_vhigh_cut_pertime", false);
 
 /********************** Histogram with pointing ***********************/
 
@@ -616,8 +618,10 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_rawtrigger);
       init_lh(lh_ddenergy_locut);
       init_lh(lh_ddenergy_hicut);
+      init_lh(lh_ddenergy_vhicut);
       init_lh(lh_ddenergy_lopertime);
       init_lh(lh_ddenergy_hipertime);
+      init_lh(lh_ddenergy_vhipertime);
       break;
     case MinBiasFD:
       init_mev_hists();
@@ -883,11 +887,19 @@ static void count_ddenergy(const art::Event & evt)
     THplusequals(lh_ddenergy_lopertime, timebin(evt), 1, rawtime);
   if(sumadc/rawtime > 5e11)
     THplusequals(lh_ddenergy_hipertime, timebin(evt), 1, rawtime);
+  if(sumadc/rawtime > 5e11)
+    THplusequals(lh_ddenergy_vhipertime, timebin(evt), 1, rawtime);
 
-  if(sumadc >  5000000)
+  if(sumadc > 5e6)
     THplusequals(lh_ddenergy_locut, timebin(evt), 1, rawtime);
-  if(sumadc > 50000000)
+  if(sumadc > 5e7){
     THplusequals(lh_ddenergy_hicut, timebin(evt), 1, rawtime);
+    printf("Event passing high cut: event number %d\n", evt.event());
+  }
+  if(sumadc > 5e8){
+    THplusequals(lh_ddenergy_vhicut, timebin(evt), 1, rawtime);
+    printf("Event passing very high cut: event number %d\n", evt.event());
+  }
 }
 
 // Count the number of raw hits in the event and fill the appropriate histograms
