@@ -146,6 +146,20 @@ else
   done
 fi
 
+# totally gratuitous.  Discards stdout of command piped in for first
+# 1-2 seconds.  Motivation: "samweb prestage-dataset" says nothing useful
+# in that time.
+outputafterfirstsecond()
+{
+  t=$(date +%s)
+  while read line; do
+    tnow=$(date +%s)
+    if [ $((tnow - t)) -gt 1 ]; then
+      echo "$line"
+    fi  
+  done
+}
+
 for i in {0..4}; do
   def=$defbase-${triggers[i]}
   if ! samweb list-definitions | grep -qE "^$def$"; then
@@ -166,7 +180,7 @@ for i in {0..4}; do
 
   if [ "$cachedpercent" -lt 100 ]; then
     echo Not all files are cached.  Caching...
-    samweb prestage-dataset --defname=$def --parallel 4
+    samweb prestage-dataset --defname=$def --parallel 4 | outputafterfirstsecond
   fi
 done
 

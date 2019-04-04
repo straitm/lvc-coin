@@ -23,19 +23,19 @@ fi
 
 if [ $analysis_type_key == fardet-t02 ]; then
   type=minbiasfd
-  lifetime=10000
+  lifetime=20000
 elif [ $analysis_type_key == fardet-ddsnews ]; then
   type=minbiasfd_rawinput
   lifetime=86400
 elif [ $analysis_type_key == fardet-ddenergy ]; then
   type=ddenergy
-  lifetime=7200
+  lifetime=14400
 elif [ $analysis_type_key == neardet-ddactivity1 ]; then
   type=ndactivity
-  lifetime=7200
+  lifetime=14400
 elif [ $analysis_type_key == neardet-ddsnews ]; then
   type=minbiasnd
-  lifetime=7200
+  lifetime=14400
 else
   echo I cannot figure out what analysis type to run for $analysis_type_key
   echo which I got from $def

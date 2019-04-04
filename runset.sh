@@ -25,10 +25,10 @@ shift
 
 # CHANGE THIS to the appropriate skymap
 # TODO: should be a command line argument
-skymap=/nova/ana/users/mstrait/skymaps/LALInference_skymap-GW170817.fits
+skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-GW170817.fits
 
 export TZ=UTC
-fracsec=$(cut -d. -f 2 <<< $unixtime)
+fracsec=$(cut -d. -f 2 -s <<< $unixtime)
 rfctime=$(date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 
 if [ $? -ne 0 ]; then
@@ -39,7 +39,13 @@ if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $unixtime $skymap; then
   exit 1
 fi
 
-fcl=ligojob_$type.$rfctime.fcl
+fcl=$SRT_PRIVATE_CONTEXT/job/ligojob_$type.$rfctime.fcl
+
+if ! [ -e $fcl ]; then
+  echo I thought the fcl was $fcl
+  echo but that does not exist
+  exit 1
+fi
 
 if ! [ $1 ]; then
   echo You did not specify any files to processes.  Technical success\!
