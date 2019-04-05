@@ -346,9 +346,6 @@ static bool delta_and_length(int64_t & event_length_tdc,
 // Count of triggers, with no examination of the data within
 static ligohist lh_rawtrigger("rawtrigger", true);
 
-// Number of hits, with no filtering of any sort
-static ligohist lh_rawhits("rawhits", true);
-
 // Number of hits that are not in any Slicer4D slice, i.e. they are in the
 // Slicer4D noise slice.
 static ligohist lh_unslice4ddhits("unslice4ddhits", true);
@@ -409,7 +406,6 @@ static ligohist lh_upmu_tracks_point[2];
 
 static void init_mev_hists()
 {
-  init_lh(lh_rawhits);
   init_lh(lh_unslice4ddhits);
   init_lh(lh_unsliced_big_hits);
   init_lh(lh_unsliced_hit_pairs);
@@ -535,7 +531,8 @@ static double find_critical_value(const int q)
 
   // Print the map to the screen just so we know something is happening
   for(int which = 0; which < 2; which++){
-    printf("Sky map %.0f%% region, in %s:\n", CL*100, which == 0?"ra/dec":"zen/azi");
+    printf("Sky map %.0f%% region, in %s:\n",
+           CL*100, which == 0?"ra/dec":"zen/azi");
     const int down = 40;
     for(int i = 0; i < down; i++){
       const double theta = i*M_PI/down;
@@ -548,12 +545,12 @@ static double find_critical_value(const int q)
       for(int j = across-1; j >= 0; j--){
         const double phi = j*2*M_PI/across;
 
-        // If which == 0, then theta and phi are ra and dec.
-        // Otherwise, they are the zen and azi, and we need to find the ra and dec.
+        // If which == 0, then theta and phi are ra and dec.  Otherwise, they
+        // are the zen and azi, and we need to find the ra and dec.
         double ra = 0, dec = 0;
         if(which == 1){
           art::ServiceHandle<locator::CelestialLocator> celloc;
-          celloc->GetRaDec(theta, phi, (time_t)gwevent_unix_double_time, ra, dec);
+          celloc->GetRaDec(theta,phi,(time_t)gwevent_unix_double_time,ra,dec);
         }
 
         const float val = healpix_skymap[q]->interpolated_value(
@@ -595,7 +592,8 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fSkyMap(pset.get<std::string>("SkyMap")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
-  const std::string analysis_class_string(pset.get<std::string>("AnalysisClass"));
+  const std::string analysis_class_string(
+    pset.get<std::string>("AnalysisClass"));
 
   if     (analysis_class_string == "NDactivity") fAnalysisClass = NDactivity;
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
@@ -644,10 +642,11 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
 /*                          The meat follows                          */
 /**********************************************************************/
 
-// Get the FlatDAQData, either from "minbias", in the case of supernova MC overlays,
-// or "daq", for everything else.
-static void getflatdaq(art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
-                       const art::Event & evt)
+// Get the FlatDAQData, either from "minbias", in the case of supernova MC
+// overlays, or "daq", for everything else.
+static void getflatdaq(
+  art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
+  const art::Event & evt)
 {
   evt.getByLabel("minbias", flatdaq);
   if(flatdaq.failedToGet())
@@ -902,24 +901,6 @@ static void count_ddenergy(const art::Event & evt)
   }
 }
 
-// Count the number of raw hits in the event and fill the appropriate histograms
-static void count_hits(const art::Event & evt)
-{
-  art::Handle< std::vector<rawdata::RawDigit> > rawhits;
-  getrawdigits(rawhits, evt);
-
-  const double livetime = rawlivetime(evt);
-
-  unsigned int count = 0;
-  for(unsigned int i = 0; i < rawhits->size(); i++)
-    if(uniquedata_tdc(livetime, (*rawhits)[i].TDC()))
-      count++;
-
-  printf("Hits in this event (accepted): %lu (%u)\n", rawhits->size(), count);
-
-  THplusequals(lh_rawhits, timebin(evt), count, livetime);
-}
-
 // Minimal hit information, distilled from CellHit
 struct mhit{
   float tns; // fine timing, in nanoseconds
@@ -936,7 +917,7 @@ struct mslice{
   uint16_t mincellx, maxcellx, mincelly, maxcelly;
 };
 
-// Helper function for count_unsliced_hit_pairs().
+// Helper function for count_supernova_like().
 // Builds list of distilled slice information
 static std::vector<mslice> make_sliceinfo_list(
   const art::Handle< std::vector<rb::Cluster> > & slice)
@@ -963,7 +944,7 @@ static std::vector<mslice> make_sliceinfo_list(
   return sliceinfo;
 }
 
-// Helper function for count_unsliced_hit_pairs().  Selects hits that
+// Helper function for count_supernova_like().  Selects hits that
 // are candidates to be put into hit pairs.
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
@@ -1072,7 +1053,8 @@ static std::vector<mhit> select_hits_for_mev_search(
   return mhits;
 }
 
-static void count_unsliced_hit_pairs(const art::Event & evt)
+// Supernova-like event search
+static void count_supernova_like(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -1178,6 +1160,7 @@ static void count_unsliced_big_hits(const art::Event & evt)
 }
 
 // Counts hits in the noise slices and adds the results to the output histograms
+// XXX Add spatial cuts like for the supernova-like sample
 static void count_unslice4dd_hits(const art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
@@ -1206,8 +1189,8 @@ static void count_unslice4dd_hits(const art::Event & evt)
   THplusequals(lh_unslice4ddhits, timebin(evt), count, livetime);
 }
 
-// Passes back the {ra, dec} of a track direction given an event and that direction.
-// Returns true if all went well.
+// Passes back the {ra, dec} of a track direction given an event and that
+// direction.  Returns true if all went well.
 static bool track_ra_dec(double & ra, double & dec,
                          const art::Event & evt, const TVector3 & dir)
 {
@@ -1492,10 +1475,9 @@ static void count_tracks_containedslices(const art::Event & evt)
 
 static void count_mev(art::Event & evt)
 {
-  count_hits(evt);
   count_unslice4dd_hits(evt);
   count_unsliced_big_hits(evt);
-  count_unsliced_hit_pairs(evt);
+  count_supernova_like(evt);
 }
 
 // XXX Deal with generic overlapping triggers (i.e. other than long readouts),
