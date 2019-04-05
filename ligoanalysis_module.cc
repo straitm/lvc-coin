@@ -149,33 +149,6 @@ struct ligohist{
   ligohist() {}
 };
 
-// Variant of ligohist with 2D histograms.
-struct ligohist2d{
-  TH2D * sig = NULL;
-
-  // Binning in the second dimension
-  int nbins;
-  double low, high;
-
-  // Assume livetime is the same for all detector regions, or whatever
-  // we're using the second dimension for! I suppose this could be
-  // violated in exceptional cases, but I hope that never matters.
-  TH1D * live = NULL;
-
-  std::string name;
-  bool dolive;
-
-  ligohist2d(const std::string & name_, const bool dolive_,
-             const int nbins_, const double low_, const double high_)
-  {
-    name = name_;
-    dolive = dolive_;
-    nbins = nbins_;
-    low = low_;
-    high = high_;
-  }
-};
-
 // Given the livetime of the event in seconds and the TDC count, return true if
 // this object should be accepted:
 //
@@ -232,24 +205,6 @@ static void init_lh_name_live(ligohist & lh, const std::string & name,
   lh.name = name;
   lh.dolive = dolive;
   init_lh(lh);
-}
-
-static void init_lh2d(ligohist2d & lh)
-{
-  if(lh.sig != NULL || lh.live != NULL){
-    fprintf(stderr, "%s already initialized.\n", lh.name.c_str());
-    exit(1);
-  }
-
-  art::ServiceHandle<art::TFileService> t;
-
-  lh.sig = t->make<TH2D>(lh.name.c_str(), "",
-    window_size_s, -window_size_s/2, window_size_s/2,
-    lh.nbins, lh.low, lh.high);
-
-  if(lh.dolive)
-    lh.live = t->make<TH1D>(Form("%slive", lh.name.c_str()), "",
-      window_size_s, -window_size_s/2, window_size_s/2);
 }
 
 /**********************************************************************/
@@ -347,8 +302,8 @@ static bool delta_and_length(int64_t & event_length_tdc,
 static ligohist lh_rawtrigger("rawtrigger", true);
 
 // Number of hits that are not in any Slicer4D slice, i.e. they are in the
-// Slicer4D noise slice.
-static ligohist lh_unslice4ddhits("unslice4ddhits", true);
+// Slicer4D noise slice.  And away from slices.
+static ligohist lh_unsliced_hits("unslicedhits", true);
 
 // My experience with my neutron capture analysis in the ND is that
 // things become well-behaved at about this level.
@@ -363,9 +318,7 @@ static ligohist lh_unsliced_big_hits("unslicedbighits", true);
 // with a hit in an adjacent plane.  (Not an adjacent cell, because then
 // we select lots of pairs from noisy modules.  We could build a noise map
 // to fix that, but it would require two passes through the data.)
-static ligohist lh_unsliced_hit_pairs("unslicedhitpairs", true);
-static ligohist2d lh_unsliced_hit_pairs_plane
-  ("unslicedhitpairsplane", true, 28, 0, 28*32);
+static ligohist lh_supernovalike("supernovalike", true);
 
 // Count of slices with nothing around the edges, regardless of what sorts of
 // objects are inside.
@@ -406,10 +359,9 @@ static ligohist lh_upmu_tracks_point[2];
 
 static void init_mev_hists()
 {
-  init_lh(lh_unslice4ddhits);
+  init_lh(lh_unsliced_hits);
   init_lh(lh_unsliced_big_hits);
-  init_lh(lh_unsliced_hit_pairs);
-  init_lh2d(lh_unsliced_hit_pairs_plane);
+  init_lh(lh_supernovalike);
 }
 
 static void init_track_and_contained_hists()
@@ -720,20 +672,6 @@ static void THplusequals(ligohist & lh, const int bin, const double sig,
     lh.live->SetBinContent(bin, lh.live->GetBinContent(bin) + live);
 }
 
-// Same as THplusequals for a ligohist2d. Note inconsistent arguments.
-// It wants the bin number for time, but the value of the variable for
-// the second dimension.
-static void THplusequals2d(ligohist2d & lh, const int timebin,
-                           const double othervalue, const double sig,
-                           const double live)
-{
-  const int otherbin = lh.sig->GetYaxis()->FindBin(othervalue);
-  lh.sig->SetBinContent(timebin, otherbin,
-                        lh.sig->GetBinContent(timebin, otherbin) + sig);
-  if(lh.dolive)
-    lh.live->SetBinContent(timebin, lh.live->GetBinContent(timebin) + live);
-}
-
 // Return the bin number for this event, i.e. the number of seconds from the
 // beginning of the window, plus 1.
 //
@@ -905,6 +843,7 @@ static void count_ddenergy(const art::Event & evt)
 struct mhit{
   float tns; // fine timing, in nanoseconds
   float tpos; // transverse position
+  float pe; // photoelectrons
   uint16_t plane;
   int cell;
   bool used; // has this hit been used in a pair yet?
@@ -944,16 +883,18 @@ static std::vector<mslice> make_sliceinfo_list(
   return sliceinfo;
 }
 
-// Helper function for count_supernova_like().  Selects hits that
-// are candidates to be put into hit pairs.
+// Helper function for count_supernova_like().  Selects hits that are
+// candidates to be put into hit pairs.  Apply a low ADC cut if 'adc_cut'.
+// Always apply a high ADC cut. This is intended to be true if we are searching
+// for supernova-like events and false if we are searching for unmodeled
+// bursts.
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
-  const double livetime)
+  const double livetime, const bool adc_cut)
 {
   art::ServiceHandle<geo::Geometry> geo;
 
   std::vector<mhit> mhits;
-
 
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
     if(!uniquedata_tdc(livetime, noiseslice.Cell(i)->TDC())) continue;
@@ -964,7 +905,8 @@ static std::vector<mhit> select_hits_for_mev_search(
     const float low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
     const float high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
-    if(noiseslice.Cell(i)->ADC() <=  low_adc) continue;
+    if(adc_cut)
+      if(noiseslice.Cell(i)->ADC() <=  low_adc) continue;
     if(noiseslice.Cell(i)->ADC() >= high_adc) continue;
 
     const int cell  = noiseslice.Cell(i)->Cell();
@@ -1047,14 +989,17 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.plane = plane;
     h.cell  = cell;
     h.tpos  = geo->CellTpos(plane, cell);
+    h.pe    = noiseslice.Cell(i)->PE();
 
     mhits.push_back(h);
   }
   return mhits;
 }
 
-// Supernova-like event search
-static void count_supernova_like(const art::Event & evt)
+// Search for supernova-like events if 'supernovalike'.  Otherwise
+// search for the sum of supernova like events and unpaired hits, once
+// with a PE cut and once without.
+static void count_mev(const art::Event & evt, const bool supernovalike)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -1070,14 +1015,14 @@ static void count_supernova_like(const art::Event & evt)
 
   const double livetime = rawlivetime(evt);
 
-  // Make list of all times and locations of "physics" slices. Exclude
-  // other hits near them in time to drop Michels & maybe also neutrons.
+  // Make list of all times and locations of "physics" slices. Exclude other
+  // hits near them in time to drop Michels, FEB flashers & neutrons.
   const std::vector<mslice> sliceinfo = make_sliceinfo_list(slice);
 
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits =
-    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime);
+    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime, supernovalike);
 
   // Intentionally bigger than optimum value suggested by MC (150ns FD,
   // 10ns(!) ND) because we know that the data has a bigger time spread
@@ -1104,9 +1049,6 @@ static void count_supernova_like(const art::Event & evt)
 
       hitpairs++;
 
-      THplusequals2d(lh_unsliced_hit_pairs_plane, timebin(evt), mhits[i].plane,
-                     1, livetime);
-
       #ifdef PRINTCELL
         const int eveni = j%2 == 0?j:i,
                   oddi  = j%2 == 1?j:i;
@@ -1125,68 +1067,24 @@ static void count_supernova_like(const art::Event & evt)
     }
   }
 
-  printf("Big hit pairs in the noise slice: %u\n", hitpairs);
+  unsigned int unpairedbighits = 0, unpairedsmallhits = 0;
 
-  THplusequals(lh_unsliced_hit_pairs, timebin(evt), hitpairs, livetime);
-}
-
-static void count_unsliced_big_hits(const art::Event & evt)
-{
-  art::Handle< std::vector<rb::Cluster> > slice;
-  evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    fprintf(stderr, "Unexpected lack of slicer product\n");
-    return;
+  for(unsigned int i = 0; i < mhits.size(); i++){
+    if(mhits[i].used) continue;
+    (mhits[i].pe > bighit_threshold? unpairedbighits: unpairedsmallhits)++;
   }
 
-  if(slice->empty()){
-    fprintf(stderr, "Unexpected event with zero slices!\n");
-    return;
+  if(supernovalike){
+    printf("Supernova-like events: %u\n", hitpairs);
+    THplusequals(lh_supernovalike, timebin(evt), hitpairs, livetime);
+  }else{
+    const unsigned int big = hitpairs + unpairedbighits;
+    const unsigned int all = big + unpairedsmallhits;
+    printf("Unsliced big hits: %u\n", big);
+    printf("Unsliced hits:     %u\n", all);
+    THplusequals(lh_unsliced_big_hits, timebin(evt), big, livetime);
+    THplusequals(lh_unsliced_hits,     timebin(evt), all, livetime);
   }
-
-  unsigned int bighits = 0;
-
-  const double livetime = rawlivetime(evt);
-
-  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
-    if(!uniquedata_tdc(livetime, (*slice)[0].Cell(i)->TDC())) continue;
-
-    bighits += (*slice)[0].Cell(i)->PE() > bighit_threshold;
-  }
-
-  printf("Big hits in this event in the noise slice: %u\n", bighits);
-
-  THplusequals(lh_unsliced_big_hits, timebin(evt), bighits, livetime);
-}
-
-// Counts hits in the noise slices and adds the results to the output histograms
-// XXX Add spatial cuts like for the supernova-like sample
-static void count_unslice4dd_hits(const art::Event & evt)
-{
-  art::Handle< std::vector<rb::Cluster> > slice;
-  evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    fprintf(stderr, "Unexpected lack of slicer product!\n");
-    return;
-  }
-
-  if(slice->empty()){
-    fprintf(stderr, "Unexpected event with zero slices!\n");
-    return;
-  }
-
-  unsigned int count = 0;
-
-  const double livetime = rawlivetime(evt);
-
-  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++)
-    if(uniquedata_tdc(livetime, (*slice)[0].Cell(i)->TDC()))
-      count++;
-
-  printf("Hits in this event in the Slicer4D noise slice (accepted): %d (%u)\n",
-         (*slice)[0].NCell(), count);
-
-  THplusequals(lh_unslice4ddhits, timebin(evt), count, livetime);
 }
 
 // Passes back the {ra, dec} of a track direction given an event and that
@@ -1473,11 +1371,10 @@ static void count_tracks_containedslices(const art::Event & evt)
   fflush(stdout);
 }
 
-static void count_mev(art::Event & evt)
+static void count_all_mev(art::Event & evt)
 {
-  count_unslice4dd_hits(evt);
-  count_unsliced_big_hits(evt);
-  count_supernova_like(evt);
+  count_mev(evt, true); // supernova-like 
+  count_mev(evt, false); // unmodeled low energy
 }
 
 // XXX Deal with generic overlapping triggers (i.e. other than long readouts),
@@ -1509,12 +1406,12 @@ void ligoanalysis::produce(art::Event & evt)
       count_ddenergy(evt);
       break;
     case MinBiasFD:
-      count_mev(evt);
+      count_all_mev(evt);
       count_tracks_containedslices(evt);
       count_upmu(evt);
       break;
     case MinBiasND:
-      count_mev(evt);
+      count_all_mev(evt);
       count_tracks_containedslices(evt);
       break;
     default:
