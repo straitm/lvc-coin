@@ -11,7 +11,6 @@ fi
 
 type=$1
 unixtime=$2
-#skymap=/nova/ana/users/mstrait/skymaps/LALInference_skymap-GW170817.fits
 skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-GW170817.fits
 if [ $3 ]; then
   skymap=$3
@@ -25,17 +24,9 @@ if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
   exit 1
 fi
 
-# Oh fragile...  Fails if we run interactively somewhere else
-if hostname | grep -q novagpvm; then
-  realskymap=$skymap
-else
-  # On the grid we ask it to be shipped to the CWD
-  realskymap=$(basename $skymap)
-fi
-
 cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
   sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
       \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligoanalysis.SkyMap: \"$realskymap\"" > $SRT_PRIVATE_CONTEXT/job/$fcl
+      \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $SRT_PRIVATE_CONTEXT/job/$fcl
 
 echo $SRT_PRIVATE_CONTEXT/job/$fcl created

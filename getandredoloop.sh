@@ -15,17 +15,19 @@ if ! $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime; then
   exit 1
 fi
 
-redoloop_ligo strait-ligo-coincidence-artdaq-$unixtime-neardet-ddsnews &
+LOOP=$SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh
+
+$LOOP strait-ligo-coincidence-artdaq-$unixtime-neardet-ddsnews &
 sleep 2m
 
-redoloop_ligo strait-ligo-coincidence-artdaq-$unixtime-neardet-ddactivity1 &
+$LOOP strait-ligo-coincidence-artdaq-$unixtime-neardet-ddactivity1 &
 sleep 2m
 
-redoloop_ligo strait-ligo-coincidence-artdaq-$unixtime-fardet-ddsnews &
+$LOOP strait-ligo-coincidence-artdaq-$unixtime-fardet-ddsnews &
 sleep 2m
 
-redoloop_ligo strait-ligo-coincidence-artdaq-$unixtime-fardet-ddenergy &
+$LOOP strait-ligo-coincidence-artdaq-$unixtime-fardet-ddenergy &
 sleep 2m
 
-redoloop_ligo strait-ligo-coincidence-artdaq-$unixtime-fardet-t02 &
+$LOOP strait-ligo-coincidence-artdaq-$unixtime-fardet-t02 &
 sleep 2m

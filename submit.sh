@@ -42,7 +42,9 @@ else
   exit 1
 fi
 
-if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $unixtime $skymap; then
+# Tell the fcl we are reading the skymap from the CWD since it will be shipped
+# there by the grid.  (*Don't* do that for interactive jobs.)
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $unixtime $(basename $skymap); then
   exit 1
 fi
 
