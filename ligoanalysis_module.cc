@@ -846,6 +846,7 @@ struct mhit{
   float pe; // photoelectrons
   uint16_t plane;
   int cell;
+  bool supernovalike;
   bool used; // has this hit been used in a pair yet?
 };
 
@@ -905,8 +906,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     const float low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
     const float high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
-    if(adc_cut)
-      if(noiseslice.Cell(i)->ADC() <=  low_adc) continue;
+    if(adc_cut && noiseslice.Cell(i)->ADC() <= low_adc) continue;
     if(noiseslice.Cell(i)->ADC() >= high_adc) continue;
 
     const int cell  = noiseslice.Cell(i)->Cell();
@@ -990,6 +990,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.cell  = cell;
     h.tpos  = geo->CellTpos(plane, cell);
     h.pe    = noiseslice.Cell(i)->PE();
+    h.supernovalike = noiseslice.Cell(i)->ADC() > low_adc;
 
     mhits.push_back(h);
   }
@@ -1036,7 +1037,14 @@ static void count_mev(const art::Event & evt, const bool supernovalike)
   const float lightspeed = 17.; // cm/ns
 
   for(unsigned int i = 0; i < mhits.size(); i++){
+    // Even if not doing a search for supernova-like events, only allow
+    // supernova-like hits into pairs.  It doesn't make physical sense to pair
+    // low energy hits (the hypothesis is that the particle wouldn't be able to
+    // cross two planes), and it takes forever to run this O(n^2) algorithm on
+    // all the low energy hits, too.
+    if(!mhits[i].supernovalike) continue;
     for(unsigned int j = 0; j < mhits.size(); j++){
+      if(!mhits[j].supernovalike) continue;
       if(i == j) continue;
       if(mhits[i].used || mhits[j].used) continue;
 
@@ -1080,8 +1088,8 @@ static void count_mev(const art::Event & evt, const bool supernovalike)
   }else{
     const unsigned int big = hitpairs + unpairedbighits;
     const unsigned int all = big + unpairedsmallhits;
-    printf("Unsliced big hits: %u\n", big);
-    printf("Unsliced hits:     %u\n", all);
+    printf("Unsliced big hits:     %u\n", big);
+    printf("Unsliced hits:         %u\n", all);
     THplusequals(lh_unsliced_big_hits, timebin(evt), big, livetime);
     THplusequals(lh_unsliced_hits,     timebin(evt), all, livetime);
   }
