@@ -11,6 +11,8 @@ skymap=$2
 
 TMP=/tmp/mstrait.redolist.$$
 
+iteration=1
+
 find_redo_list()
 {
   dir=/pnfs/nova/scratch/users/mstrait/ligo
@@ -26,10 +28,12 @@ find_redo_list()
     echo No files need to be redone for $unixtime $stream, exiting
     rm -f $TMP
     exit 0
-  else
-    echo $(cat $TMP | wc -l) files need to be \(re\)done
+  elif [ $iteration -gt 1 ]; then
+    echo $(cat $TMP | wc -l) files need to be redone:
+    cat $TMP
     echo
   fi
+  let iteration++
 }
 
 resubmitdelay=1
