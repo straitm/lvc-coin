@@ -59,6 +59,19 @@ outdir=/pnfs/nova/scratch/users/mstrait/ligo/$rfctime-$analysis_type_key
 
 mkdir -p $outdir
 
+# This is needed because the way submission works these days is that it
+# tars up the whole test release in /tmp, which only has 2GB.
+while true; do
+  kfree=$(df /tmp | tail -n 1 | awk '{print $3}')
+  if [ $kfree -lt 500000 ]; then
+    echo /tmp is too full.  Waiting for it to clear out
+    df -h /tmp | tail -n 1
+    sleep 1m
+  else
+    break
+  fi
+done
+
 # Remember to take out "--test_submission" and/or --nevts and/or set --njobs to
 # $njobs
 
