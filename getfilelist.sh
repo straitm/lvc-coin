@@ -82,18 +82,18 @@ if havealldefs; then
   echo Have all SAM definitions already.  Doing no queries.
 else
   if ! [ -e allfiles.$t ]; then
-    # I want a 1000 second window, but also add a 50 second buffer on each
-    # end because I have observed, at least with DDEnergy files, that the
-    # events are out of order on the scale of 10 seconds and the metadata
-    # variables don't seem to know that.
+    # I want a 1000 second window, but also add a 50 second buffer on each end.
+    # 
+    # Also add more time at the end because the Online.SubRun*Time means the
+    # times the triggers were issued, not the time of the data.
+    # Experimentally, using the 8:30 SNEWS trigger on 2 Feb 2019 as an example,
+    # the last SubRunStartTime was 717 seconds after the trigger time, where
+    # there is about a 1 minute offset between the trigger time and the data
+    # time, so if we could get the trigger as much as 15 minutes after the time
+    # it wants, we need 717 - 60 + 15*60 seconds = 1557s, at least. Round up.
     #
-    # Also add more time at the end because the Online.SubRun*Time means
-    # the times the triggers were issued, not the time of the data.  Experimentally,
-    # using the 8:30 SNEWS trigger on 2 Feb 2019 as an example, the last
-    # SubRunStartTime was 717 seconds after the trigger time, where there is
-    # about a 1 minute offset between the trigger time and the data time, so
-    # if we could get the trigger as much as 15 minutes after the time it
-    # wants, we need 717 - 60 + 15*60 seconds = 1557s, at least. Round up.
+    # This also catches cases like how DDEnergy events can be up to 200 seconds
+    # late (worse as the events get bigger).
     #
     # Fantastically slow
     echo Asking SAM for a list of files. This typically takes a
