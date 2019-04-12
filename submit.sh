@@ -23,7 +23,7 @@ fi
 
 if [ $analysis_type_key == fardet-t02 ]; then
   type=minbiasfd
-  lifetime=20000
+  lifetime=40000
 elif [ $analysis_type_key == fardet-ddsnews ]; then
   type=minbiasfd_rawinput
   lifetime=86400
