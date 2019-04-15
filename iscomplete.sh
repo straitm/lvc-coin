@@ -1,17 +1,13 @@
 #!/bin/bash
 
-dir="$(basename "$1")"
-rfctime=$(echo $dir | cut -d- -f 1-3)
-unixtime=$(date +%s -d "$(echo $rfctime | sed -e 's/T/ /' -e 's/\.//')")
-stream=$(echo $dir | cut -d- -f 4-5)
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
-def=strait-ligo-coincidence-artdaq-${unixtime}-${stream}
+def=$($SRT_PRIVATE_CONTEXT/ligo/dir2def.sh "$1")
 
-basedir=/pnfs/nova/scratch/users/mstrait/ligo
 status=$(samweb list-files defname: $def | while read f; do 
   echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /'| \
     while read run sr; do
-    if ! ls $basedir/$dir/*det_r*${run}_*${sr}*_data.hists.root \
+    if ! ls $outhistdir/$dir/*det_r*${run}_*${sr}*_data.hists.root \
        &> /dev/null;then
       echo hist file from $f missing
     fi

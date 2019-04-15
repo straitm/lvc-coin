@@ -7,27 +7,14 @@
 # problems.
 
 md="$1"
+trigger=$2
 
 unixtime=$(date +%s -d"$md 8:29:01 2019")
 
-if ! $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime; then
-  echo getfilelist failed
+if ! $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger; then
+  echo getfilelist $unixtime $trigger failed
   exit 1
 fi
 
-LOOP=$SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh
-
-$LOOP strait-ligo-coincidence-artdaq-$unixtime-neardet-ddsnews &
-sleep 2m
-
-$LOOP strait-ligo-coincidence-artdaq-$unixtime-neardet-ddactivity1 &
-sleep 2m
-
-$LOOP strait-ligo-coincidence-artdaq-$unixtime-fardet-ddsnews &
-sleep 2m
-
-$LOOP strait-ligo-coincidence-artdaq-$unixtime-fardet-ddenergy &
-sleep 2m
-
-$LOOP strait-ligo-coincidence-artdaq-$unixtime-fardet-t02 &
-sleep 2m
+$SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh \
+strait-ligo-coincidence-artdaq-$unixtime-$trigger

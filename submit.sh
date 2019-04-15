@@ -1,5 +1,7 @@
 #!/bin/bash
 
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
+
 if [ $# -ne 2 ] && [ $# -ne 3 ] && [ $# -ne 4 ]; then
   echo Syntax: $(basename $0) unixtime analysis_type {skymap} {def}
   echo Where analysis_type is fardet-t02, fardet-ddsnews, fardet-ddenergy
@@ -26,7 +28,7 @@ if [ $analysis_type_key == fardet-t02 ]; then
   lifetime=40000
 elif [ $analysis_type_key == fardet-ddsnews ]; then
   type=minbiasfd_rawinput
-  lifetime=86400
+  lifetime=172800
 elif [ $analysis_type_key == fardet-ddenergy ]; then
   type=ddenergy
   lifetime=14400
@@ -55,7 +57,7 @@ njobs=$(samweb list-files defname: $def | wc -l)
 tag=$(cat $SRT_PRIVATE_CONTEXT/.base_release)
 testrel=/nova/app/users/mstrait/novasoft-ligo/
 
-outdir=/pnfs/nova/scratch/users/mstrait/ligo/$rfctime-$analysis_type_key
+outdir=$outhistdir/$rfctime-$analysis_type_key
 
 mkdir -p $outdir
 

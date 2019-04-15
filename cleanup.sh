@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Removes duplicate output hist files in the current directory that differ only
+# by the release name.
+
 if ! ls *det*.root &> /dev/null; then
   exit
 fi

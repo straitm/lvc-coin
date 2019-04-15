@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# SAM definition that we need to redo some of
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
+
+# SAM definition that we need to do and redo
 realdef=$1
 unixtime=$(echo $realdef | cut -d- -f 5)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
@@ -15,10 +17,10 @@ iteration=1
 
 find_redo_list()
 {
-  dir=/pnfs/nova/scratch/users/mstrait/ligo
   samweb list-files defname: $realdef | while read f; do 
     echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /'|while read run sr; do
-      if ! ls $dir/$rfctime-$stream/*det_r*${run}_*${sr}*_data.hists.root &> /dev/null;then
+      if ! ls $outhistdir/$rfctime-$stream/*det_r*${run}_*${sr}*_data.hists.root \
+           &> /dev/null;then
         echo $f
       fi
     done
@@ -58,6 +60,7 @@ do_a_redo()
   rm -f $TMP
 
   testrel=/nova/app/users/mstrait/novasoft-ligo/
+  $testrel/ligo/stage.sh $def
   $testrel/ligo/submit.sh $unixtime $stream "$skymap" $def
 
   echo Now will watch $rfctime $stream
