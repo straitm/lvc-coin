@@ -4,7 +4,7 @@ if [ $# -ne 2 ] && [ $# -ne 3 ] && [ $# -ne 4 ]; then
   echo Syntax: $(basename $0) unixtime analysis_type {skymap} {def}
   echo Where analysis_type is fardet-t02, fardet-ddsnews, fardet-ddenergy
   echo neardet-ddactivity1 or neardet-ddsnews.
-  echo I will use a dummy skymap if you dont give one
+  echo I will use a dummy skymap if you do not give one
   echo Override the definition derived from unixtime with def.
   exit 1
 fi
