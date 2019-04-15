@@ -14,7 +14,6 @@ status=$(samweb list-files defname: $def | while read f; do
     if ! ls $basedir/$dir/*det_r*${run}_*${sr}*_data.hists.root \
        &> /dev/null;then
       echo hist file from $f missing
-      let status++
     fi
   done
 done | tee /dev/stderr | grep -c missing)
