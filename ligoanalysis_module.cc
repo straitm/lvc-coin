@@ -1409,6 +1409,17 @@ static void count_all_mev(art::Event & evt)
   count_mev(evt, false); // unmodeled low energy
 }
 
+static bool more_than_one_physics_slice(art::Event & evt)
+{
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    fprintf(stderr, "Unexpected lack of slicer product!\n");
+    return true;
+  }
+  return slice->size() > 2;
+}
+
 // XXX Deal with generic overlapping triggers (i.e. other than long readouts),
 // notably ddactivity1.  Ideally, I'd drop all the hits that were seen before
 // and only reconstruct the new ones, but that is non-trivial.
@@ -1428,6 +1439,13 @@ void ligoanalysis::produce(art::Event & evt)
 
   bighit_threshold = gDet == caf::kNEARDET?
     bighit_threshold_nd : bighit_threshold_fd;
+
+  // Reject any ND trigger with multiple physics slices.  This is a crude way
+  // of getting rid of NuMI events, previously used by the seasonal multi-mu
+  // analysis because RemoveBeamSpills doesn't really work.
+  if(fAnalysisClass == NDactivity || fAnalysisClass == MinBiasND){
+    if(more_than_one_physics_slice(evt)) return;
+  }
 
   switch(fAnalysisClass){
     case NDactivity:
