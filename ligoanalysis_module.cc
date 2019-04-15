@@ -69,6 +69,7 @@ static const int US_PER_MICROSLICE = 50; // I hope this is always true
 
 // Set from the FCL parameters
 static double gwevent_unix_double_time = 0;
+static double needbgevent_unix_double_time = 0;
 static long long window_size_s = 1000;
 
 static int gDet = caf::kUNKNOWN;
@@ -96,6 +97,12 @@ class ligoanalysis : public art::EDProducer {
   /// Expressed in RFC-3339 format, always in UTC, always with a Z at
   /// the end (to emphasize that it is UTC).
   std::string fGWEventTime;
+
+  // If we want to measure the skymap-dependent background for a gravitational
+  // wave at fNeedBGEventTime, set this to the time of the GW, and set
+  // fGWEventTime to the time we're using as a background sample.  Otherwise,
+  // leave this as the empty string.
+  std::string fNeedBGEventTime;
 
   /// The file name of the LIGO/Virgo skymap, or the empty string if this
   /// analysis does not care about pointing or no map is available.
@@ -502,7 +509,11 @@ static double find_critical_value(const int q)
         double ra = 0, dec = 0;
         if(which == 1){
           art::ServiceHandle<locator::CelestialLocator> celloc;
-          celloc->GetRaDec(theta,phi,(time_t)gwevent_unix_double_time,ra,dec);
+          celloc->GetRaDec(theta,phi,
+                           (time_t)(needbgevent_unix_double_time?
+                                    needbgevent_unix_double_time:
+                                        gwevent_unix_double_time),
+                           ra,dec);
         }
 
         const float val = healpix_skymap[q]->interpolated_value(
@@ -541,6 +552,7 @@ void ligoanalysis::beginJob()
 
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<std::string>("GWEventTime")),
+  fNeedBGEventTime(pset.get<std::string>("NeedBGEventTime")),
   fSkyMap(pset.get<std::string>("SkyMap")),
   fWindowSize(pset.get<unsigned long long>("WindowSize"))
 {
@@ -558,6 +570,8 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   }
 
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
+  needbgevent_unix_double_time = fNeedBGEventTime==""?0
+                                 :rfc3339_to_unix_double(fNeedBGEventTime);
   window_size_s = fWindowSize;
 
   switch(fAnalysisClass){
@@ -1110,7 +1124,17 @@ static bool track_ra_dec(double & ra, double & dec,
   }
   unsigned long long event_time=(*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
   struct timespec ts;
-  novadaq::timeutils::convertNovaTimeToUnixTime(event_time, ts);
+  if(needbgevent_unix_double_time == 0){
+    novadaq::timeutils::convertNovaTimeToUnixTime(event_time, ts);
+  }
+  else{
+    // If we're measuring background, set the time to what it would be
+    // for the real event at the same point in the search window.
+    const double evt_time = art_time_to_unix_double(evt.time().value());
+    const double offset = evt_time - gwevent_unix_double_time;
+    const double timetouse = evt_time + offset;
+    novadaq::timeutils::convertNovaTimeToUnixTime(timetouse, ts);
+  }
 
   celloc->GetTrackRaDec(dir, ts.tv_sec, ra, dec);
   return true;

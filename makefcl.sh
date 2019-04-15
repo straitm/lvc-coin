@@ -24,8 +24,12 @@ if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
   exit 1
 fi
 
+# NOTE NeedBGEventTime -- set to a test value now, but will need to be set to
+# real GW event time, and should be scripted up better for that.
+
 cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
   sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
+      \nthis_here_ligoanalysis.NeedBGEventTime: \"2019-03-24T13:29:01.Z\"\
       \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
       \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $SRT_PRIVATE_CONTEXT/job/$fcl
 
