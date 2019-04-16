@@ -26,6 +26,19 @@ cachedpercent=$(cache_state.py -d $def | tee /dev/stderr | \
 
 doit()
 {
+  # Not clear on whether this is necessary, but probably can't hurt
+  # Also not clear on, if it is necessary, what the limit should be...
+  while true; do
+    n=$(ps f -u mstrait | grep 'python2.*prestage-dataset' | grep -v grep  | wc -l)
+    if [ $n -gt 3 ]; then
+      echo Waiting for $n other prestages to finish
+      sleep 1m
+    else
+      echo Going ahead
+      break
+    fi
+  done
+
   samweb prestage-dataset --socket-timeout=1800 --defname=$def \
     --parallel 4 2> /dev/stdout | outputafterfirstfewseconds
 }

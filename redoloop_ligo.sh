@@ -51,6 +51,7 @@ do_a_redo()
   if ! [ "$dimensions" ]; then
     echo Uh oh, I got an empty dimensions statement from this file:
     cat $TMP
+    rm -f $TMP
     exit 1
   fi
   samweb create-definition $def "$dimensions"
@@ -95,9 +96,8 @@ do_a_redo()
            $(cat $TMP | grep ' I ' | wc -l) idle
       echo
     fi
+    rm -f $TMP
   done
-
-  rm -f $TMP
 }
 
 while true; do

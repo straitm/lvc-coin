@@ -63,14 +63,23 @@ mkdir -p $outdir
 
 # This is needed because the way submission works these days is that it
 # tars up the whole test release in /tmp, which only has 2GB.
+fails=0
 while true; do
   kfree=$(df /tmp | tail -n 1 | awk '{print $3}')
-  if [ $kfree -lt 500000 ]; then
+  if [ $kfree -lt 1000000 ]; then
     echo /tmp is too full.  Waiting for it to clear out
     df -h /tmp | tail -n 1
     sleep 1m
+  elif ls -l /tmp | grep 'mstrait.*tmp......$'; then
+    echo waiting for another submit to finish dumping in /tmp
+    sleep 1m
   else
     break
+  fi
+  let fails++
+  if [ $fails -gt 100 ]; then
+    echo OK, I have had it.  Going to clear my files out of /tmp
+    rm -fv /tmp/tmp* /tmp/mstrait.* /tmp/joblist.* /tmp/headtail.*
   fi
 done
 

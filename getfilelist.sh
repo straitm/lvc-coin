@@ -33,7 +33,7 @@ fi
 
 defbase=strait-ligo-coincidence-artdaq-$t
 
-havealldefs()
+havedef()
 {
   def=$defbase-$trigger
   if samweb list-definitions | grep -qE "^$def$"; then
@@ -60,16 +60,17 @@ blocksam()
     echo Waiting for $n sam list processes to finish
     sleep 1m
   done
+  echo Ok, going ahead
 }
 
 setup_fnal_security &> /dev/null
 
-if havealldefs; then
+if havedef; then
   echo Have all SAM definitions already.  Doing no queries.
 else
   if ! [ -e allfiles.$t.$trigger ]; then
     # I want a 1000 second window, but also add a 50 second buffer on each end.
-    # 
+    #
     # Also add more time at the end because the Online.SubRun*Time means the
     # times the triggers were issued, not the time of the data.
     # Experimentally, using the 8:30 SNEWS trigger on 2 Feb 2019 as an example,
@@ -108,22 +109,21 @@ else
     # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)
     # means that something is broken.
     if [ $(cat selectedfiles.$t.$trigger|grep $filepattern|wc -l) -gt 99 ]; then
-      echo Unreasonable number of files for $trigger.  Skipping.
-      continue
-    fi
-
-    if samweb list-definitions | grep -qE "^$def$"; then
-      continue
-    fi
-
-    samweb create-definition $def \
-      "$(for f in $(cat selectedfiles.$t.$trigger | grep $filepattern); do
-           printf "%s %s or " file_name $(basename $f);
-         done | sed 's/ or $//')"
-
-    if ! samweb list-definitions | grep -qE "^$def$"; then
-      echo Failed to make a SAM definition
+      echo Unreasonable number of files for $trigger.
       exit 1
+    fi
+
+    # Just in case another script made the definition in the meanwhile?!
+    if ! samweb list-definitions | grep -qE "^$def$"; then
+      samweb create-definition $def \
+        "$(for f in $(cat selectedfiles.$t.$trigger | grep $filepattern); do
+             printf "%s %s or " file_name $(basename $f);
+           done | sed 's/ or $//')"
+
+      if ! samweb list-definitions | grep -qE "^$def$"; then
+        echo Failed to make a SAM definition
+        exit 1
+      fi
     fi
   fi
 fi
