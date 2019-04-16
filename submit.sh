@@ -80,6 +80,7 @@ while true; do
   if [ $fails -gt 100 ]; then
     echo OK, I have had it.  Going to clear my files out of /tmp
     rm -fv /tmp/tmp* /tmp/mstrait.* /tmp/joblist.* /tmp/headtail.*
+    fails=0
   fi
 done
 
