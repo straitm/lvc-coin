@@ -17,7 +17,25 @@ iteration=1
 
 find_redo_list()
 {
-  samweb list-files defname: $realdef | while read f; do 
+  # This loop allows starting up a new copy of this script if the old copy
+  # got killed. It should even protect against multiple running copies all
+  # trying to get the same jobs run.
+  while true; do
+    while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
+      echo jobsub_q failed.  Will try again.
+      sleep 15
+    done
+
+    deffrag="_redo_$realdef"
+    if grep $deffrag /tmp/joblist.$$; then
+      echo Jobs are running already/still for this definition.  Waiting.
+      sleep 4m
+    else
+      break
+    fi
+  done
+
+  samweb list-files defname: $realdef | while read f; do
     echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /'|while read run sr; do
       if ! ls $outhistdir/$rfctime-$stream/*det_r*${run}_*${sr}*_data.hists.root \
            &> /dev/null;then
@@ -35,6 +53,7 @@ find_redo_list()
     cat $TMP
     echo
   fi
+
   let iteration++
 }
 
@@ -76,7 +95,7 @@ do_a_redo()
     # retry loop for jobsub_q, which is flaky
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      sleep 15 
+      sleep 15
     done
 
     cat /tmp/joblist.$$|grep $def|tee $TMP|grep ' H '|awk '{print $1}'|while read j; do

@@ -12,4 +12,9 @@ if ! [ -e $pnfsdir/complete ] && ! iscomplete.sh $pnfsdir; then
   exit 1
 fi
 
-hadd -f $outhadddir/$basepnfsdir.hadded.root $pnfsdir/*.root
+if hadd  -f $outhadddir/$basepnfsdir.hadded.root $pnfsdir/*.root &> /dev/null; then
+  echo $pnfsdir concatenated
+else
+  echo $pnfsdir concatenatation failed
+  exit 1
+fi

@@ -130,7 +130,8 @@ fi
 
 def=$defbase-$trigger
 if ! samweb list-definitions | grep -qE "^$def$"; then
-  continue
+  echo Failed to get or make the defintiion
+  exit 1
 fi
 
 $SRT_PRIVATE_CONTEXT/ligo/stage.sh $def
