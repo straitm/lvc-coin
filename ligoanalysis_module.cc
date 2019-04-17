@@ -1132,7 +1132,7 @@ static bool track_ra_dec(double & ra, double & dec,
     // for the real event at the same point in the search window.
     const double evt_time = art_time_to_unix_double(evt.time().value());
     const double offset = evt_time - gwevent_unix_double_time;
-    const double timetouse = evt_time + offset;
+    const double timetouse = needbgevent_unix_double_time + offset;
     novadaq::timeutils::convertNovaTimeToUnixTime(timetouse, ts);
   }
 
