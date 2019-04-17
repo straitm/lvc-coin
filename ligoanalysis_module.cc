@@ -1110,22 +1110,15 @@ static void count_mev(const art::Event & evt, const bool supernovalike)
 }
 
 // Passes back the {ra, dec} of a track direction given an event and that
-// direction.  Returns true if all went well.
-static bool track_ra_dec(double & ra, double & dec,
+// direction.
+static void track_ra_dec(double & ra, double & dec,
                          const art::Event & evt, const TVector3 & dir)
 {
   art::ServiceHandle<locator::CelestialLocator> celloc;
 
-  art::Handle<std::vector<rawdata::RawTrigger> > rawtrigger;
-  getrawtrigger(rawtrigger, evt);
-  if(rawtrigger->empty()){
-    fprintf(stderr, "Failed to read raw trigger! Don't know the time!\n");
-    return false;
-  }
-  unsigned long long event_time=(*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
-  struct timespec ts;
+  long int unixtime = 0;
   if(needbgevent_unix_double_time == 0){
-    novadaq::timeutils::convertNovaTimeToUnixTime(event_time, ts);
+    unixtime = int(art_time_to_unix_double(evt.time().value()));
   }
   else{
     // If we're measuring background, set the time to what it would be
@@ -1133,11 +1126,10 @@ static bool track_ra_dec(double & ra, double & dec,
     const double evt_time = art_time_to_unix_double(evt.time().value());
     const double offset = evt_time - gwevent_unix_double_time;
     const double timetouse = needbgevent_unix_double_time + offset;
-    novadaq::timeutils::convertNovaTimeToUnixTime(timetouse, ts);
+    unixtime = int(timetouse);
   }
 
-  celloc->GetTrackRaDec(dir, ts.tv_sec, ra, dec);
-  return true;
+  celloc->GetTrackRaDec(dir, unixtime, ra, dec);
 }
 
 // Returns whether the given ra and dec are inside the 90% region of map number
@@ -1198,9 +1190,9 @@ static void count_upmu(const art::Event & evt)
     }
 
     double ra, dec;
-    if(track_ra_dec(ra, dec, evt, correctdir))
-      for(unsigned int q = 0; q < npointres; q++)
-        npoint[q] += points(ra, dec, q, false);
+    track_ra_dec(ra, dec, evt, correctdir);
+    for(unsigned int q = 0; q < npointres; q++)
+      npoint[q] += points(ra, dec, q, false);
   }
 
   for(unsigned int q = 0; q < npointres; q++){
@@ -1310,9 +1302,9 @@ static void count_tracks_containedslices(const art::Event & evt)
 
     if(healpix_skymap[0] != NULL){
       double ra, dec;
-      if(track_ra_dec(ra, dec, evt, (*tracks)[i].Dir()))
-        for(unsigned int q = 0; q < npointres; q++)
-          track_points_to_event[q] = points(ra, dec, q, true);
+      track_ra_dec(ra, dec, evt, (*tracks)[i].Dir());
+      for(unsigned int q = 0; q < npointres; q++)
+        track_points_to_event[q] = points(ra, dec, q, true);
     }
     for(unsigned int q = 0; q < npointres; q++)
       track_point[q].push_back(track_points_to_event[q]);
