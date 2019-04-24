@@ -156,31 +156,32 @@ struct ligohist{
   ligohist() {}
 };
 
-// Given the livetime of the event in seconds and the TDC count, return true if
-// this object should be accepted:
+// Given the livetime of the event in seconds and the TDC count, return
+// true if this object should be accepted:
 //
 // If the livetime is under 0.005 seconds, then this is not part of a
-// multi-sub-trigger trigger, so there is no risk of overlapping data (not
-// generally true, but true for the files we are choosing to read and the
-// trigger bits we're accepting!), so return true.
+// multi-sub-trigger trigger, so there is no risk of overlapping data
+// (not generally true, but true for the files we are choosing to read
+// and the trigger bits we're accepting!), so return true.
 //
-// If the livetime is 0.005 seconds (the maximum possible), then return true if
-// the TDC is non-negative (at a time equal to or greater than the time
-// requested for this sub-trigger) and less than 5000*64, so as to exclude the
-// parts of the first and last microslice that we'll use in the adjacent
-// subtriggers.
+// If the livetime is 0.005 seconds (the maximum possible), then return
+// true if the TDC is non-negative (at a time equal to or greater than
+// the time requested for this sub-trigger) and less than 5000*64, so as
+// to exclude the parts of the first and last microslice that we'll use
+// in the adjacent subtriggers.
 static bool uniquedata_tdc(const double livetime, const int tdc)
 {
   if(livetime < 0.005) return true;
   return tdc >= 0 && tdc < 5000 * TDC_PER_US;
 }
 
-// Same as uniquedata_tns but for a floating point time.  This is for deciding
-// whether to keep tracks and clusters, and is necessarily sloppier than hit
-// timing.  But probably slices and tracks are reconstructed exactly the same
-// way most of the time regardless of adjacent microslices, so we should accept
-// them exactly once.  It's probably possible to end up accepting the same track
-// twice (or zero times), though, in unlucky cases.
+// Same as uniquedata_tns but for a floating point time. This is for
+// deciding whether to keep tracks and clusters, and is necessarily
+// sloppier than hit timing. But probably slices and tracks are
+// reconstructed exactly the same way most of the time regardless of
+// adjacent microslices, so we should accept them exactly once. It's
+// probably possible to end up accepting the same track twice (or zero
+// times), though, in unlucky cases.
 __attribute__((unused)) static bool uniquedata_tns(const double livetime,
                                                    const double tns)
 {
@@ -463,8 +464,8 @@ static double find_critical_value(const int q)
       const double theta = i*M_PI/ni,
                    phi   = j*2.*M_PI/nj;
       const float val = healpix_skymap[q]->interpolated_value(
-        pointing(theta, // dec: except this is 0 to pi, and dec is pi/2 to -pi/2
-                 phi)); // ra: as normal: 0h, 24h = 2pi
+        pointing(theta,//dec: except this is 0 to pi, and dec is pi/2 to -pi/2
+                 phi));//ra: as normal: 0h, 24h = 2pi
       sumprob += val * sin(theta);
       ac_raw new_ac_raw;
       new_ac_raw.raw = val;
@@ -619,16 +620,18 @@ static void getflatdaq(
     evt.getByLabel("daq", flatdaq);
 }
 
-static void getrawtrigger(art::Handle< std::vector<rawdata::RawTrigger> > & trg,
-                         const art::Event & evt)
+static void getrawtrigger(
+  art::Handle< std::vector<rawdata::RawTrigger> > & trg,
+  const art::Event & evt)
 {
   evt.getByLabel("minbias", trg);
   if(trg.failedToGet())
     evt.getByLabel("daq", trg);
 }
 
-static void getrawdigits(art::Handle< std::vector<rawdata::RawDigit> > & digits,
-                         const art::Event & evt)
+static void getrawdigits(
+  art::Handle< std::vector<rawdata::RawDigit> > & digits,
+  const art::Event & evt)
 {
   evt.getByLabel("minbias", digits);
   if(digits.failedToGet())
@@ -703,7 +706,8 @@ static int timebin(const art::Event & evt)
 static bool contained(const TVector3 & v)
 {
   if(gDet == caf::kNEARDET)
-    return fabs(v.X()) < 150 && fabs(v.Y()) < 150 && v.Z() > 40 && v.Z() < 1225;
+    return fabs(v.X()) < 150 && fabs(v.Y()) < 150 &&
+           v.Z() > 40 && v.Z() < 1225;
   if(gDet == caf::kFARDET)
     return fabs(v.X()) < 650 &&
       v.Y() < 500 && v.Y() > -650 &&
@@ -747,8 +751,8 @@ static bool good_track_direction(const rb::Track & t)
          fabs(rec_dz2/rec_dy2) > tan_track_cut;
 }
 
-// Fewest planes we'll accept a track having, or in the case of fully-contained
-// tracks, the fewest *contiguous* planes.
+// Fewest planes we'll accept a track having, or in the case of
+// fully-contained tracks, the fewest *contiguous* planes.
 static const int min_plane_extent = 10;
 
 // Returns true if the track starts AND stops inside the detector,
@@ -815,8 +819,9 @@ static void count_triggers(const art::Event & evt)
 {
   const double rawtime = rawlivetime(evt);
 
-  // rawtime doesn't make sense for counting, e.g. DDEnergy triggers, but it is
-  // a useful diagonistic for seeing if we're within a long SNEWS/LIGO trigger.
+  // rawtime doesn't make sense for counting, e.g. DDEnergy triggers,
+  // but it is a useful diagonistic for seeing if we're within a long
+  // SNEWS/LIGO trigger.
   THplusequals(lh_rawtrigger, timebin(evt), 1, rawtime);
 }
 
@@ -898,11 +903,11 @@ static std::vector<mslice> make_sliceinfo_list(
   return sliceinfo;
 }
 
-// Helper function for count_supernova_like().  Selects hits that are
-// candidates to be put into hit pairs.  Apply a low ADC cut if 'adc_cut'.
-// Always apply a high ADC cut. This is intended to be true if we are searching
-// for supernova-like events and false if we are searching for unmodeled
-// bursts.
+// Helper function for count_supernova_like(). Selects hits that
+// are candidates to be put into hit pairs. Apply a low ADC cut if
+// 'adc_cut'. Always apply a high ADC cut. This is intended to be true
+// if we are searching for supernova-like events and false if we are
+// searching for unmodeled bursts.
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
   const double livetime, const bool adc_cut)
@@ -1037,7 +1042,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike)
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits =
-    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime, supernovalike);
+    select_hits_for_mev_search((*slice)[0],sliceinfo,livetime,supernovalike);
 
   // Intentionally bigger than optimum value suggested by MC (150ns FD,
   // 10ns(!) ND) because we know that the data has a bigger time spread
@@ -1052,10 +1057,10 @@ static void count_mev(const art::Event & evt, const bool supernovalike)
 
   for(unsigned int i = 0; i < mhits.size(); i++){
     // Even if not doing a search for supernova-like events, only allow
-    // supernova-like hits into pairs.  It doesn't make physical sense to pair
-    // low energy hits (the hypothesis is that the particle wouldn't be able to
-    // cross two planes), and it takes forever to run this O(n^2) algorithm on
-    // all the low energy hits, too.
+    // supernova-like hits into pairs. It doesn't make physical sense
+    // to pair low energy hits (the hypothesis is that the particle
+    // wouldn't be able to cross two planes), and it takes forever to
+    // run this O(n^2) algorithm on all the low energy hits, too.
     if(!mhits[i].supernovalike) continue;
     for(unsigned int j = 0; j < mhits.size(); j++){
       if(!mhits[j].supernovalike) continue;
@@ -1132,10 +1137,10 @@ static void track_ra_dec(double & ra, double & dec,
   celloc->GetTrackRaDec(dir, unixtime, ra, dec);
 }
 
-// Returns whether the given ra and dec are inside the 90% region of map number
-// 'mapi'.  If 'allow_backwards' accept tracks that point in the reverse
-// direction, since the orientation of the track is arbitrary.  Otherwise, take
-// the track orientation literally.
+// Returns whether the given ra and dec are inside the 90% region of map
+// number 'mapi'. If 'allow_backwards' accept tracks that point in the
+// reverse direction, since the orientation of the track is arbitrary.
+// Otherwise, take the track orientation literally.
 static bool points(const double ra, const double dec, const int mapi,
                    const bool allow_backwards)
 {
@@ -1144,11 +1149,11 @@ static bool points(const double ra, const double dec, const int mapi,
   // theta, really off by pi/2?
   if(allow_backwards)
     return skymap_crit_val[mapi] < std::max(
-      healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     )),
-      healpix_skymap[mapi]->interpolated_value(pointing(-dec+M_PI_2, ra+M_PI)));
+    healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     )),
+    healpix_skymap[mapi]->interpolated_value(pointing(-dec+M_PI_2, ra+M_PI)));
   else
     return skymap_crit_val[mapi] <
-      healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     ));
+    healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     ));
 }
 
 static void count_upmu(const art::Event & evt)
@@ -1196,7 +1201,7 @@ static void count_upmu(const art::Event & evt)
   }
 
   for(unsigned int q = 0; q < npointres; q++){
-    if(npoint[q]) printf("%d up-mu tracks point at region %d\n", npoint[q], q);
+    if(npoint[q])printf("%d up-mu tracks point at region %d\n", npoint[q], q);
     THplusequals(lh_upmu_tracks_point[q], timebin(evt),
                  npoint[q], rawlivetime(evt));
   }
@@ -1231,14 +1236,14 @@ static void count_tracks_containedslices(const art::Event & evt)
   printf("Tracks in this event: %u\n", counttracks);
   THplusequals(lh_tracks, timbin, counttracks, livetime);
 
-  // Count tracks with either a contained start or end, but not if they are
-  // very steep in x or y, since those probably aren't really contained and may
-  // not even be complete. Also don't count more than one per slice, nor count
-  // slices with uncontained tracks.  This protects against counting a brem as
-  // a contained track.
+  // Count tracks with either a contained start or end, but not if
+  // they are very steep in x or y, since those probably aren't really
+  // contained and may not even be complete. Also don't count more than
+  // one per slice, nor count slices with uncontained tracks. This
+  // protects against counting a brem as a contained track.
 
-  // Find out what slice each track is in and make a list of slices with tracks
-  // that aren't fully contained
+  // Find out what slice each track is in and make a list of slices with
+  // tracks that aren't fully contained
   std::vector<int> trk_slices(tracks->size(), -1);
   std::set<int> slices_with_uc_tracks, slices_with_huc_tracks;
   std::set<int> contained_slices;
@@ -1320,8 +1325,9 @@ static void count_tracks_containedslices(const art::Event & evt)
   for(unsigned int q = 0; q < npointres; q++)
     THplusequals(lh_tracks_point[q], timbin, ntracks_that_point[q], livetime);
 
-  // Find any tracks that are half-contained/fully-contained and do not share a
-  // slice with any tracks that are, like, totally uncontained, man
+  // Find any tracks that are half-contained/fully-contained
+  // and don't share a slice with any tracks
+  // that are, like, totally uncontained, man.
   std::set<int> slices_with_hc_tracks, slices_with_fc_tracks;
 
   // Same, but the tracks must point towards the LIGO/Virgo event
@@ -1361,12 +1367,12 @@ static void count_tracks_containedslices(const art::Event & evt)
   printf("Slices with half-contained tracks: %2lu (",
          slices_with_hc_tracks.size());
   for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
-    slices_with_hc_tracks_point[q].size(), q==npointres-1?" pointing)\n":", ");
+    slices_with_hc_tracks_point[q].size(),q==npointres-1?" pointing)\n":", ");
 
   printf("Slices with half-contained tracks: %2lu (",
          slices_with_fc_tracks.size());
   for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
-    slices_with_fc_tracks_point[q].size(), q==npointres-1?" pointing)\n":", ");
+    slices_with_fc_tracks_point[q].size(),q==npointres-1?" pointing)\n":", ");
 
 
   for(std::set<int>::iterator i = slices_with_fc_tracks.begin();
