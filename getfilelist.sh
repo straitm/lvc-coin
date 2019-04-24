@@ -130,7 +130,7 @@ fi
 
 def=$defbase-$trigger
 if ! samweb list-definitions | grep -qE "^$def$"; then
-  echo Failed to get or make the defintiion
+  echo Failed to get or make the definition
   exit 1
 fi
 

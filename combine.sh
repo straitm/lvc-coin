@@ -12,7 +12,21 @@ if ! [ -e $pnfsdir/complete ] && ! iscomplete.sh $pnfsdir; then
   exit 1
 fi
 
-if hadd  -f $outhadddir/$basepnfsdir.hadded.root $pnfsdir/*.root &> /dev/null; then
+if [ -e $pnfsdir/bad ]; then
+  echo $pnfsdir is marked bad, skipping
+  exit 0
+fi
+
+out=$outhadddir/$basepnfsdir.hadded.root 
+
+if [ -e $out ]; then
+  echo $out already exists, skipping
+  exit 0
+fi
+
+(cd $pnfsdir; cleanup.sh)
+
+if timeout 60 hadd  -f $out $pnfsdir/*.root; then
   echo $pnfsdir concatenated
 else
   echo $pnfsdir concatenatation failed
