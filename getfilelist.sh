@@ -54,11 +54,13 @@ nsamlistsrunning()
 # to three so that I can also do interactive queries while my scripts run.
 blocksam()
 {
+  local try=0
   while true; do
     n=$(nsamlistsrunning)
     if [ $n -le 2 ]; then break; fi
     echo Waiting for $n sam list processes to finish
-    sleep 1m
+    sleep $((try + 60 + RANDOM%60))
+    let try++
   done
   echo Ok, going ahead
 }
