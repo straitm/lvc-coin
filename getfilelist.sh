@@ -25,6 +25,8 @@ elif [ $trigger == fardet-ligo ]; then
   filepattern='fardet.*_ligo_.*data.artdaq' # or raw?
 elif [ $trigger == fardet-t02 ]; then
   filepattern='fardet.*_t02_.*data.artdaq'
+elif [ $trigger == neardet-t00 ]; then
+  filepattern='neardet.*_t00_.*data.artdaq'
 elif [ $trigger == fardet-ddenergy ]; then
   filepattern='fardet.*_ddenergy_.*data.artdaq'
 elif [ $trigger == neardet-ddactivity1 ]; then
@@ -105,7 +107,7 @@ else
 
   cat allfiles.$t.$trigger | grep -E "$filepattern" | tee selectedfiles.$t.$trigger
 
-  def=$defbase-trigger
+  def=$defbase-$trigger
   if cat selectedfiles.$t.$trigger | grep -q $filepattern; then
     # Even during the SNEWS trigger, we only get about 40 subruns at the
     # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)

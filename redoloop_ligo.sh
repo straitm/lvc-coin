@@ -91,7 +91,11 @@ do_a_redo()
 
   testrel=/nova/app/users/mstrait/novasoft-ligo/
   $testrel/ligo/stage.sh $def
-  $testrel/ligo/submit.sh $unixtime $stream "$skymap" $def
+  if [ $stream == neardet-t00 ]; then
+    $testrel/ligo/spillsubmit.sh $unixtime $def
+  else
+    $testrel/ligo/submit.sh $unixtime $stream "$skymap" $def
+  fi
 
   echo Now will watch $rfctime $stream
 
