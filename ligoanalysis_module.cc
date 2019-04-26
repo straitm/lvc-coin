@@ -232,8 +232,8 @@ static bool goodtriggertype(const int trigger)
   // Ignore SNEWS fast beat and LIGO fast beat, because they will
   // overlap with real SNEWS/LIGO triggers, and slow beat SNEWS/LIGO
   // and be in the same files.
-  if(trigger+1 == 27) return false;
-  if(trigger+1 == 43) return false;
+  if(trigger+1 == daqdataformats::TRIG_ID_SNEWS_BEAT_FAST) return false;
+  if(trigger+1 == daqdataformats::TRIG_ID_LIGO_BEAT_FAST) return false;
   return true;
 }
 
