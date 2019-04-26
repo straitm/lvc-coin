@@ -15,6 +15,12 @@ TMP=/tmp/mstrait.redolist.$$
 
 iteration=1
 
+vsleep()
+{
+  echo Sleeping $1
+  sleep $1
+}
+
 find_redo_list()
 {
   # This loop allows starting up a new copy of this script if the old copy
@@ -23,13 +29,13 @@ find_redo_list()
   while true; do
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      sleep 15
+      vsleep 15
     done
 
     deffrag="_redo_$realdef"
     if grep $deffrag /tmp/joblist.$$; then
-      echo Jobs are running already/still for this definition.  Waiting.
-      sleep 4m
+      echo Jobs are running already/still for this definition.
+      vsleep 4m
     else
       break
     fi
@@ -55,6 +61,10 @@ find_redo_list()
   fi
 
   let iteration++
+  if [ $iteration -gt 100 ]; then
+    echo Tried 100 times and still failed, giving up
+    exit 1
+  fi
 }
 
 resubmitdelay=1
@@ -87,21 +97,21 @@ do_a_redo()
 
   # Wait and continue waiting longer between resubmit attempts
   # so that if there is a systemic problem, we don't hammer it
-  sleep ${resubmitdelay}m
+  vsleep ${resubmitdelay}m
   let resubmitdelay++
 
   while true; do
-    sleep 3m
+    vsleep 3m
     # retry loop for jobsub_q, which is flaky
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      sleep 15
+      vsleep 15
     done
 
     cat /tmp/joblist.$$|grep $def|tee $TMP|grep ' H '|awk '{print $1}'|while read j; do
         echo There is a held $rfctime $stream job.  Killing it.
         jobsub_rm --jobid $j
-        sleep 1
+        vsleep 1
     done
 
     rm -f /tmp/joblist.$$
