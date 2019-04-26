@@ -59,7 +59,7 @@ void spilltime::analyze(const art::Event & evt)
   getrawtrigger(rawtrigger, evt);
   if(!goodtriggertype(trigger(rawtrigger))) return;
 
-  printf("Spilltime: %f\n", art_time_to_unix_double(evt.time().value()));
+  printf("Spilltime: %lu %f\n", evt.time().value(), art_time_to_unix_double(evt.time().value()));
 
 }
 
