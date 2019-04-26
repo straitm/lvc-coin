@@ -59,6 +59,7 @@ submit_nova_art.py \
 --opportunistic \
 --maxopt \
 --logs \
+--copyOutScript /bin/true \
 --jobname $def \
 --defname $def \
 --njobs 1 \

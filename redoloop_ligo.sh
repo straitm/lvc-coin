@@ -41,14 +41,27 @@ find_redo_list()
     fi
   done
 
-  samweb list-files defname: $realdef | while read f; do
-    echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /'|while read run sr; do
-      if ! ls $outhistdir/$rfctime-$stream/*det_r*${run}_*${sr}*_data.hists.root \
-           &> /dev/null;then
-        echo $f
-      fi
-    done
-  done > $TMP
+  if [ $stream == neardet-t00 ]; then
+    jobsub_fetchlog --jobid $jobid
+    ngood=$(tar xzf $jobid.tgz -O | \
+            grep -c '^Art has completed and will exit with status 0\.$')
+    nneed=$(samweb list-files defname: $realdef)
+    if [ $ngood -eq $ngood ]; then
+      tar xzf $jobid.tgz -O | grep -q '^Spilltime: ' > spills-$unixtime-$rfctime.txt
+    else
+     samweb list-files defname: $realdef > $TMP
+    fi
+  else
+    samweb list-files defname: $realdef | while read f; do
+      echo $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /' | \
+      while read run sr; do
+        if ! ls $outhistdir/$rfctime-$stream/*det_r*${run}_*${sr}*_data.hists.root \
+             &> /dev/null;then
+          echo $f
+        fi
+      done
+    done > $TMP
+  fi
 
   if [ $(cat $TMP | wc -l) -eq 0 ]; then
     echo No files need to be redone for $unixtime $stream, exiting
@@ -92,7 +105,8 @@ do_a_redo()
   testrel=/nova/app/users/mstrait/novasoft-ligo/
   $testrel/ligo/stage.sh $def
   if [ $stream == neardet-t00 ]; then
-    $testrel/ligo/spillsubmit.sh $unixtime $def
+    jobid=$($testrel/ligo/spillsubmit.sh $unixtime $def | tee /dev/stderr | \
+      grep 'JobsubJobId of first job:' | awk '{print $5}')
   else
     $testrel/ligo/submit.sh $unixtime $stream "$skymap" $def
   fi
