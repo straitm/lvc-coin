@@ -1,0 +1,12 @@
+BEGIN_PROLOG
+
+standard_eliminatebeamspills:
+{
+  module_type: EliminateBeamSpills
+
+  bufferafter: 1e-3
+  bufferbefore:  10e-6
+  spillfile: ""
+}
+
+END_PROLOG

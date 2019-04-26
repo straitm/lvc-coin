@@ -12,8 +12,6 @@
 
 #include <signal.h>
 
-#include "func/timeutil.h"
-
 class spilltime : public art::EDAnalyzer {
   public:
   explicit spilltime(fhicl::ParameterSet const& pset);
@@ -57,9 +55,24 @@ void spilltime::analyze(const art::Event & evt)
 
   art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
+  if(rawtrigger->empty()) return;
+
   if(!goodtriggertype(trigger(rawtrigger))) return;
 
-  printf("Spilltime: %lu %f\n", evt.time().value(), art_time_to_unix_double(evt.time().value()));
+  // doc-34154, good to ~0.05us
+  const double trigger2spill_s =  217.85e-6;
+  const double tdc_per_second = 64e6;
+  const uint64_t trigger2spills_tdc = uint64_t(trigger2spill_s * tdc_per_second);
+
+  // This is a monotonically increasing timestamp with no worries about leap
+  // seconds.  The only leap second trouble is that since AD systems don't handle
+  // leap seconds well, we might be taking triggers that are 1s (or other amounts)
+  // off of the physical spills near leap seconds.
+  const uint64_t triggertime = (*rawtrigger)[0].fTriggerTimingMarker_TimeStart;
+  
+  const uint64_t spilltime = triggertime + trigger2spills_tdc;
+
+  printf("Spilltime: %lu\n", spilltime);
 
 }
 
