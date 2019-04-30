@@ -973,7 +973,11 @@ static std::vector<mhit> select_hits_for_mev_search(
     for(unsigned int j = 0; j < sliceinfo.size(); j++){
       // Optimized for the FD.  The ND isn't sensitive to these.
       const float time_until_slc_cut =  2e3;
-      const float time_since_slc_cut = 13e3;
+
+      // Use slice duration as a simple way of identifying events which dump a lot
+      // of energy in a small volume.
+      const float sliceduration = sliceinfo[j].maxtns - sliceinfo[j].mintns;
+      const float time_since_slc_cut = sliceduration > 2000? 200e3: 13e3;
 
       // Geometrically about correct, but perhaps should be scaled by density
       // or radiation length or neutron cross section or something. Or not,
