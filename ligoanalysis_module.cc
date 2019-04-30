@@ -78,6 +78,28 @@ static int gDet = caf::kUNKNOWN;
 enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND, 
                         MAX_ANALYSIS_CLASS };
 
+// Minimal hit information, distilled from CellHit
+struct mhit{
+  float tns; // fine timing, in nanoseconds
+  float tpos; // transverse position
+  float pe; // photoelectrons
+  uint16_t plane;
+  int cell;
+  bool supernovalike;
+  bool used; // has this hit been used in a pair yet?
+};
+
+// Minimal slice information, distilled from rb::Cluster
+struct mslice{
+  float mintns, maxtns;
+  uint16_t minplane, maxplane;
+  uint16_t mincellx, maxcellx, mincelly, maxcelly;
+
+  // Index into a reduced set of slices where if two overlap in time,
+  // they are considered one.  This index is not contiguous.
+  int mergeslice;
+};
+
 class ligoanalysis : public art::EDProducer {
   public:
   explicit ligoanalysis(fhicl::ParameterSet const& pset);
@@ -787,10 +809,12 @@ static bool half_contained_track(const rb::Track & t)
           t.ExtentPlane() >= min_plane_extent;
 }
 
-// return the index in the slice array that the given track is in
+// return the index in the slice array that the given track is in.  But use
+// my merged slice index if slices overlap.
 static int which_slice_is_this_track_in(
   const rb::Track & t,
-  const art::Handle< std::vector<rb::Cluster> > & slice)
+  const art::Handle< std::vector<rb::Cluster> > & slice,
+  const std::vector<mslice> & sliceinfo)
 {
   // I'm sure this is not the best way, but I have had it with trying to
   // figure out what the best way is, and I'm just going to do it *some*
@@ -804,7 +828,7 @@ static int which_slice_is_this_track_in(
     const rb::Cluster & slc = (*slice)[i];
     for(unsigned int j = 0; j < slc.NCell(); j++){
       const art::Ptr<rb::CellHit> shit = slc.Cell(j);
-      if(*ahit == *shit) return i;
+      if(*ahit == *shit) return sliceinfo[i].mergeslice;
     }
   }
   return -1;
@@ -858,33 +882,14 @@ static void count_ddenergy(const art::Event & evt)
   }
 }
 
-// Minimal hit information, distilled from CellHit
-struct mhit{
-  float tns; // fine timing, in nanoseconds
-  float tpos; // transverse position
-  float pe; // photoelectrons
-  uint16_t plane;
-  int cell;
-  bool supernovalike;
-  bool used; // has this hit been used in a pair yet?
-};
-
-// Minimal slice information, distilled from rb::Cluster
-struct mslice{
-  float mintns, maxtns;
-  uint16_t minplane, maxplane;
-  uint16_t mincellx, maxcellx, mincelly, maxcelly;
-};
-
-// Helper function for count_supernova_like().
 // Builds list of distilled slice information
 static std::vector<mslice> make_sliceinfo_list(
   const art::Handle< std::vector<rb::Cluster> > & slice)
 {
   std::vector<mslice> sliceinfo;
 
-  // Start with slice number 1 because 0 is the "noise slice".
-  for(unsigned int i = 1; i < slice->size(); i++){
+  // Include slice zero, the "noise" slice, to preserve numbering
+  for(unsigned int i = 0; i < slice->size(); i++){
     mslice slc;
     slc.mintns = (*slice)[i].MinTNS();
     slc.maxtns = (*slice)[i].MaxTNS();
@@ -894,6 +899,13 @@ static std::vector<mslice> make_sliceinfo_list(
     slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
     slc.mincelly = (*slice)[i].MinCell(geo::kY);
     slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
+
+    if(i == 0 || i == 1)
+      slc.mergeslice = i;
+    else if(slc.mintns < sliceinfo[sliceinfo.size()-1].maxtns)
+      slc.mergeslice = sliceinfo[sliceinfo.size()-1].mergeslice;
+    else
+      slc.mergeslice = i;
 
     // Take all slices, even if they are outside the 5ms window for
     // long trigger sub-triggers, because this is a list of things to
@@ -970,7 +982,8 @@ static std::vector<mhit> select_hits_for_mev_search(
 
     // Exclude a rectangular box around each slice for a given time
     // period before and after the slice, with a given spatial buffer.
-    for(unsigned int j = 0; j < sliceinfo.size(); j++){
+    // Start at 1 to exclude the "noise" slice, where all the signal is.
+    for(unsigned int j = 1; j < sliceinfo.size(); j++){
       // Optimized for the FD.  The ND isn't sensitive to these.
       const float time_until_slc_cut =  2e3;
 
@@ -1023,25 +1036,13 @@ static std::vector<mhit> select_hits_for_mev_search(
 // Search for supernova-like events if 'supernovalike'.  Otherwise
 // search for the sum of supernova like events and unpaired hits, once
 // with a PE cut and once without.
-static void count_mev(const art::Event & evt, const bool supernovalike)
+static void count_mev(const art::Event & evt, const bool supernovalike,
+                      const std::vector<mslice> & sliceinfo)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    fprintf(stderr, "Unexpected lack of slicer product!\n");
-    return;
-  }
-
-  if(slice->empty()){
-    fprintf(stderr, "Unexpected event with zero slices!\n");
-    return;
-  }
 
   const double livetime = rawlivetime(evt);
-
-  // Make list of all times and locations of "physics" slices. Exclude other
-  // hits near them in time to drop Michels, FEB flashers & neutrons.
-  const std::vector<mslice> sliceinfo = make_sliceinfo_list(slice);
 
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
@@ -1213,14 +1214,11 @@ static void count_upmu(const art::Event & evt)
 
 // Counts tracks with various cuts and contained slices and adds the
 // results to the output histograms
-static void count_tracks_containedslices(const art::Event & evt)
+static void count_tracks_containedslices(const art::Event & evt,
+                                         const std::vector<mslice> & sliceinfo)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    fprintf(stderr, "Unexpected lack of slicer product!\n");
-    return;
-  }
 
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("breakpoint", tracks);
@@ -1301,7 +1299,7 @@ static void count_tracks_containedslices(const art::Event & evt)
       continue;
     }
 
-    trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice);
+    trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice, sliceinfo);
     if(un_contained_track((*tracks)[i]))
       slices_with_uc_tracks.insert(trk_slices[i]);
     if(half_uncontained_track((*tracks)[i]))
@@ -1405,20 +1403,17 @@ static void count_tracks_containedslices(const art::Event & evt)
   fflush(stdout);
 }
 
-static void count_all_mev(art::Event & evt)
+static void count_all_mev(art::Event & evt,
+                          const std::vector<mslice> & sliceinfo)
 {
-  count_mev(evt, true); // supernova-like 
-  count_mev(evt, false); // unmodeled low energy
+  count_mev(evt, true, sliceinfo); // supernova-like 
+  count_mev(evt, false, sliceinfo); // unmodeled low energy
 }
 
 static bool more_than_one_physics_slice(art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    fprintf(stderr, "Unexpected lack of slicer product!\n");
-    return true;
-  }
   return slice->size() > 2;
 }
 
@@ -1449,22 +1444,41 @@ void ligoanalysis::produce(art::Event & evt)
     if(more_than_one_physics_slice(evt)) return;
   }
 
+  // Make list of all times and locations of "physics" slices. For the
+  // MeV search, we will exclude other hits near them in time to drop
+  // Michels, FEB flashers & neutrons. For the track search, we will
+  // merge slices that overlap in time to make slices-with-track counts
+  // more Poissonian.
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+  if(slice.failedToGet()){
+    fprintf(stderr, "Unexpected lack of slicer product!\n");
+    return;
+  }
+
+  if(slice->empty()){
+    fprintf(stderr, "Unexpected event with zero slices!\n");
+    return;
+  }
+
+  const std::vector<mslice> sliceinfo = make_sliceinfo_list(slice);
+
   switch(fAnalysisClass){
     case NDactivity:
-      count_tracks_containedslices(evt);
+      count_tracks_containedslices(evt, sliceinfo);
       break;
     case DDenergy:
       count_triggers(evt);
       count_ddenergy(evt);
       break;
     case MinBiasFD:
-      count_all_mev(evt);
-      count_tracks_containedslices(evt);
+      count_all_mev(evt, sliceinfo);
+      count_tracks_containedslices(evt, sliceinfo);
       count_upmu(evt);
       break;
     case MinBiasND:
-      count_all_mev(evt);
-      count_tracks_containedslices(evt);
+      count_all_mev(evt, sliceinfo);
+      count_tracks_containedslices(evt, sliceinfo);
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
