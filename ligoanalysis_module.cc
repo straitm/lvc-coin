@@ -1230,11 +1230,6 @@ static void count_tracks_containedslices(const art::Event & evt,
   const int timbin = timebin(evt);
   const double livetime = rawlivetime(evt);
 
-  unsigned int counttracks = 0;
-  for(unsigned int i = 0; i < tracks->size(); i++)
-    if(uniquedata_tns(livetime, (*tracks)[i].MeanTNS()))
-      counttracks++;
-
   // Count tracks with either a contained start or end, but not if
   // they are very steep in x or y, since those probably aren't really
   // contained and may not even be complete. Also don't count more than
@@ -1244,7 +1239,7 @@ static void count_tracks_containedslices(const art::Event & evt,
   // Find out what slice each track is in and make a list of slices with
   // tracks that aren't fully contained
   std::vector<int> trk_slices(tracks->size(), -1);
-  std::set<int> slices_with_uc_tracks, slices_with_huc_tracks;
+  std::set<int> slices_with_tracks, slices_with_uc_tracks, slices_with_huc_tracks;
   std::set<int> contained_slices;
   std::set<int> contained_shower_slices;
   for(unsigned int i = 0; i < slice->size(); i++){
@@ -1297,6 +1292,7 @@ static void count_tracks_containedslices(const art::Event & evt,
     }
 
     trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice, sliceinfo);
+
     if(un_contained_track((*tracks)[i]))
       slices_with_uc_tracks.insert(trk_slices[i]);
     if(half_uncontained_track((*tracks)[i]))
@@ -1314,29 +1310,14 @@ static void count_tracks_containedslices(const art::Event & evt,
       track_point[q].push_back(track_points_to_event[q]);
   }
 
-  unsigned int ntracks_that_point[npointres] = { 0 };
-
-  for(unsigned int i = 0; i < tracks->size(); i++)
-    for(unsigned int q = 0; q < npointres; q++)
-      if(track_point[q][i])
-        ntracks_that_point[q]++;
-
-  printf("Tracks in this event: %u (", counttracks);
-  for(unsigned int q = 0; q < npointres; q++) printf("%u%s",
-    ntracks_that_point[q], q==npointres-1?" pointing)\n":", ");
-
-  THplusequals(lh_tracks, timbin, counttracks, livetime);
-
-  for(unsigned int q = 0; q < npointres; q++)
-    THplusequals(lh_tracks_point[q], timbin, ntracks_that_point[q], livetime);
-
   // Find any tracks that are half-contained/fully-contained
   // and don't share a slice with any tracks
   // that are, like, totally uncontained, man.
   std::set<int> slices_with_hc_tracks, slices_with_fc_tracks;
 
   // Same, but the tracks must point towards the LIGO/Virgo event
-  std::set<int> slices_with_hc_tracks_point[npointres],
+  std::set<int> slices_with_tracks_point[npointres],
+                slices_with_hc_tracks_point[npointres],
                 slices_with_fc_tracks_point[npointres];
 
   for(unsigned int i = 0; i < tracks->size(); i++){
@@ -1344,6 +1325,11 @@ static void count_tracks_containedslices(const art::Event & evt,
 
     // Exclude 2D tracks
     if((*tracks)[i].Stop().X() == 0 || (*tracks)[i].Stop().Y() == 0) continue;
+
+    slices_with_tracks.insert(trk_slices[i]);
+    for(unsigned int q = 0; q < npointres; q++)
+      if(track_point[q][i])
+        slices_with_tracks_point[q].insert(trk_slices[i]);
 
     // To be called a slice with half-contained tracks, it must not have any
     // tracks that both enter and exit
@@ -1369,12 +1355,17 @@ static void count_tracks_containedslices(const art::Event & evt,
     }
   }
 
+  printf("Slices with tracks: %2lu (",
+         slices_with_tracks.size());
+  for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
+    slices_with_tracks_point[q].size(), q==npointres-1?" pointing)\n":", ");
+
   printf("Slices with half-contained tracks: %2lu (",
          slices_with_hc_tracks.size());
   for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
     slices_with_hc_tracks_point[q].size(),q==npointres-1?" pointing)\n":", ");
 
-  printf("Slices with half-contained tracks: %2lu (",
+  printf("Slices with fully-contained tracks: %2lu (",
          slices_with_fc_tracks.size());
   for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
     slices_with_fc_tracks_point[q].size(),q==npointres-1?" pointing)\n":", ");
@@ -1391,6 +1382,8 @@ static void count_tracks_containedslices(const art::Event & evt,
     printf("  slice %3d\n", *i);
 
   THplusequals(
+    lh_tracks, timbin, slices_with_tracks.size(), livetime);
+  THplusequals(
     lh_halfcontained_tracks, timbin, slices_with_hc_tracks.size(), livetime);
   THplusequals(
     lh_fullycontained_tracks, timbin, slices_with_fc_tracks.size(), livetime);
@@ -1398,6 +1391,8 @@ static void count_tracks_containedslices(const art::Event & evt,
     lh_contained_slices, timbin, contained_shower_slices.size(), livetime);
 
   for(unsigned int q = 0; q < npointres; q++){
+    THplusequals(lh_tracks_point[q], timbin,
+                 slices_with_tracks_point[q].size(), livetime);
     THplusequals(lh_halfcontained_tracks_point[q], timbin,
                  slices_with_hc_tracks_point[q].size(), livetime);
     THplusequals(lh_fullycontained_tracks_point[q], timbin,
