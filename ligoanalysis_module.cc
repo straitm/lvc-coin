@@ -1235,9 +1235,6 @@ static void count_tracks_containedslices(const art::Event & evt,
     if(uniquedata_tns(livetime, (*tracks)[i].MeanTNS()))
       counttracks++;
 
-  printf("Tracks in this event: %u\n", counttracks);
-  THplusequals(lh_tracks, timbin, counttracks, livetime);
-
   // Count tracks with either a contained start or end, but not if
   // they are very steep in x or y, since those probably aren't really
   // contained and may not even be complete. Also don't count more than
@@ -1323,6 +1320,12 @@ static void count_tracks_containedslices(const art::Event & evt,
     for(unsigned int q = 0; q < npointres; q++)
       if(track_point[q][i])
         ntracks_that_point[q]++;
+
+  printf("Tracks in this event: %u (", counttracks);
+  for(unsigned int q = 0; q < npointres; q++) printf("%u%s",
+    ntracks_that_point[q], q==npointres-1?" pointing)\n":", ");
+
+  THplusequals(lh_tracks, timbin, counttracks, livetime);
 
   for(unsigned int q = 0; q < npointres; q++)
     THplusequals(lh_tracks_point[q], timbin, ntracks_that_point[q], livetime);
