@@ -25,10 +25,6 @@ lifetime=$(( 300 * $filesperjob ))
 tag=$(cat $SRT_PRIVATE_CONTEXT/.base_release)
 testrel=/nova/app/users/mstrait/novasoft-ligo/
 
-outdir=$outhistdir/$rfctime-$analysis_type_key
-
-mkdir -p $outdir
-
 # This is needed because the way submission works these days is that it
 # tars up the whole test release in /tmp, which only has 2GB.
 fails=0
@@ -67,5 +63,4 @@ submit_nova_art.py \
 --tag $tag \
 --testrel $testrel \
 --config $fcl \
---dest $outdir \
 --expected_lifetime $lifetime

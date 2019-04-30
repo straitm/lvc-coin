@@ -30,5 +30,6 @@ if timeout 60 hadd  -f $out $pnfsdir/*.root; then
   echo $pnfsdir concatenated
 else
   echo $pnfsdir concatenatation failed
+  rm -f $out
   exit 1
 fi

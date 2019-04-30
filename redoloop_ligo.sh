@@ -8,6 +8,11 @@ unixtime=$(echo $realdef | cut -d- -f 5)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 stream=$(echo $realdef | cut -d- -f 6-7)
 
+if ! [ $stream ]; then
+  echo Got a null stream from \"$realdef\", cannot continue
+  exit 1
+fi
+
 # If empty, the right thing happens (which is that we use a dummy skymap)
 skymap=$2
 
@@ -21,6 +26,25 @@ vsleep()
   sleep $1
 }
 
+nsamlistsrunning()
+{
+  ps f -u mstrait | grep -v grep | grep samweb.py\ list | wc -l
+}
+
+# SAM won't let a user do more than 5 queries at a time.  Self-limit
+# to three so that I can also do interactive queries while my scripts run.
+blocksam()
+{
+  local try=0
+  while true; do
+    n=$(nsamlistsrunning)
+    if [ $n -le 2 ]; then break; fi
+    echo Waiting for $n sam list processes to finish
+    sleep $((try + 60 + RANDOM%60))
+    let try++
+  done
+  echo Ok, going ahead
+}
 find_redo_list()
 {
   # This loop allows starting up a new copy of this script if the old copy
@@ -42,16 +66,24 @@ find_redo_list()
   done
 
   if [ $stream == neardet-t00 ]; then
-    jobsub_fetchlog --jobid $jobid
-    ngood=$(tar xzf $jobid.tgz -O | \
-            grep -c '^Art has completed and will exit with status 0\.$')
-    nneed=$(samweb list-files defname: $realdef)
-    if [ $ngood -eq $ngood ]; then
-      tar xzf $jobid.tgz -O | grep -q '^Spilltime: ' > spills-$unixtime-$rfctime.txt
+    if ! [ $jobid ]; then
+      blocksam
+      samweb list-files defname: $realdef > $TMP
     else
-     samweb list-files defname: $realdef > $TMP
+      jobsub_fetchlog --jobid $jobid
+      ngood=$(tar xzf $jobid.tgz -O | \
+              grep -c '^Art has completed and will exit with status 0\.$')
+      blocksam
+      nneed=$(samweb list-files defname: $realdef | wc -l)
+      if [ $ngood -eq $nneed ]; then
+        tar xzf $jobid.tgz -O | grep '^Spilltime: ' > spills-$unixtime-$rfctime.txt
+      else
+        blocksam
+        samweb list-files defname: $realdef > $TMP
+      fi
     fi
   else
+    blocksam
     samweb list-files defname: $realdef | while read f; do
       echo $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /' | \
       while read run sr; do
@@ -74,8 +106,8 @@ find_redo_list()
   fi
 
   let iteration++
-  if [ $iteration -gt 100 ]; then
-    echo Tried 100 times and still failed, giving up
+  if [ $iteration -gt 30 ]; then
+    echo Tried 30 times and still failed, giving up
     exit 1
   fi
 }
@@ -141,7 +173,6 @@ do_a_redo()
       echo At $(date):
       echo $(cat $TMP | grep ' R ' | wc -l) $rfctime $stream 'job(s)' running \
            $(cat $TMP | grep ' I ' | wc -l) idle
-      echo
     fi
     rm -f $TMP
   done

@@ -61,6 +61,15 @@ outdir=$outhistdir/$rfctime-$analysis_type_key
 
 mkdir -p $outdir
 
+if [ -e $outdir/bad ]; then
+  echo $(basename outdir) is marked bad, will not submit jobs
+  exit 1
+fi
+if [ -e $outdir/complete ]; then
+  echo $(basename outdir) is marked complete, will not submit jobs
+  exit 0
+fi
+
 # This is needed because the way submission works these days is that it
 # tars up the whole test release in /tmp, which only has 2GB.
 fails=0

@@ -34,10 +34,10 @@ elif [ $trigger == neardet-ddactivity1 ]; then
 fi
 
 defbase=strait-ligo-coincidence-artdaq-$t
+def=$defbase-$trigger
 
 havedef()
 {
-  def=$defbase-$trigger
   if samweb list-definitions | grep -qE "^$def$"; then
     echo SAM definition $def already exists for $t
     return 0
@@ -64,7 +64,7 @@ blocksam()
     sleep $((try + 60 + RANDOM%60))
     let try++
   done
-  echo Ok, going ahead
+  echo Ok, going ahead with SAM query
 }
 
 setup_fnal_security &> /dev/null
@@ -105,9 +105,14 @@ else
        > allfiles.$t.$trigger
   fi
 
-  cat allfiles.$t.$trigger | grep -E "$filepattern" | tee selectedfiles.$t.$trigger
+  cat allfiles.$t.$trigger | grep -E "$filepattern" | \
+    tee selectedfiles.$t.$trigger
 
-  def=$defbase-$trigger
+  if ! [ "$(cat selectedfiles.$t.$trigger)" ]; then
+    echo No files selected, nothing to do
+    exit 0
+  fi
+
   if cat selectedfiles.$t.$trigger | grep -q $filepattern; then
     # Even during the SNEWS trigger, we only get about 40 subruns at the
     # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)
@@ -132,7 +137,6 @@ else
   fi
 fi
 
-def=$defbase-$trigger
 if ! samweb list-definitions | grep -qE "^$def$"; then
   echo Failed to get or make the definition
   exit 1

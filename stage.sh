@@ -34,7 +34,7 @@ doit()
       echo Waiting for $n other prestages to finish
       sleep 1m
     else
-      echo Going ahead
+      echo Not too many other stages going on.  Going ahead.
       break
     fi
   done
