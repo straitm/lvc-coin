@@ -140,7 +140,7 @@ do_a_redo()
     jobid=$($testrel/ligo/spillsubmit.sh $unixtime $def | tee /dev/stderr | \
       grep 'JobsubJobId of first job:' | awk '{print $5}')
   else
-    $testrel/ligo/submit.sh $unixtime $stream "$skymap" $def
+    $testrel/ligo/submit.sh $unixtime $stream $def
   fi
 
   echo Now will watch $rfctime $stream
@@ -158,7 +158,8 @@ do_a_redo()
       vsleep 15
     done
 
-    cat /tmp/joblist.$$|grep $def|tee $TMP|grep ' H '|awk '{print $1}'|while read j; do
+    cat /tmp/joblist.$$|grep $GWNAME-$def|tee $TMP|grep ' H '|awk '{print $1}'|\
+    while read j; do
         echo There is a held $rfctime $stream job.  Killing it.
         jobsub_rm --jobid $j
         vsleep 1

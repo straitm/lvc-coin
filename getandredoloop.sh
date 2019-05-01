@@ -8,23 +8,20 @@
 
 cd /nova/ana/users/mstrait/ligometalog/
 
-if [ $# -lt 3 ]; then
-  echo Syntax: $(basename $0) month day trigger '[year]'
-  echo "For example: $(basename $0) Jan 1 fardet-ddsnews"
-  echo "Or:          $(basename $0) Oct 9 fardet-ddsnews 2018"
+if [ $# -ne 5 ]; then
+  echo Syntax: $(basename $0) month day trigger year gwname
+  echo "For example: $(basename $0) Jan 1 fardet-ddsnews 2019 S190426c"
   exit 1
-elif [ $# -gt 4 ]; then
-  echo $(basename $0): Warning, ignoring extraneous arguments after the fourth
 fi
 
 month=$1
 day=$2
 trigger=$3
-if [ $4 ]; then
-  year=$4
-else
-  year=2019
-fi
+year=$4
+export GWNAME=$5
+
+# Just (for the moment) to check GWNAME
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
 unixtime=$(date +%s -d"$month $day 8:29:01 $year")
 
@@ -36,4 +33,4 @@ fi
 
 $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh \
 strait-ligo-coincidence-artdaq-$unixtime-$trigger
-) 2> /dev/stdout | tee $month-$day-$year-$unixtime-$trigger.log
+) 2> /dev/stdout | tee $GWNAME-$month-$day-$year-$unixtime-$trigger.log

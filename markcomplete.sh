@@ -2,6 +2,7 @@
 
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
+mkdir -p $outhistdir
 cd $outhistdir
 
 for f in *; do

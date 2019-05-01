@@ -4,6 +4,7 @@
 
 markcomplete.sh
 
+mkdir -p $outhistdir
 cd $outhistdir
 
 for f in */complete; do

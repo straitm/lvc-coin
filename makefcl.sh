@@ -1,22 +1,22 @@
 #!/bin/bash
 
-if [ $# -ne 3 ] && [ $# -ne 2 ]; then
-  echo Syntax: $(basename $0) analysis_type timestamp {skymap}
+# do *not* source env.sh in this script
+
+if [ $# -ne 4 ]; then
+  echo Syntax: $(basename $0) analysis_type timestamp gwtimestamp skymap
   echo "Where analysis_type is the XXX in ligojob_XXX.fcl" 
-  echo "      timestamp is the time of the GW event" 
-  echo "      skymap is the FITS file, optional, will use a dummy" 
-  echo "        if you do not specify one" 
+  echo "      timestamp is the RFC time to center the analysis on" 
+  echo "      gwtimestamp is the RFC time of the GW event" 
+  echo "        (Those are the same time for the signal sample)"
+  echo "      skymap is the FITS file"
   exit 1
 fi
 
 type=$1
-unixtime=$2
-skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-GW170817.fits
-if [ $3 ]; then
-  skymap=$3
-fi
+rfctime=$2
+realgweventtime=$3
+skymap=$4
 
-rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 fcl=ligojob_$type.$rfctime.fcl
 
 if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
@@ -24,12 +24,9 @@ if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
   exit 1
 fi
 
-# NOTE NeedBGEventTime -- set to a test value now, but will need to be set to
-# real GW event time, and should be scripted up better for that.
-
 cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
   sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligoanalysis.NeedBGEventTime: \"2019-03-24T13:29:01.Z\"\
+      \nthis_here_ligoanalysis.NeedBGEventTime: \"$realgweventtime\"\
       \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
       \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $SRT_PRIVATE_CONTEXT/job/$fcl
 

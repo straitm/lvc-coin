@@ -2,25 +2,22 @@
 
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
-if [ $# -ne 2 ] && [ $# -ne 3 ] && [ $# -ne 4 ]; then
-  echo Syntax: $(basename $0) unixtime analysis_type {skymap} {def}
-  echo Where analysis_type is fardet-t02, fardet-ddsnews, fardet-ddenergy
-  echo neardet-ddactivity1 or neardet-ddsnews.
-  echo I will use a dummy skymap if you do not give one
-  echo Override the definition derived from unixtime with def.
+if [ $# -ne 2 ] && [ $# -ne 3 ]; then
+  echo "Syntax: $(basename $0) unixtime analysis_type [def]"
+  echo "Where unixtime is the time to center the analysis on,"
+  echo "      analysis_type is fardet-t02, fardet-ddsnews, fardet-ddenergy"
+  echo "                       neardet-ddactivity1 or neardet-ddsnews."
+  echo "      def, optional, is the SAM definitio to use"
+  echo "           (This feature is for the redo definitions)"
   exit 1
 fi
 
 unixtime=$1
+rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 analysis_type_key=$2
-
 def=strait-ligo-coincidence-artdaq-${unixtime}-${analysis_type_key}
-skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-GW170817.fits
 if [ $3 ]; then
-  skymap=$3
-fi
-if [ $4 ]; then
-  def=$4
+  def=$3
 fi
 
 if [ $analysis_type_key == fardet-t02 ]; then
@@ -46,11 +43,11 @@ fi
 
 # Tell the fcl we are reading the skymap from the CWD since it will be shipped
 # there by the grid.  (*Don't* do that for interactive jobs.)
-if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $unixtime $(basename $skymap); then
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime \
+     $realgweventtime $(basename $skymap); then
   exit 1
 fi
 
-rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 fcl=ligojob_$type.$rfctime.fcl
 
 njobs=$(samweb list-files defname: $def | wc -l)
@@ -103,7 +100,7 @@ submit_nova_art.py \
 --logs \
 --histTier hists \
 --copyOut \
---jobname $def \
+--jobname $GWNAME-$def \
 --defname $def \
 --njobs $njobs \
 --files_per_job 1 \
