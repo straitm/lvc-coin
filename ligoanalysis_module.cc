@@ -28,6 +28,7 @@
 
 #include "RecoBase/Track.h"
 
+#include "CMap/service/DetectorService.h"
 #include "CelestialLocator/CelestialLocator.h"
 #include "NovaTimingUtilities/TimingUtilities.h"
 
@@ -59,7 +60,7 @@ static const unsigned int npointres = 2;
 static Healpix_Map<float> * healpix_skymap[npointres] = { NULL };
 
 // The critical probability density values in the sky maps above which
-// we are in the 90% confidence level region.  Set in beginJob().
+// we are in the 90% confidence level region.  Set in beginRun().
 static double skymap_crit_val[npointres] = { 0 };
 // "`-._,-'"`-._,-'"`-._,-'  END sky map stuff  "`-._,-'"`-._,-'"`-._,-'
 
@@ -106,7 +107,7 @@ class ligoanalysis : public art::EDProducer {
   virtual ~ligoanalysis() { }; // compiles, but does not run, without this
   void produce(art::Event& evt);
 
-  void beginJob();
+  void beginRun(art::Run& run);
 
   /// \brief User-supplied type of trigger being examined.
   ///
@@ -551,18 +552,24 @@ static double find_critical_value(const int q)
   return crit;
 }
 
-void ligoanalysis::beginJob()
+void ligoanalysis::beginRun(art::Run& run)
 {
+  art::ServiceHandle<ds::DetectorService> ds;
+  art::ServiceHandle<locator::CelestialLocator> celloc;
+  celloc->SetDetector(ds->DetId(run));
+
   if(fAnalysisClass == DDenergy) return;
 
   if(fSkyMap == "") return;
 
   for(unsigned int q = 0; q < npointres; q++){
     healpix_skymap[q] = new Healpix_Map<float>;
+    printf("Opening FITS file %s\n", fSkyMap.c_str());
     try       { read_Healpix_map_from_fits(fSkyMap, *healpix_skymap[q]); }
     catch(...){ exit(1);                                                 }
   }
 
+  printf("Smearing skymap\n");
   /* doc-16860 */
   smear_skymap(healpix_skymap[0], 1.3);
 
