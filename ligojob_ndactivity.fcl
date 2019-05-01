@@ -6,7 +6,6 @@
 #include "ElasticArmsHS.fcl"
 #include "FuzzyKVertex.fcl"
 #include "BreakPoint.fcl"
-#include "MattRemoveBeamSpills.fcl"
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
@@ -21,18 +20,6 @@ services:
   @table::standard_services
   CelestialLocator:    @local::standard_celestial
 }
-
-# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
-# tested that if it isn't here, it doesn't work.  But I don't know what
-# it does.
-services.IFBeam: {}
-
-this_here_removebeam: @local::standard_mattremovebeamspills
-
-# Only concerned about prompt NuMI events that would trigger ddenergy1.
-# readouts are 0.05ms.  Add 3ms as per comments in MattRemoveBeamSpills.fcl
-# and round up to be safe.
-this_here_removebeam.VetoWindow: 0.004
 
 source:
 {
@@ -54,7 +41,6 @@ physics:
 {
   filters:
   {
-    removebeam: @local::this_here_removebeam
     ligofilter: @local::this_here_ligofilter
   }
 
@@ -69,8 +55,7 @@ physics:
     ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ removebeam,
-          ligofilter,
+  reco: [ ligofilter,
           calhit,
           slicer,
           multihough, # for breakpoint

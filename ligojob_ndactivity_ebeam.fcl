@@ -6,10 +6,11 @@
 #include "ElasticArmsHS.fcl"
 #include "FuzzyKVertex.fcl"
 #include "BreakPoint.fcl"
+#include "EliminateBeamSpills.fcl"
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
-process_name: ligominbiasnd
+process_name: ligondactivity
 
 services:
 {
@@ -20,6 +21,15 @@ services:
   @table::standard_services
   CelestialLocator:    @local::standard_celestial
 }
+
+# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
+# tested that if it isn't here, it doesn't work.  But I don't know what
+# it does.
+services.IFBeam: {}
+
+eliminatebeam: @local::standard_eliminatebeamspills
+
+eliminatebeam.spillfile: "/nova/ana/users/mstrait/ligometalog/spills-1549376941-2019-02-05T14:29:01.Z.txt"
 
 source:
 {
@@ -34,13 +44,14 @@ thisone_breakpoint_here.FitAsProton: false
 this_here_ligofilter: @local::standard_ligofilter
 
 this_here_ligoanalysis: @local::standard_ligoanalysis
-this_here_ligoanalysis.AnalysisClass: MinBiasND
+this_here_ligoanalysis.AnalysisClass: NDactivity
 
 
 physics:
 {
   filters:
   {
+    ebeam: @local::eliminatebeam
     ligofilter: @local::this_here_ligofilter
   }
 
@@ -55,7 +66,8 @@ physics:
     ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ ligofilter,
+  reco: [ ebeam,
+          ligofilter,
           calhit,
           slicer,
           multihough, # for breakpoint
