@@ -1,5 +1,7 @@
 #!/bin/bash
 
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
+
 if ! [ $1 ]; then
   echo "$(basename $0) [type] [time] [files]"
   echo "  type:  The analysis type, that is, the part of"
@@ -23,10 +25,6 @@ fi
 unixtime=$1
 shift
 
-# CHANGE THIS to the appropriate skymap
-# TODO: should be a command line argument
-skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-GW170817.fits
-
 export TZ=UTC
 fracsec=$(cut -d. -f 2 -s <<< $unixtime)
 rfctime=$(date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
@@ -35,7 +33,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $unixtime $skymap; then
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime $rfctime $skymap; then
   exit 1
 fi
 

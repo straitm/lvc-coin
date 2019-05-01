@@ -13,6 +13,7 @@ if [ $# -ne 2 ] && [ $# -ne 3 ]; then
 fi
 
 unixtime=$1
+fracsec=$(cut -d. -f 2 -s <<< $unixtime)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 analysis_type_key=$2
 def=strait-ligo-coincidence-artdaq-${unixtime}-${analysis_type_key}

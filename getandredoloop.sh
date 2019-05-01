@@ -14,6 +14,8 @@ if [ $# -ne 5 ]; then
   exit 1
 fi
 
+echo $0 running on $HOSTNAME
+
 month=$1
 day=$2
 trigger=$3

@@ -106,8 +106,8 @@ find_redo_list()
   fi
 
   let iteration++
-  if [ $iteration -gt 30 ]; then
-    echo Tried 30 times and still failed, giving up
+  if [ $iteration -gt 10 ]; then
+    echo Tried 10 times and still failed, giving up
     exit 1
   fi
 }
