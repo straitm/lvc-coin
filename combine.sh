@@ -19,6 +19,8 @@ fi
 
 out=$outhadddir/$basepnfsdir.hadded.root 
 
+mkdir -p $outhadddir
+
 if [ -e $out ]; then
   echo $out already exists, skipping
   exit 0

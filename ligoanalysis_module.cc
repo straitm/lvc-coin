@@ -898,14 +898,22 @@ static std::vector<mslice> make_sliceinfo_list(
   // Include slice zero, the "noise" slice, to preserve numbering
   for(unsigned int i = 0; i < slice->size(); i++){
     mslice slc;
+    memset(&slc, 0, sizeof(mslice));
+
+    if((*slice)[i].NCell() == 0) continue;
+
     slc.mintns = (*slice)[i].MinTNS();
     slc.maxtns = (*slice)[i].MaxTNS();
     slc.minplane = (*slice)[i].MinPlane();
     slc.maxplane = (*slice)[i].MaxPlane();
-    slc.mincellx = (*slice)[i].MinCell(geo::kX);
-    slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
-    slc.mincelly = (*slice)[i].MinCell(geo::kY);
-    slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
+    if((*slice)[i].NCell(geo::kX)){
+      slc.mincellx = (*slice)[i].MinCell(geo::kX);
+      slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
+    }
+    if((*slice)[i].NCell(geo::kY)){
+      slc.mincelly = (*slice)[i].MinCell(geo::kY);
+      slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
+    }
 
     if(i == 0 || i == 1)
       slc.mergeslice = i;

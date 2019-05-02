@@ -45,6 +45,7 @@ blocksam()
   done
   echo Ok, going ahead
 }
+
 find_redo_list()
 {
   # This loop allows starting up a new copy of this script if the old copy
@@ -53,7 +54,7 @@ find_redo_list()
   while true; do
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      vsleep 15
+      vsleep 45
     done
 
     deffrag="_redo_$realdef"
@@ -112,7 +113,7 @@ find_redo_list()
   fi
 }
 
-resubmitdelay=1
+resubmitdelay=$((60+RANDOM%300))
 
 do_a_redo()
 {
@@ -147,15 +148,17 @@ do_a_redo()
 
   # Wait and continue waiting longer between resubmit attempts
   # so that if there is a systemic problem, we don't hammer it
-  vsleep ${resubmitdelay}m
-  let resubmitdelay++
+  vsleep ${resubmitdelay}
+  if [ $resubmitdelay -lt 3600 ]; then
+    let resubmitdelay*=2
+  fi
 
   while true; do
     vsleep 3m
     # retry loop for jobsub_q, which is flaky
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      vsleep 15
+      vsleep 45
     done
 
     cat /tmp/joblist.$$|grep $GWNAME-$def|tee $TMP|grep ' H '|awk '{print $1}'|\
