@@ -58,7 +58,7 @@ find_redo_list()
     done
 
     deffrag="_redo_$realdef"
-    if grep $deffrag /tmp/joblist.$$; then
+    if grep ${GWNAME}.*$deffrag /tmp/joblist.$$; then
       echo Jobs are running already/still for this definition.
       vsleep 4m
     else
