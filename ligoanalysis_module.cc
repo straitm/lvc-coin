@@ -721,8 +721,8 @@ static void THplusequals(ligohist & lh, const int bin, const double sig,
 // Return the bin number for this event, i.e. the number of seconds from the
 // beginning of the window, plus 1.
 //
-// XXX This does not handle an event overlapping a bin boundary. Does
-// this matter?
+// This does not handle an event overlapping a bin boundary particularly
+// well, but does consistently assign it to the earlier bin.
 static int timebin(const art::Event & evt)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
