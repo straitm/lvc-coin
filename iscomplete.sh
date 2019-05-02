@@ -5,15 +5,26 @@
 dir="$(basename "$1")"
 def=$($SRT_PRIVATE_CONTEXT/ligo/dir2def.sh "$dir")
 
-missing=$(samweb list-files defname: $def | while read f; do 
-  echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /'| \
+LIST=/tmp/iscomplete.$$
+
+samweb list-files defname: $def > $LIST
+
+if [ $(cat $LIST | wc -l) -eq 0 ]; then
+  echo Empty SAM definition. Cannot tell if this is complete.
+  exit 1
+fi
+
+missing=$(cat $LIST | while read f; do
+  echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s/ /'| \
     while read run sr; do
-    if ! ls $outhistdir/$dir/*det_r*${run}_*${sr}*_data.hists.root \
+    if ! ls $outhistdir/$dir/*det_r*${run}_s${sr}_*_data.hists.root \
        &> /dev/null;then
       echo hist file from $f missing
     fi
   done
 done | grep -c missing)
+
+rm -f $LIST
 
 if [ $missing -eq 0 ]; then
   echo $dir complete
