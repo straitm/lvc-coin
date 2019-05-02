@@ -1156,16 +1156,19 @@ static void track_ra_dec(double & ra, double & dec,
 static bool points(const double ra, const double dec, const int mapi,
                    const bool allow_backwards)
 {
-  // XXX double-check two things: Does pointing accept angles out of range and
-  // wrap around as expected?  And is its definition of declination, a.k.a.
-  // theta, really off by pi/2?
+  // not sure if normalizing is necessary, but can't hurt
+  pointing forward ( dec+M_PI_2, ra);
+  forward.normalize();
+  pointing backward(-dec+M_PI_2, ra+M_PI);
+  backward.normalize();
+
   if(allow_backwards)
     return skymap_crit_val[mapi] < std::max(
-    healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     )),
-    healpix_skymap[mapi]->interpolated_value(pointing(-dec+M_PI_2, ra+M_PI)));
+    healpix_skymap[mapi]->interpolated_value(forward),
+    healpix_skymap[mapi]->interpolated_value(backward));
   else
     return skymap_crit_val[mapi] <
-    healpix_skymap[mapi]->interpolated_value(pointing( dec+M_PI_2, ra     ));
+    healpix_skymap[mapi]->interpolated_value(forward);
 }
 
 static void count_upmu(const art::Event & evt)
