@@ -135,6 +135,13 @@ do_a_redo()
 
   rm -f $TMP
 
+  # Wait and continue waiting longer between resubmit attempts
+  # so that if there is a systemic problem, we don't hammer it
+  vsleep ${resubmitdelay}
+  if [ $resubmitdelay -lt 3600 ]; then
+    let resubmitdelay*=2
+  fi
+
   testrel=/nova/app/users/mstrait/novasoft-ligo/
   $testrel/ligo/stage.sh $def
   if [ $stream == neardet-t00 ]; then
@@ -145,13 +152,6 @@ do_a_redo()
   fi
 
   echo Now will watch $rfctime $stream
-
-  # Wait and continue waiting longer between resubmit attempts
-  # so that if there is a systemic problem, we don't hammer it
-  vsleep ${resubmitdelay}
-  if [ $resubmitdelay -lt 3600 ]; then
-    let resubmitdelay*=2
-  fi
 
   while true; do
     vsleep 3m
