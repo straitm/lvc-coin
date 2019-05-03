@@ -100,6 +100,7 @@ submit_nova_art.py \
 --maxopt \
 --logs \
 --histTier hists \
+--outTier out1:reco \
 --copyOut \
 --jobname $GWNAME-$def \
 --defname $def \
