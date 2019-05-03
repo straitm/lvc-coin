@@ -22,8 +22,9 @@ iteration=1
 
 vsleep()
 {
-  echo Sleeping $1
+  echo Sleeping $1 or a little bit more
   sleep $1
+  sleep $((RANDOM%10))
 }
 
 nsamlistsrunning()

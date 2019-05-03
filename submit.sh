@@ -84,7 +84,7 @@ while true; do
     break
   fi
   let fails++
-  if [ $fails -gt 100 ]; then
+  if [ $fails -gt 10 ]; then
     echo OK, I have had it.  Going to clear my files out of /tmp
     rm -fv /tmp/tmp* /tmp/mstrait.* /tmp/joblist.* /tmp/headtail.*
     fails=0
