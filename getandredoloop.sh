@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Cache the files needed for the 8:30 DDsnews trigger of the given month and
-# day in 2019 (or another year if specified), then run jobs to process them
-# all, running redo loops that look for failed jobs and resubmit them.  Try to
+# Cache the files needed for the 8:30 DDsnews trigger of the
+# given date, then run jobs to process them all, running redo
+# loops that look for failed jobs and resubmit them. Try to
 # do the redo loops gently enough that we don't fill up /tmp with overlapping
 # submissions too often or cause other problems.
 
@@ -11,6 +11,7 @@ cd /nova/ana/users/mstrait/ligometalog/
 if [ $# -ne 5 ]; then
   echo Syntax: $(basename $0) month day trigger year gwname
   echo "For example: $(basename $0) Jan 1 fardet-ddsnews 2019 S190426c"
+  echo "  gwname defines the sky map and effective time for pointing"
   exit 1
 fi
 
@@ -33,6 +34,16 @@ if ! $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger; then
   exit 1
 fi
 
-$SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh \
-strait-ligo-coincidence-artdaq-$unixtime-$trigger
+defbase=strait-ligo-coincidence
+recodef=$defbase-reco-$unixtime-$trigger
+rawdef=$defbase-artdaq-$unixtime-$trigger
+
+# getfilelist.sh only allows good definitions to exist
+if samweb list-definitions | grep -q $recodef; then
+  def=$recodef
+else
+  def=$rawdef
+fi
+
+$SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def
 ) 2> /dev/stdout | tee $GWNAME-$month-$day-$year-$unixtime-$trigger.log

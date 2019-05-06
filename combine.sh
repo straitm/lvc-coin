@@ -28,10 +28,10 @@ fi
 
 (cd $pnfsdir; cleanup.sh)
 
-if timeout 120 hadd  -f $out $pnfsdir/*.root; then
+if timeout 120 hadd  -f $out $pnfsdir/*hists.root; then
   echo $pnfsdir concatenated
 else
   echo $pnfsdir concatenatation failed
-  rm -f $out
+  rm -fv $out
   exit 1
 fi

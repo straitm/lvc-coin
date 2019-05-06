@@ -1,5 +1,7 @@
 #!/bin/bash
 
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
+
 # Unix time stamp of the event we want to search around.
 # (How does Online.SubRun*Time handle leap seconds!?)
 if ! [ $1 ]; then
@@ -34,12 +36,29 @@ elif [ $trigger == neardet-ddactivity1 ]; then
 fi
 
 defbase=strait-ligo-coincidence-artdaq-$t
-def=$defbase-$trigger
+recodefbase=strait-ligo-coincidence-reco-$t
+rawdef=$defbase-$trigger
+recodef=$recodefbase-$trigger
 
 havedef()
 {
+  tmplist=/tmp/samlist.$$
+
+  def=$1
   if samweb list-definitions | grep -qE "^$def$"; then
     echo SAM definition $def already exists for $t
+
+    samweb list-files defname: $def > $tmplist
+    for f in $(cat $tmplist); do
+      if samweb locate-file $f | grep -q scratch && 
+         ! [ -e $(samweb locate-file $f | sed s/dcache://)/$f ]; then
+        echo $f in reco def does not exist.  Removing definition.
+        samweb delete-definition $recodef
+        rm -f $tmplist
+        return 1
+      fi
+    done
+    rm -f $tmplist
     return 0
   else
     echo No SAM definition yet for $def
@@ -67,11 +86,47 @@ blocksam()
   echo Ok, going ahead with SAM query
 }
 
+makerecodef()
+{
+  tmplist=/tmp/tmplist.$$
+  tmprecolist=/tmp/tmprecolist.$$
+  rm -f $tmprecolist
+
+  samweb list-files defname: $rawdef > $tmplist
+  for raw in $(cat $tmplist); do
+    base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
+    if ls $outhistdir/../*/*/*${base}_*.reco.root &> /dev/null; then
+      ls $outhistdir/../*/*/*${base}_*.reco.root | head -n 1 >> /tmp/recolist.$$
+    else
+      echo No such file $outhistdir/../*/*${base}_*.reco.root
+      rm -f $tmplist $tmprecolist
+      return 1
+    fi
+  done
+
+  if [ -e $tmprecolist ]; then
+    sam_add_dataset -n $recodef -f $tmprecolist
+  else
+    return 1
+  fi
+
+  rm -f $tmplist $tmprecolist
+}
+
 setup_fnal_security &> /dev/null
 
-if havedef; then
-  echo Have all SAM definitions already.  Doing no queries.
+if havedef $recodef; then
+  echo Have reco SAM definition already.  Doing no queries.
+  def=$recodef
+elif makerecodef; then
+  echo Made reco SAM definition
+  def=$recodef
+elif havedef $rawdef; then
+  echo Reco files not available. Have raw SAM definition. Doing no queries.
+  def=$rawdef
 else
+  echo Making raw SAM definition
+  def=$rawdef
   if ! [ -e allfiles.$t.$trigger ]; then
     # I want a 1000 second window, but also add a 50 second buffer on each end.
     #

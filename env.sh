@@ -36,10 +36,15 @@ elif [ $GWNAME == S190412m  ]; then realgweventtime="2019-04-12T05:30:44.1656Z"
 elif [ $GWNAME == S190421ar ]; then realgweventtime="2019-04-21T21:38:56.25Z"
 elif [ $GWNAME == S190425z  ]; then realgweventtime="2019-04-25T08:08:05.02Z"
 elif [ $GWNAME == S190426c  ]; then realgweventtime="2019-04-26T15:21:55.3365Z"
+elif [ $GWNAME == S190503bf ]; then realgweventtime="2019-05-03T18:54:04.4126Z"
 else
   echo I do not know when $GWNAME was.  Edit env.sh
-  exit 1
+  if ! [ $PS1 ]; then
+    exit 1
+  fi
 fi
+
+mkdir -p $outhistdir $outhaddir
 
 if ! echo $PATH | grep -qE "$SRT_PRIVATE_CONTEXT/ligo([:/]|$)"; then
   PATH+=:$SRT_PRIVATE_CONTEXT/ligo

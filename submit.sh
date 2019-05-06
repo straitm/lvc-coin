@@ -7,7 +7,7 @@ if [ $# -ne 2 ] && [ $# -ne 3 ]; then
   echo "Where unixtime is the time to center the analysis on,"
   echo "      analysis_type is fardet-t02, fardet-ddsnews, fardet-ddenergy"
   echo "                       neardet-ddactivity1 or neardet-ddsnews."
-  echo "      def, optional, is the SAM definitio to use"
+  echo "      def, optional, is the SAM definition to use"
   echo "           (This feature is for the redo definitions)"
   exit 1
 fi
@@ -21,8 +21,14 @@ if [ $3 ]; then
   def=$3
 fi
 
+if printf $def | grep -q -- -reco-; then
+  typesuffix=_noreco
+else
+  recoout='--outTier out1:reco'
+fi
+
 if [ $analysis_type_key == fardet-t02 ]; then
-  type=minbiasfd
+  type=minbiasfd$typesuffix
   lifetime=40000
 elif [ $analysis_type_key == fardet-ddsnews ]; then
   type=minbiasfd_rawinput
@@ -31,10 +37,10 @@ elif [ $analysis_type_key == fardet-ddenergy ]; then
   type=ddenergy
   lifetime=14400
 elif [ $analysis_type_key == neardet-ddactivity1 ]; then
-  type=ndactivity
+  type=ndactivity$typesuffix
   lifetime=14400
 elif [ $analysis_type_key == neardet-ddsnews ]; then
-  type=minbiasnd
+  type=minbiasnd$typesuffix
   lifetime=14400
 else
   echo I cannot figure out what analysis type to run for $analysis_type_key
@@ -100,7 +106,7 @@ submit_nova_art.py \
 --maxopt \
 --logs \
 --histTier hists \
---outTier out1:reco \
+$recoout \
 --copyOut \
 --jobname $GWNAME-$def \
 --defname $def \
