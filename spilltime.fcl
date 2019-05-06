@@ -1,8 +1,0 @@
-BEGIN_PROLOG
-
-standard_spilltime:
-{
-  module_type:      spilltime
-}
-
-END_PROLOG

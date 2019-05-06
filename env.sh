@@ -13,6 +13,12 @@ outhadddir=/nova/ana/users/mstrait/ligobgresults-$GWNAME/
 # name in them.
 skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-$GWNAME.fits
 
+# My naming convention for file I get from GraceDB that are done with bayestar,
+# whatever that is.
+if ! [ -e $skymap ]; then
+  skymap=/pnfs/nova/users/mstrait/ligo/bayestar_skymap-${GWNAME}.fits
+fi
+
 # Naming convention for O1 and O2 event catalog
 if ! [ -e $skymap ]; then
   skymap=/pnfs/nova/users/mstrait/ligo/${GWNAME}_skymap.fits
