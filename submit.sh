@@ -31,7 +31,7 @@ fi
 if [ $analysis_type_key == fardet-t02 ]; then
   type=minbiasfd$typesuffix
   if [ $typesuffix == _noreco ]; then
-    lifetime=3600
+    lifetime=14400
   else
     lifetime=40000
   fi

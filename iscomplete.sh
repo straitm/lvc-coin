@@ -17,9 +17,9 @@ fi
 missing=$(cat $LIST | while read f; do
   echo $f|cut -d_ -f2-3|sed -e's/r000//' -e's/_s/ /'| \
     while read run sr; do
-    if ! ls $outhistdir/$dir/*det_r*${run}_s${sr}_*_data.hists.root \
+    if ! ls $outhistdir/$dir/*det_r*${run}_s${sr}_*_data*.hists.root \
        &> /dev/null;then
-      echo hist file from $f missing
+      echo hist file from $f missing | tee /dev/stderr
     fi
   done
 done | grep -c missing)

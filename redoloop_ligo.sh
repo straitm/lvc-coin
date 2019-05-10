@@ -23,6 +23,11 @@ iteration=1
 
 vsleep()
 {
+  if ! [ "$2" == really ] && [ $REDOFAST ]; then
+    echo Not sleeping since you told me to go fast
+    return
+  fi
+
   add=$((RANDOM%10))
   echo Sleeping $1 and $add seconds
   sleep $1
@@ -59,13 +64,13 @@ find_redo_list()
   while true; do
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      vsleep 45
+      vsleep 45 really
     done
 
     deffrag="_redo_$realdef"
     if grep ${GWNAME}.*$deffrag -q /tmp/joblist.$$; then
       echo Jobs are running already/still for this definition.
-      vsleep 4m
+      vsleep 4m really
     else
       break
     fi
@@ -91,9 +96,9 @@ find_redo_list()
   else
     blocksam
     samweb list-files defname: $realdef | while read f; do
-      echo $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /' | \
+      basename $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s/ /' | \
       while read run sr; do
-        if ! ls $outhistdir/$rfctimesafeforsam-$stream/*det_r*${run}_*${sr}*_data.hists.root \
+        if ! ls $outhistdir/$rfctimesafeforsam-$stream/*det_r*${run}_*s${sr}*_data*.hists.root \
              &> /dev/null; then
           echo $f
         fi
@@ -122,35 +127,46 @@ resubmitdelay=$((60+RANDOM%300))
 
 do_a_redo()
 {
-  def="straitm_$(date +%Y%m%d)_redo_$realdef"
-  samweb delete-definition $def 2> /dev/null
-
   N=$(cat $TMP | wc -l)
+  NTOT=$(samweb list-files defname: $realdef | wc -l)
 
-  # Desperate measures. The same file apparently cannot be in two "datasets",
-  # as made with sam_add_dataset, which lets you give a list of files in a
-  # straightforward way.  "samweb create-definition" can only take a list of
-  # files on the command line with lots of "or file_name"s, and has a character
-  # limit.  I bet there is a correct way to do this, but it's certainly not
-  # easily discoverable.
-  for n in `seq $N`; do
-    echo Trying to make the definition with $n 'file(s)'
-    dimensions="$(for f in $(head -n $n $TMP); do
-      printf "file_name %s or " $(basename $f);
-    done | sed 's/ or $//')"
+  if [ $N -eq $NTOT ]; then
+    # Avoid super awkward limitations of SAM if we need to process the whole set
+    def=$realdef
+  else
+    def="$(date +%Y%m%d)_redo_$realdef"
+    samweb delete-definition $def 2> /dev/null
 
-    samweb delete-definition $def
-    if ! samweb create-definition $def "$dimensions"; then
-      echo Failed.  Making it with $((n-1)) 'file(s)' and will process rest later
-      dimensions="$(for f in $(head -n $((n-1)) $TMP); do
+    # Desperate measures. The same file apparently cannot be in two "datasets",
+    # as made with sam_add_dataset, which lets you give a list of files in a
+    # straightforward way.  "samweb create-definition" can only take a list of
+    # files on the command line with lots of "or file_name"s, and has a character
+    # limit.  I bet there is a correct way to do this, but it's certainly not
+    # easily discoverable.
+    for n in `seq $N`; do
+      echo Trying to make the definition with $n 'file(s)'
+      dimensions="$(for f in $(head -n $n $TMP); do
         printf "file_name %s or " $(basename $f);
       done | sed 's/ or $//')"
-      samweb create-definition $def "$dimensions"
-      break
-    else
-      echo $n worked
-    fi
-  done
+
+      samweb delete-definition $def
+      if ! samweb create-definition $def "$dimensions"; then
+        if [ $n -le 1 ]; then
+          echo Failed with only $n file. Is this because a file name starts
+          echo with all numbers? SAM seems to choke on that. Quitting.
+          exit 1
+        fi
+        echo Failed.  Making it with $((n-1)) 'file(s)' and will process rest later
+        dimensions="$(for f in $(head -n $((n-1)) $TMP); do
+          printf "file_name %s or " $(basename $f);
+        done | sed 's/ or $//')"
+        samweb create-definition $def "$dimensions"
+        break
+      else
+        echo $n worked
+      fi
+    done
+  fi
 
   rm -f $TMP
 
@@ -173,11 +189,11 @@ do_a_redo()
   echo Now will watch $rfctime $stream
 
   while true; do
-    vsleep 3m
+    vsleep 3m really
     # retry loop for jobsub_q, which is flaky
     while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
       echo jobsub_q failed.  Will try again.
-      vsleep 45
+      vsleep 45 really
     done
 
     cat /tmp/joblist.$$|grep $GWNAME-$def|tee $TMP|grep ' H '|awk '{print $1}'|\
