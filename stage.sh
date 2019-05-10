@@ -16,9 +16,17 @@ outputafterfirstfewseconds()
   done
 }
 
+# Don't know why using $PATH doesn't work...
+mycachestate=$SRT_PRIVATE_CONTEXT/NovaGridUtils/bin/cache_state.py
+if [ -e $mycachestate ]; then
+  CACHESTATE=$mycachestate
+else
+  CACHESTATE=cache_state.py
+fi
+
 # If there's only one file in the set, it says CACHED or NOT
 # CACHED.  Otherwise it says "Cached:" and gives a percent.
-cachedpercent=$(cache_state.py -d $def | tee /dev/stderr | \
+cachedpercent=$($CACHESTATE -d $def | tee /dev/stderr | \
   awk '/^CACHED$/  {print 100;}\
        /NOT CACHED/{print 0;}\
        /Cached:/   {split($3, n, "("); print n[2]*1;}')
@@ -49,4 +57,6 @@ if ! [ $cachedpercent ]; then
 elif [ "$cachedpercent" -lt 100 ]; then
   echo Not all files are cached.  Caching...
   doit
+else
+  echo All files cached
 fi

@@ -46,4 +46,4 @@ else
 fi
 
 $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def
-) 2> /dev/stdout | tee $GWNAME-$month-$day-$year-$unixtime-$trigger.log
+) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$GWNAME-$month-$day-$year-$unixtime-$trigger.log

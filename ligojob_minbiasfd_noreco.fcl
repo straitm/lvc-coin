@@ -1,0 +1,51 @@
+#include "ligoanalysis.fcl"
+#include "services.fcl"
+#include "CelestialLocator.fcl"
+
+# For up-mu
+#include "MattUpMuAnalysis.fcl"
+
+process_name: ligominbiasfdnoreco
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantTracer: false wantSummary: true }
+  TimeTracker:  { printSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+  CelestialLocator:    @local::standard_celestial
+}
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: MinBiasFD
+
+
+physics:
+{
+  producers:
+  {
+    ligoanalysis: @local::this_here_ligoanalysis
+  }
+
+  reco: [ ligoanalysis ]
+
+ stream1: [ out1 ]
+
+ end_paths: [ stream1 ]
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fileName:    "ligo.root"
+  }
+}

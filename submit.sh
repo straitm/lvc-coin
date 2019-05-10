@@ -15,6 +15,7 @@ fi
 unixtime=$1
 fracsec=$(cut -d. -f 2 -s <<< $unixtime)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
+rfctimesafeforsam=${rfctime//:/-}
 analysis_type_key=$2
 def=strait-ligo-coincidence-artdaq-${unixtime}-${analysis_type_key}
 if [ $3 ]; then
@@ -29,10 +30,18 @@ fi
 
 if [ $analysis_type_key == fardet-t02 ]; then
   type=minbiasfd$typesuffix
-  lifetime=40000
+  if [ $typesuffix == _noreco ]; then
+    lifetime=3600
+  else
+    lifetime=40000
+  fi
 elif [ $analysis_type_key == fardet-ddsnews ]; then
   type=minbiasfd_rawinput
-  lifetime=172800
+  if [ $typesuffix == _noreco ]; then
+    lifetime=3600
+  else
+    lifetime=172800
+  fi
 elif [ $analysis_type_key == fardet-ddenergy ]; then
   type=ddenergy
   lifetime=14400
@@ -61,7 +70,7 @@ njobs=$(samweb list-files defname: $def | wc -l)
 tag=$(cat $SRT_PRIVATE_CONTEXT/.base_release)
 testrel=/nova/app/users/mstrait/novasoft-ligo/
 
-outdir=$outhistdir/$rfctime-$analysis_type_key
+outdir=$outhistdir/$rfctimesafeforsam-$analysis_type_key
 
 mkdir -p $outdir
 

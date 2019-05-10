@@ -45,12 +45,18 @@ havedef()
   tmplist=/tmp/samlist.$$
 
   def=$1
+  if samweb list-definitions | grep -qE "^$def$" &&
+     ! [ $(samweb list-files defname: $def) ]; then
+    echo Deleting empty definition
+    samweb delete-definition $def
+  fi
+
   if samweb list-definitions | grep -qE "^$def$"; then
     echo SAM definition $def already exists for $t
 
     samweb list-files defname: $def > $tmplist
     for f in $(cat $tmplist); do
-      if samweb locate-file $f | grep -q scratch && 
+      if samweb locate-file $f | grep -q persistent && 
          ! [ -e $(samweb locate-file $f | sed s/dcache://)/$f ]; then
         echo $f in reco def does not exist.  Removing definition.
         samweb delete-definition $recodef
@@ -89,22 +95,27 @@ blocksam()
 makerecodef()
 {
   tmplist=/tmp/tmplist.$$
-  tmprecolist=/tmp/tmprecolist.$$
+  tmprecolist=/tmp/recolist.$$
   rm -f $tmprecolist
 
   samweb list-files defname: $rawdef > $tmplist
+  echo Looking for $(cat $tmplist | wc -l) reco files...
   for raw in $(cat $tmplist); do
     base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
-    if ls $outhistdir/../*/*/*${base}_*.reco.root &> /dev/null; then
-      ls $outhistdir/../*/*/*${base}_*.reco.root | head -n 1 >> /tmp/recolist.$$
+    f=$outhistdir/../*/*/*${base}_*.reco.root 
+    if ls $f &> /dev/null; then
+      ls $f | head -n 1 >> $tmprecolist
     else
-      echo No such file $outhistdir/../*/*${base}_*.reco.root
+      echo No reco file "$f"
       rm -f $tmplist $tmprecolist
       return 1
     fi
   done
 
   if [ -e $tmprecolist ]; then
+    for f in $(cat $tmprecolist); do
+      samweb retire-file $(basename $f)
+    done
     sam_add_dataset -n $recodef -f $tmprecolist
   else
     return 1

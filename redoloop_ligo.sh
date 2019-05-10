@@ -6,6 +6,7 @@
 realdef=$1
 unixtime=$(echo $realdef | cut -d- -f 5)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
+rfctimesafeforsam=${rfctime//:/-}
 stream=$(echo $realdef | cut -d- -f 6-7)
 
 if ! [ $stream ]; then
@@ -22,9 +23,10 @@ iteration=1
 
 vsleep()
 {
-  echo Sleeping $1 or a little bit more
+  add=$((RANDOM%10))
+  echo Sleeping $1 and $add seconds
   sleep $1
-  sleep $((RANDOM%10))
+  sleep $add
 }
 
 nsamlistsrunning()
@@ -39,12 +41,14 @@ blocksam()
   local try=0
   while true; do
     n=$(nsamlistsrunning)
-    if [ $n -le 2 ]; then break; fi
+    if [ $n -le 2 ]; then
+      break
+      echo Ok, going ahead
+    fi
     echo Waiting for $n sam list processes to finish
     sleep $((try + 60 + RANDOM%60))
     let try++
   done
-  echo Ok, going ahead
 }
 
 find_redo_list()
@@ -89,8 +93,8 @@ find_redo_list()
     samweb list-files defname: $realdef | while read f; do
       echo $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s0/ /' -e's/_s/ /' | \
       while read run sr; do
-        if ! ls $outhistdir/$rfctime-$stream/*det_r*${run}_*${sr}*_data.hists.root \
-             &> /dev/null;then
+        if ! ls $outhistdir/$rfctimesafeforsam-$stream/*det_r*${run}_*${sr}*_data.hists.root \
+             &> /dev/null; then
           echo $f
         fi
       done
@@ -120,19 +124,33 @@ do_a_redo()
 {
   def="straitm_$(date +%Y%m%d)_redo_$realdef"
   samweb delete-definition $def 2> /dev/null
-  dimensions="$(for f in $(cat $TMP); do
-    printf "%s %s or " file_name $(basename $f);
-  done | sed 's/or $//')"
-
-  if ! [ "$dimensions" ]; then
-    echo Uh oh, I got an empty dimensions statement from this file:
-    cat $TMP
-    rm -f $TMP
-    exit 1
-  fi
-  samweb create-definition $def "$dimensions"
 
   N=$(cat $TMP | wc -l)
+
+  # Desperate measures. The same file apparently cannot be in two "datasets",
+  # as made with sam_add_dataset, which lets you give a list of files in a
+  # straightforward way.  "samweb create-definition" can only take a list of
+  # files on the command line with lots of "or file_name"s, and has a character
+  # limit.  I bet there is a correct way to do this, but it's certainly not
+  # easily discoverable.
+  for n in `seq $N`; do
+    echo Trying to make the definition with $n 'file(s)'
+    dimensions="$(for f in $(head -n $n $TMP); do
+      printf "file_name %s or " $(basename $f);
+    done | sed 's/ or $//')"
+
+    samweb delete-definition $def
+    if ! samweb create-definition $def "$dimensions"; then
+      echo Failed.  Making it with $((n-1)) 'file(s)' and will process rest later
+      dimensions="$(for f in $(head -n $((n-1)) $TMP); do
+        printf "file_name %s or " $(basename $f);
+      done | sed 's/ or $//')"
+      samweb create-definition $def "$dimensions"
+      break
+    else
+      echo $n worked
+    fi
+  done
 
   rm -f $TMP
 
@@ -164,7 +182,7 @@ do_a_redo()
 
     cat /tmp/joblist.$$|grep $GWNAME-$def|tee $TMP|grep ' H '|awk '{print $1}'|\
     while read j; do
-        echo There is a held $rfctime $stream job.  Killing it.
+        echo There is a held $rfctime $stream $GWNAME job.  Killing it.
         jobsub_rm --jobid $j
         vsleep 1
     done
@@ -172,11 +190,11 @@ do_a_redo()
     rm -f /tmp/joblist.$$
 
     if [ $(cat $TMP | wc -l) -eq 0 ]; then
-      echo No $rfctime $stream jobs left, stopping watch
+      echo No $rfctime $stream $GWNAME jobs left, stopping watch
       break
     else
       echo At $(date):
-      echo $(cat $TMP | grep ' R ' | wc -l) $rfctime $stream 'job(s)' running \
+      echo $(cat $TMP | grep ' R ' | wc -l) $rfctime $stream $GWNAME 'job(s)' running \
            $(cat $TMP | grep ' I ' | wc -l) idle
     fi
     rm -f $TMP

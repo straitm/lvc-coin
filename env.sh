@@ -6,7 +6,7 @@ if ! [ $GWNAME ]; then
   exit
 fi
 
-outhistdir=/pnfs/nova/scratch/users/mstrait/ligobg-$GWNAME/
+outhistdir=/pnfs/nova/persistent/users/mstrait/ligobg-$GWNAME/
 outhadddir=/nova/ana/users/mstrait/ligobgresults-$GWNAME/
 
 # My naming convention for files I get from GraceDB that don't have the event
