@@ -33,7 +33,8 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime $rfctime $skymap; then
+#if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime $realgweventtime $skymap; then
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" $skymap; then
   exit 1
 fi
 
@@ -70,13 +71,11 @@ for f in $@; do
   hists="$hists $hist"
 
   if [ -e $hist ]; then
-    echo $hist already exists. Skipping $base. Will still include in sum. > /dev/stderr
-    continue
+    echo $hist already exists. Will overwrite.
   fi
 
   if [ -e $log ]; then
-    echo $log already exists. Skipping $base. Will still include in sum. > /dev/stderr
-    continue
+    echo $log already exists. Will overwrite.
   fi
 
   echo $SRT_PRIVATE_CONTEXT/ligo/runone.sh $f $fcl $reco $hist $log

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+if [ $1 ]; then
+  GWNAME=$1
+fi
+
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
 markcomplete.sh

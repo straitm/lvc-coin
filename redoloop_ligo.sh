@@ -5,6 +5,7 @@
 # SAM definition that we need to do and redo
 realdef=$1
 unixtime=$(echo $realdef | cut -d- -f 5)
+fracsec=$(cut -d. -f 2 -s <<< $unixtime)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
 rfctimesafeforsam=${rfctime//:/-}
 stream=$(echo $realdef | cut -d- -f 6-7)
@@ -48,12 +49,14 @@ blocksam()
     n=$(nsamlistsrunning)
     if [ $n -le 2 ]; then
       break
-      echo Ok, going ahead
     fi
     echo Waiting for $n sam list processes to finish
-    sleep $((try + 60 + RANDOM%60))
+    vsleep $((try + 60 + RANDOM%60)) really
     let try++
   done
+  if [ $try -gt 0 ]; then
+    echo Ok, going ahead
+  fi
 }
 
 find_redo_list()

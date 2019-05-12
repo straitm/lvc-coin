@@ -35,10 +35,11 @@ if [ $analysis_type_key == fardet-t02 ]; then
   else
     lifetime=40000
   fi
-elif [ $analysis_type_key == fardet-ddsnews ]; then
+elif [ $analysis_type_key == fardet-ddsnews ] ||
+     [ $analysis_type_key == fardet-ligo ]; then
   type=minbiasfd_rawinput
   if [ $typesuffix == _noreco ]; then
-    lifetime=3600
+    lifetime=14400
   else
     lifetime=172800
   fi
@@ -48,13 +49,20 @@ elif [ $analysis_type_key == fardet-ddenergy ]; then
 elif [ $analysis_type_key == neardet-ddactivity1 ]; then
   type=ndactivity$typesuffix
   lifetime=14400
-elif [ $analysis_type_key == neardet-ddsnews ]; then
+elif [ $analysis_type_key == neardet-ddsnews ] ||
+     [ $analysis_type_key == neardet-ligo ]; then
   type=minbiasnd$typesuffix
   lifetime=14400
 else
   echo I cannot figure out what analysis type to run for $analysis_type_key
   echo which I got from $def
   exit 1
+fi
+
+if [ $GWBLIND ]; then
+  echo Doing blind analysis '(livetime report only)'
+  type=blind
+  lifetime=7200
 fi
 
 # Tell the fcl we are reading the skymap from the CWD since it will be shipped

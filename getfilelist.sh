@@ -14,7 +14,8 @@ if ! [ $2 ]; then
   exit 1
 fi
 
-t=$1
+unixtime=$1
+
 trigger=$2
 
 if [ $trigger == neardet-ddsnews ]; then
@@ -35,8 +36,8 @@ elif [ $trigger == neardet-ddactivity1 ]; then
   filepattern='neardet.*_ddactivity1_.*data.artdaq'
 fi
 
-defbase=strait-ligo-coincidence-artdaq-$t
-recodefbase=strait-ligo-coincidence-reco-$t
+defbase=strait-ligo-coincidence-artdaq-$unixtime
+recodefbase=strait-ligo-coincidence-reco-$unixtime
 rawdef=$defbase-$trigger
 recodef=$recodefbase-$trigger
 
@@ -52,7 +53,7 @@ havedef()
   fi
 
   if samweb list-definitions | grep -qE "^$def$"; then
-    echo SAM definition $def exists for $t
+    echo SAM definition $def exists for $unixtime
 
     samweb list-files defname: $def > $tmplist
     for f in $(cat $tmplist); do
@@ -89,7 +90,9 @@ blocksam()
     sleep $((try + 60 + RANDOM%60))
     let try++
   done
-  echo Ok, going ahead with SAM query
+  if [ $try -gt 0 ]; then
+    echo Ok, going ahead with SAM query
+  fi
 }
 
 makerecodef()
@@ -149,20 +152,23 @@ makerawdef()
   # late (worse as the events get bigger).
   #
   # Fantastically slow
-  echo Asking SAM for a list of files. This typically takes a
-  echo substantial fraction of the age of the universe to complete.
+  echo Asking SAM for a list of files. This typically takes forever.
+
+  # Remove fractional part for integer arithmetic below.  Sub-second
+  # precision isn't needed since we leave large buffers on either side.
+  intunixtime=${unixtime%.*}
 
   # Some subruns have a start time of zero in the metadata.  In this case,
   # Look at the run start time.  If the run start time isn't there, don't
   # select.  I don't know if this happens. Might there be other problems?
   blocksam
   samweb list-files \
-         'Online.SubRunEndTime   > '$((t-550))\
+         'Online.SubRunEndTime   > '$((intunixtime-550))\
     ' and ( '\
-    ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((t+2000))\
+    ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((intunixtime+2000))\
     ' ) or '\
     ' ( Online.SubRunStartTime = 0 and Online.RunStartTime > 0 and '\
-    '                                  Online.RunStartTime < '$((t+2000))\
+    '                                  Online.RunStartTime < '$((intunixtime+2000))\
     ' ) )' \
      > $metadir/allfiles.$t.$trigger
 

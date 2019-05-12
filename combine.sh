@@ -7,6 +7,17 @@ PATH=$PATH:$SRT_PRIVATE_CONTEXT/ligo
 pnfsdir="$1"
 basepnfsdir="$(basename "$1")"
 
+# Repair the timestamp in the name of the directory by replacing the two
+# hyphens in the time-of-day with colons.  (They can't be colons in pnfs
+# because of a SAM bug.)
+basepnfsdir=${basepnfsdir/-/:}
+basepnfsdir=${basepnfsdir/-/:}
+basepnfsdir=${basepnfsdir/-/:}
+basepnfsdir=${basepnfsdir/-/:}
+basepnfsdir=${basepnfsdir/:/-}
+basepnfsdir=${basepnfsdir/:/-}
+
+
 if ! [ -e $pnfsdir/complete ] && ! iscomplete.sh $pnfsdir; then
   echo $pnfsdir is not complete
   exit 1

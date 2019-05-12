@@ -1,17 +1,18 @@
 #!/bin/bash
 
-# Cache the files needed for the 8:30 DDsnews trigger of the
-# given date, then run jobs to process them all, running redo
-# loops that look for failed jobs and resubmit them. Try to
-# do the redo loops gently enough that we don't fill up /tmp with overlapping
-# submissions too often or cause other problems.
+# Cache the files needed for the 8:30 DDsnews trigger of the given date, or the
+# specified time, then run jobs to process them all, running redo loops that
+# look for failed jobs and resubmit them. Try to do the redo loops gently
+# enough that we don't fill up /tmp with overlapping submissions too often or
+# cause other problems.
 
 cd /nova/ana/users/mstrait/ligometalog/
 
-if [ $# -ne 5 ]; then
-  echo Syntax: $(basename $0) month day trigger year gwname
+if [ $# -ne 5 ] && [ $# -ne 6 ]; then
+  echo Syntax: $(basename $0) month day trigger year gwname '[UTC time]'
   echo "For example: $(basename $0) Jan 1 fardet-ddsnews 2019 S190426c"
   echo "  gwname defines the sky map and effective time for pointing"
+  echo "If UTC time is not given, the 8:30 SNEWS trigger time is used"
   exit 1
 fi
 
@@ -22,11 +23,18 @@ day=$2
 trigger=$3
 year=$4
 export GWNAME=$5
+time=$6
 
 # Just (for the moment) to check GWNAME
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
-unixtime=$(date +%s -d"$month $day 8:29:01 $year")
+if [ $time ]; then
+  unixtime=$(TZ=UTC date +%s -d"$month $day $time $year")
+  fracsec=$(cut -d. -f 2 -s <<< $time)
+  unixtime+=.$fracsec
+else
+  unixtime=$(date +%s -d"$month $day 8:29:01 $year")
+fi
 
 (
 if ! $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger; then
@@ -45,5 +53,10 @@ else
   def=$rawdef
 fi
 
-$SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def
+if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
+  rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
+  rfctimesafeforsam=${rfctime//:/-}
+  $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
+    $outhistdir/$rfctimesafeforsam-$analysis_type_key
+fi
 ) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$GWNAME-$month-$day-$year-$unixtime-$trigger.log
