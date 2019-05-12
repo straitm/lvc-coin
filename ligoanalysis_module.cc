@@ -76,7 +76,7 @@ static long long window_size_s = 1000;
 static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
-enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND, 
+enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND, Blind,
                         MAX_ANALYSIS_CLASS };
 
 // Minimal hit information, distilled from CellHit
@@ -384,9 +384,17 @@ static ligohist lh_fullycontained_tracks_point[npointres];
 static ligohist lh_upmu_tracks("upmu_tracks", true);
 static ligohist lh_upmu_tracks_point[2];
 
+// Just report livetime
+static ligohist lh_blind("blind", true);
+
 /*********************************************************************/
 /**************************  End histograms **************************/
 /*********************************************************************/
+
+static void init_blind_hist()
+{
+  init_lh(lh_blind);
+}
 
 static void init_mev_hists()
 {
@@ -554,11 +562,11 @@ static double find_critical_value(const int q)
 
 void ligoanalysis::beginRun(art::Run& run)
 {
+  if(fAnalysisClass == DDenergy || fAnalysisClass == Blind) return;
+
   art::ServiceHandle<ds::DetectorService> ds;
   art::ServiceHandle<locator::CelestialLocator> celloc;
   celloc->SetDetector(ds->DetId(run));
-
-  if(fAnalysisClass == DDenergy) return;
 
   if(fSkyMap == "") return;
 
@@ -593,6 +601,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
   else if(analysis_class_string == "MinBiasFD")  fAnalysisClass = MinBiasFD;
   else if(analysis_class_string == "MinBiasND")  fAnalysisClass = MinBiasND;
+  else if(analysis_class_string == "Blind")      fAnalysisClass = Blind;
   else{
     fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
             "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
@@ -628,6 +637,9 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
     case MinBiasND:
       init_mev_hists();
       init_track_and_contained_hists();
+      break;
+    case Blind:
+      init_blind_hist();
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
@@ -1426,6 +1438,12 @@ static void count_all_mev(art::Event & evt,
   count_mev(evt, false, sliceinfo); // unmodeled low energy
 }
 
+static void count_livetime(const art::Event & evt)
+{
+  const double livetime = rawlivetime(evt);
+  THplusequals(lh_blind, timebin(evt), 0, livetime);
+}
+
 static bool more_than_one_physics_slice(art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
@@ -1466,18 +1484,21 @@ void ligoanalysis::produce(art::Event & evt)
   // merge slices that overlap in time to make slices-with-track counts
   // more Poissonian.
   art::Handle< std::vector<rb::Cluster> > slice;
-  evt.getByLabel("slicer", slice);
-  if(slice.failedToGet()){
-    fprintf(stderr, "Unexpected lack of slicer product!\n");
-    return;
+  if(fAnalysisClass != Blind){
+    evt.getByLabel("slicer", slice);
+    if(slice.failedToGet()){
+      fprintf(stderr, "Unexpected lack of slicer product!\n");
+      return;
+    }
+
+    if(slice->empty()){
+      fprintf(stderr, "Unexpected event with zero slices!\n");
+      return;
+    }
   }
 
-  if(slice->empty()){
-    fprintf(stderr, "Unexpected event with zero slices!\n");
-    return;
-  }
-
-  const std::vector<mslice> sliceinfo = make_sliceinfo_list(slice);
+  const std::vector<mslice> sliceinfo =
+    fAnalysisClass == Blind? std::vector<mslice>(): make_sliceinfo_list(slice);
 
   switch(fAnalysisClass){
     case NDactivity:
@@ -1496,6 +1517,8 @@ void ligoanalysis::produce(art::Event & evt)
       count_all_mev(evt, sliceinfo);
       count_tracks_containedslices(evt, sliceinfo);
       break;
+    case Blind:
+      count_livetime(evt);
     default:
       printf("No case for type %d\n", fAnalysisClass);
   }
