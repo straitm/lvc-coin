@@ -682,7 +682,7 @@ static void getrawdigits(
 // Return the livetime in this event in seconds, as it is relevant for
 // raw hits (same as for anything else? Maybe not if we don't trust
 // tracks close to the time-edges of events).
-static double rawlivetime(const art::Event & evt)
+static double rawlivetime(const art::Event & evt, const bool veryraw = false)
 {
   art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
   getflatdaq(flatdaq, evt);
@@ -714,7 +714,7 @@ static double rawlivetime(const art::Event & evt)
   // we are going to ignore the overlapping portions for the usual
   // case in which we get 0.00505 seconds, so report a livetime of
   // only the unignored portion.
-  if(wholeevent > 0.005) return 0.005;
+  if(!veryraw && wholeevent > 0.005) return 0.005;
 
   return wholeevent;
 }
@@ -735,10 +735,14 @@ static void THplusequals(ligohist & lh, const int bin, const double sig,
 //
 // This does not handle an event overlapping a bin boundary particularly
 // well, but does consistently assign it to the earlier bin.
-static int timebin(const art::Event & evt)
+static int timebin(const art::Event & evt, const bool verbose = false)
 {
   const double evt_time = art_time_to_unix_double(evt.time().value());
-  return floor(evt_time - gwevent_unix_double_time) + window_size_s/2
+  const double delta = evt_time - gwevent_unix_double_time;
+
+  if(verbose) printf("Accepted delta = %f seconds\n", delta);
+
+  return floor(delta) + window_size_s/2
          + 1; // stupid ROOT 1-based numbering!
 }
 
@@ -1434,14 +1438,16 @@ static void count_tracks_containedslices(const art::Event & evt,
 static void count_all_mev(art::Event & evt,
                           const std::vector<mslice> & sliceinfo)
 {
-  count_mev(evt, true, sliceinfo); // supernova-like 
+  count_mev(evt, true, sliceinfo); // supernova-like
   count_mev(evt, false, sliceinfo); // unmodeled low energy
 }
 
 static void count_livetime(const art::Event & evt)
 {
   const double livetime = rawlivetime(evt);
-  THplusequals(lh_blind, timebin(evt), 0, livetime);
+  const double veryrawlivetime = rawlivetime(evt, true);
+  printf("Livetime %g seconds, of which %g used\n", veryrawlivetime, livetime);
+  THplusequals(lh_blind, timebin(evt, true), 0, livetime);
 }
 
 static bool more_than_one_physics_slice(art::Event & evt)
@@ -1471,20 +1477,15 @@ void ligoanalysis::produce(art::Event & evt)
   bighit_threshold = gDet == caf::kNEARDET?
     bighit_threshold_nd : bighit_threshold_fd;
 
-  // Reject any ND trigger with multiple physics slices.  This is a crude way
-  // of getting rid of NuMI events, previously used by the seasonal multi-mu
-  // analysis because RemoveBeamSpills doesn't really work.
-  if(fAnalysisClass == NDactivity || fAnalysisClass == MinBiasND){
-    if(more_than_one_physics_slice(evt)) return;
-  }
-
-  // Make list of all times and locations of "physics" slices. For the
-  // MeV search, we will exclude other hits near them in time to drop
-  // Michels, FEB flashers & neutrons. For the track search, we will
-  // merge slices that overlap in time to make slices-with-track counts
-  // more Poissonian.
   art::Handle< std::vector<rb::Cluster> > slice;
   if(fAnalysisClass != Blind){
+    // Reject any ND trigger with multiple physics slices.  This is a crude way
+    // of getting rid of NuMI events, previously used by the seasonal multi-mu
+    // analysis because RemoveBeamSpills doesn't really work.
+    if(fAnalysisClass == NDactivity || fAnalysisClass == MinBiasND){
+      if(more_than_one_physics_slice(evt)) return;
+    }
+
     evt.getByLabel("slicer", slice);
     if(slice.failedToGet()){
       fprintf(stderr, "Unexpected lack of slicer product!\n");
@@ -1497,6 +1498,11 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
+  // Make list of all times and locations of "physics" slices. For the
+  // MeV search, we will exclude other hits near them in time to drop
+  // Michels, FEB flashers & neutrons. For the track search, we will
+  // merge slices that overlap in time to make slices-with-track counts
+  // more Poissonian.
   const std::vector<mslice> sliceinfo =
     fAnalysisClass == Blind? std::vector<mslice>(): make_sliceinfo_list(slice);
 
@@ -1519,6 +1525,7 @@ void ligoanalysis::produce(art::Event & evt)
       break;
     case Blind:
       count_livetime(evt);
+      break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
   }
