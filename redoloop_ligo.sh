@@ -133,11 +133,13 @@ do_a_redo()
   N=$(cat $TMP | wc -l)
   NTOT=$(samweb list-files defname: $realdef | wc -l)
 
+  echo Must redo $N out of $NTOT 'file(s)'
+
   if [ $N -eq $NTOT ]; then
     # Avoid super awkward limitations of SAM if we need to process the whole set
     def=$realdef
   else
-    def="$(date +%Y%m%d)_redo_$realdef"
+    def="redo_$(date +%Y%m%d)_$realdef" # defs cannot start with a number!
     samweb delete-definition $def 2> /dev/null
 
     # Desperate measures. The same file apparently cannot be in two "datasets",

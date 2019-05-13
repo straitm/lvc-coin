@@ -15,7 +15,9 @@ if ! [ $2 ]; then
 fi
 
 unixtime=$1
-
+fracsec=$(cut -d. -f 2 -s <<< $unixtime)
+intsec=$(cut -d. -f 1 -s <<< $unixtime)
+rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
 trigger=$2
 
 if [ $trigger == neardet-ddsnews ]; then
@@ -111,8 +113,28 @@ makerecodef()
   for raw in $(cat $tmplist); do
     base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
     f=$outhistdir/../*/*/*${base}_*.reco.root 
+    echo Looking for "$f"
     if ls $f &> /dev/null; then
-      ls $f | head -n 1 >> $tmprecolist
+      found=0
+      for one in $(ls $f); do
+        rfctimeonfile=$(basename $(dirname $one) | cut -dZ -f 1)Z
+        rfctimeonfile=${rfctimeonfile//-/:} #repairing...
+        rfctimeonfile=${rfctimeonfile/:/-}
+        rfctimeonfile=${rfctimeonfile/:/-}
+        echo File must have timestamp $rfctime and it has $rfctimeonfile
+        if [ $rfctime == $rfctimeonfile ]; then
+          ls $one >> $tmprecolist
+          found=1
+          break
+        else
+          echo Incompatible timestamp on already-filtered reco file $one
+        fi
+      done
+      if [ $found -ne 1 ]; then
+        echo No acceptable reco file "$f"
+        rm -f $tmplist $tmprecolist
+        return 1
+      fi
     else
       echo No reco file "$f"
       rm -f $tmplist $tmprecolist

@@ -57,6 +57,6 @@ if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
   rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
   rfctimesafeforsam=${rfctime//:/-}
   $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
-    $outhistdir/$rfctimesafeforsam-$analysis_type_key
+    $outhistdir/$rfctimesafeforsam-$trigger
 fi
 ) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$GWNAME-$month-$day-$year-$unixtime-$trigger.log

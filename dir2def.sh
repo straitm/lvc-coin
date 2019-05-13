@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 
 # Convert the output directory name, in my convention, to the SAM definition
 # used for it (also my convention)
