@@ -16,7 +16,7 @@ fi
 
 unixtime=$1
 fracsec=$(cut -d. -f 2 -s <<< $unixtime)
-intsec=$(cut -d. -f 1 -s <<< $unixtime)
+intsec=$(cut -d. -f 1 <<< $unixtime)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
 trigger=$2
 
