@@ -260,6 +260,25 @@ static bool goodtriggertype(const int trigger)
   return true;
 }
 
+static bool longtriggertype(const int trigger)
+{
+  if(trigger+1 == daqdataformats::TRIG_ID_SNEWS_BEAT_SLOW) return true;
+  if(trigger+1 == daqdataformats::TRIG_ID_LIGO_TRIGGER) return true;
+  return false;
+}
+
+static bool is_complete_event(
+  const art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq)
+{
+  daqdataformats::RawEvent raw;
+  if(flatdaq->empty()) return false;
+
+  raw.readData((*flatdaq)[0].getRawBufferPointer());
+  if(raw.getDataBlockNumber() == 0) return false;
+
+  return !raw.getHeader()->isEventIncomplete();
+}
+
 /*
   Get the length of the event in TDC ticks, typically 550*64, and
   "delta_tdc", the time between the trigger time and the time the event
@@ -1469,6 +1488,36 @@ void ligoanalysis::produce(art::Event & evt)
     art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
     getrawtrigger(rawtrigger, evt);
     if(!goodtriggertype(trigger(rawtrigger))) return;
+
+    art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
+    getflatdaq(flatdaq, evt);
+    if(!flatdaq.failedToGet() && !is_complete_event(flatdaq)){
+      printf("WARNING: Incomplete event, but assuming can trust livetime\n");
+    }
+
+    if(longtriggertype(trigger(rawtrigger))){
+      int64_t event_length_tdc, delta_tdc;
+      delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger);
+
+      // Check for empty 50us events in long readouts
+      if(event_length_tdc/TDC_PER_US == 50){
+        art::Handle< std::vector< rawdata::RawDigit > > rd;
+        getrawdigits(rd, evt);
+        if(rd->empty()){
+          printf("Rejecting LIGO_TRIGGER 50us event with zero hits\n");
+          return;
+        }
+      }
+
+      // Check for truly incomplete readouts (not to be confused with events
+      // marked incomplete).  Could use these, probably, but would need to
+      // modify code to handle overlaps to determine when the overlaps are in
+      // these cases, and the complexity doesn't seem worth it.
+      if(event_length_tdc/TDC_PER_US != 5050){
+        printf("Rejecting LIGO_TRIGGER with length other than 5050us\n");
+        return;
+      }
+    }
   }
 
   art::ServiceHandle<geo::Geometry> geo;
