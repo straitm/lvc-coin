@@ -43,38 +43,6 @@ recodefbase=strait-ligo-coincidence-reco-$unixtime
 rawdef=$defbase-$trigger
 recodef=$recodefbase-$trigger
 
-havedef()
-{
-  tmplist=/tmp/samlist.$$
-
-  def=$1
-  if samweb list-definitions | grep -qE "^$def$" &&
-     ! [ "$(samweb list-files defname: $def)" ]; then
-    echo Deleting empty definition
-    samweb delete-definition $def
-  fi
-
-  if samweb list-definitions | grep -qE "^$def$"; then
-    echo SAM definition $def exists for $unixtime
-
-    samweb list-files defname: $def > $tmplist
-    for f in $(cat $tmplist); do
-      if samweb locate-file $f | grep -q persistent && 
-         ! [ -e $(samweb locate-file $f | sed s/dcache://)/$f ]; then
-        echo $f in reco def does not exist.  Removing definition.
-        samweb delete-definition $recodef
-        rm -f $tmplist
-        return 1
-      fi
-    done
-    rm -f $tmplist
-    return 0
-  else
-    echo No SAM definition yet for $def
-    return 1
-  fi
-}
-
 nsamlistsrunning()
 {
   ps f -u mstrait | grep -v grep | grep samweb.py\ list | wc -l
@@ -97,6 +65,40 @@ blocksam()
   fi
 }
 
+havedef()
+{
+  tmplist=/tmp/samlist.$$
+
+  def=$1
+  blocksam
+  if samweb list-definitions | grep -qE "^$def$" &&
+     ! [ "$(samweb list-files defname: $def)" ]; then
+    echo Deleting empty definition
+    samweb delete-definition $def
+  fi
+
+  blocksam
+  if samweb list-definitions | grep -qE "^$def$"; then
+    echo SAM definition $def exists for $unixtime
+
+    samweb list-files defname: $def > $tmplist
+    for f in $(cat $tmplist); do
+      if samweb locate-file $f | grep -q persistent && 
+         ! [ -e $(samweb locate-file $f | sed s/dcache://)/$f ]; then
+        echo $f in reco def does not exist.  Removing definition.
+        samweb delete-definition $recodef
+        rm -f $tmplist
+        return 1
+      fi
+    done
+    rm -f $tmplist
+    return 0
+  else
+    echo No SAM definition yet for $def
+    return 1
+  fi
+}
+
 makerecodef()
 {
   tmplist=/tmp/tmplist.$$
@@ -108,8 +110,9 @@ makerecodef()
     makerawdef
   fi
 
+  blocksam
   samweb list-files defname: $rawdef > $tmplist
-  echo Looking for $(cat $tmplist | wc -l) reco files...
+  echo Looking for $(cat $tmplist | wc -l) reco file'(s)'...
   for raw in $(cat $tmplist); do
     base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
     f=$outhistdir/../*/*/*${base}_*.reco.root 
@@ -121,9 +124,9 @@ makerecodef()
         rfctimeonfile=${rfctimeonfile//-/:} #repairing...
         rfctimeonfile=${rfctimeonfile/:/-}
         rfctimeonfile=${rfctimeonfile/:/-}
-        echo File must have timestamp $rfctime and it has $rfctimeonfile
         if [ $rfctime == $rfctimeonfile ]; then
           ls $one >> $tmprecolist
+          echo Found $one
           found=1
           break
         else
@@ -131,12 +134,12 @@ makerecodef()
         fi
       done
       if [ $found -ne 1 ]; then
-        echo No acceptable reco file "$f"
+        echo No acceptable reco file found
         rm -f $tmplist $tmprecolist
         return 1
       fi
     else
-      echo No reco file "$f"
+      echo No reco file found
       rm -f $tmplist $tmprecolist
       return 1
     fi
@@ -192,29 +195,32 @@ makerawdef()
     ' ( Online.SubRunStartTime = 0 and Online.RunStartTime > 0 and '\
     '                                  Online.RunStartTime < '$((intunixtime+2000))\
     ' ) )' \
-     > $metadir/allfiles.$t.$trigger
+     > $metadir/allfiles.$unixtime.$trigger
 
-  cat $metadir/allfiles.$t.$trigger | grep -E "$filepattern" | \
-    tee $metadir/selectedfiles.$t.$trigger
+  echo SAM selected these files:
 
-  if ! [ "$(cat $metadir/selectedfiles.$t.$trigger)" ]; then
+  cat $metadir/allfiles.$unixtime.$trigger | grep -E "$filepattern" | \
+    tee $metadir/selectedfiles.$unixtime.$trigger
+
+  if ! [ "$(cat $metadir/selectedfiles.$unixtime.$trigger)" ]; then
     echo No files selected, nothing to do
-    exit 0
+    exit 2
   fi
 
-  if cat $metadir/selectedfiles.$t.$trigger | grep -q $filepattern; then
+  if cat $metadir/selectedfiles.$unixtime.$trigger | grep -q $filepattern; then
     # Even during the SNEWS trigger, we only get about 40 subruns at the
     # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)
     # means that something is broken.
-    if [ $(cat $metadir/selectedfiles.$t.$trigger|grep $filepattern|wc -l) -gt 99 ]; then
+    if [ $(cat $metadir/selectedfiles.$unixtime.$trigger|grep $filepattern|wc -l) -gt 99 ]; then
       echo Unreasonable number of files for $trigger.
       exit 1
     fi
 
     # Just in case another script made the definition in the meanwhile?!
+    blocksam
     if ! samweb list-definitions | grep -qE "^$def$"; then
       samweb create-definition $def \
-        "$(for f in $(cat $metadir/selectedfiles.$t.$trigger | grep $filepattern); do
+        "$(for f in $(cat $metadir/selectedfiles.$unixtime.$trigger | grep $filepattern); do
              printf "%s %s or " file_name $(basename $f);
            done | sed 's/ or $//')"
 
@@ -228,27 +234,31 @@ makerawdef()
 
 setup_fnal_security &> /dev/null
 
-if havedef $rawdef && havedef $recodef; then
-  echo Have raw and reco SAM definitions already.  Doing no queries.
-  def=$recodef
-elif makerecodef; then
-  echo Made reco SAM definition
-  def=$recodef
-elif havedef $rawdef; then
-  echo Reco files not available. Have raw SAM definition. Doing no queries.
-  def=$rawdef
+# Sleep a little so we can launch a bunch of processes at once without having
+# *too* much racing.
+sleep $((RANDOM%16 + 1))
+
+if havedef $rawdef; then
+  if havedef $recodef; then
+    echo Have raw and reco SAM definitions already.  Doing no queries.
+    def=$recodef
+  elif makerecodef; then
+    echo Made reco SAM definition
+    def=$recodef
+  else
+    echo Reco files not available. Have raw SAM definition. Doing no queries.
+    def=$rawdef
+  fi
 else
   echo Making raw SAM definition
   makerawdef
   def=$rawdef
 fi
 
-
+blocksam
 if ! samweb list-definitions | grep -qE "^$def$"; then
   echo Failed to get or make the definition
   exit 1
 fi
 
-$SRT_PRIVATE_CONTEXT/ligo/stage.sh $def
-
-rm -f $metadir/allfiles.$t.$trigger $metadir/selectedfiles.$t.$trigger
+rm -f $metadir/allfiles.$unixtime.$trigger $metadir/selectedfiles.$unixtime.$trigger

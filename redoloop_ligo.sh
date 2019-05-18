@@ -20,7 +20,7 @@ skymap=$2
 
 TMP=/tmp/mstrait.redolist.$$
 
-iteration=1
+iteration=0
 
 vsleep()
 {
@@ -113,7 +113,7 @@ find_redo_list()
     echo No files need to be redone for $unixtime $stream, exiting
     rm -f $TMP
     exit 0
-  elif [ $iteration -gt 1 ]; then
+  elif [ $iteration -gt 0 ]; then
     echo $(cat $TMP | wc -l) files need to be redone:
     cat $TMP
     echo
@@ -133,7 +133,9 @@ do_a_redo()
   N=$(cat $TMP | wc -l)
   NTOT=$(samweb list-files defname: $realdef | wc -l)
 
-  echo Must redo $N out of $NTOT 'file(s)'
+  printf 'Must %sdo %d out of %d file%s\n' \
+    "$(if [ $iteration -gt 1 ]; then printf re; fi)" $N $NTOT \
+    "$(if [ $NTOT -ne 1 ]; then printf s; fi)"
 
   if [ $N -eq $NTOT ]; then
     # Avoid super awkward limitations of SAM if we need to process the whole set

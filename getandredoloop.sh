@@ -37,9 +37,14 @@ else
 fi
 
 (
-if ! $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger; then
+$SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger
+ret=$?
+if [ $ret -eq 1 ]; then
   echo getfilelist $unixtime $trigger failed
   exit 1
+elif [ $ret -eq 2 ]; then
+  # if getfilelist returned 2, it means it found no files to process
+  exit 0
 fi
 
 defbase=strait-ligo-coincidence

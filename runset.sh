@@ -34,7 +34,8 @@ if [ $? -ne 0 ]; then
 fi
 
 #if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime $realgweventtime $skymap; then
-if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" $skymap; then
+#if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" $skymap; then
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" ""; then
   exit 1
 fi
 
