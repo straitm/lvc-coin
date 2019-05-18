@@ -135,6 +135,11 @@ class ligoanalysis : public art::EDProducer {
   ///
   /// We search for half this length on either side of the given time.
   float fWindowSize;
+
+  /// \brief Whether to cut ND events with multiple slices
+  ///
+  /// This is an effort to remove NuMI events that sneak past other filters.
+  bool fCutNDmultislices;
 };
 
 /**********************************************************************/
@@ -611,7 +616,8 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fGWEventTime(pset.get<std::string>("GWEventTime")),
   fNeedBGEventTime(pset.get<std::string>("NeedBGEventTime")),
   fSkyMap(pset.get<std::string>("SkyMap")),
-  fWindowSize(pset.get<unsigned long long>("WindowSize"))
+  fWindowSize(pset.get<unsigned long long>("WindowSize")),
+  fCutNDmultislices(pset.get<bool>("CutNDmultislices"))
 {
   const std::string analysis_class_string(
     pset.get<std::string>("AnalysisClass"));
@@ -1531,8 +1537,11 @@ void ligoanalysis::produce(art::Event & evt)
     // Reject any ND trigger with multiple physics slices.  This is a crude way
     // of getting rid of NuMI events, previously used by the seasonal multi-mu
     // analysis because RemoveBeamSpills doesn't really work.
-    if(fAnalysisClass == NDactivity || fAnalysisClass == MinBiasND){
-      if(more_than_one_physics_slice(evt)) return;
+    if(fCutNDmultislices &&
+       (fAnalysisClass == NDactivity || fAnalysisClass == MinBiasND) &&
+       more_than_one_physics_slice(evt)){
+      printf("Cut event with multiple slices\n");
+      return;
     }
 
     evt.getByLabel("slicer", slice);

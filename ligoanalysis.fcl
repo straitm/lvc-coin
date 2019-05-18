@@ -15,16 +15,18 @@ standard_ligoanalysis:
 
   # Which class of file we are processing.  One of:
   # NDactivity:  for ND ddactivity1 files
-  # MeV:         for ND BNB (or an MeV-only FD search)
-  # LiveTime:    for ND BNB, FD 10Hz and FD slow monopole
-  # UpMu:        for FD UpMu
   # DDenergy:    for FD ddenergy
-  # JustTrigger: for contained vertex, numu and fast monopole
+  # MinBiasFD:   MeV and GeV search at the FD
+  # MinBiasND:   MeV search at the ND
+  # Blind:       Just report livetime
   AnalysisClass: NDactivity
 
   # LIGO/Virgo skymap file for analysis classes (above) that have
   # pointing.  If not needed, leave it as the empty string.
   SkyMap: ""
+
+  # If true, cut ND events with multiple slices to remove NuMI events
+  CutNDmultislices: true
 }
 
 END_PROLOG
