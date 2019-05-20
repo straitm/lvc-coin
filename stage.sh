@@ -47,7 +47,7 @@ doit()
     fi
   done
 
-  samweb prestage-dataset --socket-timeout=1800 --defname=$def \
+  timeout 10h samweb prestage-dataset --socket-timeout=1800 --defname=$def \
     --parallel 4 2> /dev/stdout | outputafterfirstfewseconds
 }
 
