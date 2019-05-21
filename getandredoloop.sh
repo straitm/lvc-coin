@@ -64,4 +64,4 @@ if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
   $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
     $outhistdir/$rfctimesafeforsam-$trigger
 fi
-) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$GWNAME-$month-$day-$year-$unixtime-$trigger.log
+) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$GWNAME-$month-$day-$year-$unixtime-$trigger.$(date "+%Y-%m-%dT%H:%M:%S").log
