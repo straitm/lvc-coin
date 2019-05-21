@@ -94,6 +94,10 @@ fi
 # This is needed because the way submission works these days is that it
 # tars up the whole test release in /tmp, which only has 2GB.
 fails=0
+
+# Try to avoid races below
+sleep $((RANDOM % 32 ))
+
 while true; do
   kfree=$(df /tmp | tail -n 1 | awk '{print $3}')
   if [ $kfree -lt 1000000 ]; then

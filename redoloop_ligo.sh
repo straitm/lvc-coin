@@ -22,6 +22,18 @@ TMP=/tmp/mstrait.redolist.$$
 
 iteration=0
 
+makejoblist()
+{
+  retrydelay=45
+  while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
+    echo jobsub_q failed.  Will try again.
+    vsleep $retrydelay really
+    if [ $retrydelay -lt 3600 ]; then
+      let retrydelay*=2
+    fi
+  done
+}
+
 vsleep()
 {
   if ! [ "$2" == really ] && [ $REDOFAST ]; then
@@ -65,11 +77,7 @@ find_redo_list()
   # got killed. It should even protect against multiple running copies all
   # trying to get the same jobs run.
   while true; do
-    while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
-      echo jobsub_q failed.  Will try again.
-      vsleep 45 really
-    done
-
+    makejoblist
     deffrag="_redo_$realdef"
     if grep ${GWNAME}.*$deffrag -q /tmp/joblist.$$; then
       echo Jobs are running already/still for this definition.
@@ -197,11 +205,7 @@ do_a_redo()
 
   while true; do
     vsleep 3m really
-    # retry loop for jobsub_q, which is flaky
-    while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
-      echo jobsub_q failed.  Will try again.
-      vsleep 45 really
-    done
+    makejoblist
 
     cat /tmp/joblist.$$|grep $GWNAME-$def|tee $TMP|grep ' H '|awk '{print $1}'|\
     while read j; do
