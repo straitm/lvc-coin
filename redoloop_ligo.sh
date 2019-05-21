@@ -22,18 +22,6 @@ TMP=/tmp/mstrait.redolist.$$
 
 iteration=0
 
-makejoblist()
-{
-  retrydelay=45
-  while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
-    echo jobsub_q failed.  Will try again.
-    vsleep $retrydelay really
-    if [ $retrydelay -lt 3600 ]; then
-      let retrydelay*=2
-    fi
-  done
-}
-
 vsleep()
 {
   if ! [ "$2" == really ] && [ $REDOFAST ]; then
@@ -45,6 +33,18 @@ vsleep()
   echo Sleeping $1 and $add seconds
   sleep $1
   sleep $add
+}
+
+makejoblist()
+{
+  retrydelay=45
+  while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
+    echo jobsub_q failed.  Will try again.
+    vsleep $retrydelay really
+    if [ $retrydelay -lt 3600 ]; then
+      let retrydelay*=2
+    fi
+  done
 }
 
 nsamlistsrunning()
