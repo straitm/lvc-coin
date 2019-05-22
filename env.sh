@@ -1,6 +1,3 @@
-# Will want a separate directory for each GW's background sample, but for now
-# just testing for a single skymap with one.
-
 if ! [ $GWNAME ]; then
   echo export GWNAME=something before calling this
   exit
@@ -8,8 +5,13 @@ fi
 
 gwbase=${GWNAME%%compat}
 
-outhistdir=/pnfs/nova/persistent/users/mstrait/ligobg-$GWNAME/
-outhadddir=/nova/ana/users/mstrait/ligobgresults-$GWNAME/
+tag=bg
+if [ $REALGWEVENT ]; then
+  tag=
+fi
+
+outhistdir=/pnfs/nova/persistent/users/mstrait/ligo${tag}-$GWNAME/
+outhadddir=/nova/ana/users/mstrait/ligo${tag}results-$GWNAME/
 
 # My naming convention for files I get from GraceDB that don't have the event
 # name in them.
@@ -40,13 +42,18 @@ elif [ $gwbase == GW170818 ]; then realgweventtime="2017-08-18T02:25:09.1Z"
 elif [ $gwbase == GW170823 ]; then realgweventtime="2017-08-23T13:13:58.5Z"
 
 #03
-elif [ $gwbase == S190412m  ]; then realgweventtime="2019-04-12T05:30:44.1656Z"
-elif [ $gwbase == S190421ar ]; then realgweventtime="2019-04-21T21:38:56.25Z"
-elif [ $gwbase == S190425z  ]; then realgweventtime="2019-04-25T08:08:05.02Z"
-elif [ $gwbase == S190426c  ]; then realgweventtime="2019-04-26T15:21:55.3365Z"
-elif [ $gwbase == S190503bf ]; then realgweventtime="2019-05-03T18:54:04.4126Z"
-elif [ $gwbase == S190512at ]; then realgweventtime="2019-05-12T18:07:14.4224Z"
-elif [ $gwbase == S190513bm ]; then realgweventtime="2019-05-13T20:54:28.7471Z"
+elif [ $gwbase == S190412m  ]; then realgweventtime="2019-04-12T05:30:44.165622Z"
+elif [ $gwbase == S190421ar ]; then realgweventtime="2019-04-21T21:38:56.250977Z"
+elif [ $gwbase == S190425z  ]; then realgweventtime="2019-04-25T08:18:05.017147Z"
+elif [ $gwbase == S190426c  ]; then realgweventtime="2019-04-26T15:21:55.336540Z"
+elif [ $gwbase == S190503bf ]; then realgweventtime="2019-05-03T18:54:04.294490Z"
+elif [ $gwbase == S190510g  ]; then realgweventtime="2019-05-10T02:59:39.291636Z"
+elif [ $gwbase == S190512at ]; then realgweventtime="2019-05-12T18:07:14.422363Z"
+elif [ $gwbase == S190513bm ]; then realgweventtime="2019-05-13T20:54:28.747089Z"
+elif [ $gwbase == S190517h  ]; then realgweventtime="2019-05-17T05:51:01.830582Z"
+elif [ $gwbase == S190519bj ]; then realgweventtime="2019-05-19T15:35:44.397949Z"
+elif [ $gwbase == S190521g  ]; then realgweventtime="2019-05-21T03:02:29.447266Z"
+elif [ $gwbase == S190521r  ]; then realgweventtime="2019-05-21T07:43:59.463379Z"
 else
   echo I do not know when $gwbase was.  Edit env.sh
   if ! [ $PS1 ]; then
