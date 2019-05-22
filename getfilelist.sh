@@ -36,6 +36,9 @@ elif [ $trigger == fardet-ddenergy ]; then
   filepattern='fardet.*_ddenergy_.*data.artdaq'
 elif [ $trigger == neardet-ddactivity1 ]; then
   filepattern='neardet.*_ddactivity1_.*data.artdaq'
+else
+  echo unknown trigger \"$trigger\"
+  exit 1
 fi
 
 defbase=strait-ligo-coincidence-artdaq-$unixtime
@@ -207,11 +210,11 @@ makerawdef()
     exit 2
   fi
 
-  if cat $metadir/selectedfiles.$unixtime.$trigger | grep -q $filepattern; then
+  if cat $metadir/selectedfiles.$unixtime.$trigger | grep -q "$filepattern"; then
     # Even during the SNEWS trigger, we only get about 40 subruns at the
     # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)
     # means that something is broken.
-    if [ $(cat $metadir/selectedfiles.$unixtime.$trigger|grep $filepattern|wc -l) -gt 99 ]; then
+    if [ $(cat $metadir/selectedfiles.$unixtime.$trigger|grep "$filepattern"|wc -l) -gt 99 ]; then
       echo Unreasonable number of files for $trigger.
       exit 1
     fi
@@ -220,7 +223,7 @@ makerawdef()
     blocksam
     if ! samweb list-definitions | grep -qE "^$def$"; then
       samweb create-definition $def \
-        "$(for f in $(cat $metadir/selectedfiles.$unixtime.$trigger | grep $filepattern); do
+        "$(for f in $(cat $metadir/selectedfiles.$unixtime.$trigger | grep "$filepattern"); do
              printf "%s %s or " file_name $(basename $f);
            done | sed 's/ or $//')"
 
