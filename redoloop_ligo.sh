@@ -112,8 +112,9 @@ find_redo_list()
     samweb list-files defname: $realdef | while read f; do
       basename $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s/ /' | \
       while read run sr; do
-        if ! ls $outhistdir/$rfctimesafeforsam-$stream/*det_r*${run}_*s${sr}*_data*.hists.root \
-             &> /dev/null; then
+        dir=$outhistdir/$rfctimesafeforsam-$stream
+        base=*det_r*${run}_*s${sr}*_data*.hists.root
+        if ! ls $dir/$base &> /dev/null; then
           echo $f
         fi
       done
@@ -149,18 +150,18 @@ do_a_redo()
     "$(if [ $NTOT -ne 1 ]; then printf s; fi)"
 
   if [ $N -eq $NTOT ]; then
-    # Avoid super awkward limitations of SAM if we need to process the whole set
+    # Avoid awkward limitations of SAM if we need to process the whole set
     def=$realdef
   else
     def="redo_$(date +%Y%m%d)_$realdef" # defs cannot start with a number!
     samweb delete-definition $def 2> /dev/null
 
-    # Desperate measures. The same file apparently cannot be in two "datasets",
-    # as made with sam_add_dataset, which lets you give a list of files in a
-    # straightforward way.  "samweb create-definition" can only take a list of
-    # files on the command line with lots of "or file_name"s, and has a character
-    # limit.  I bet there is a correct way to do this, but it's certainly not
-    # easily discoverable.
+    # Desperate measures. The same file apparently cannot be in two
+    # "datasets", as made with sam_add_dataset, which lets you give a
+    # list of files in a straightforward way. "samweb create-definition"
+    # can only take a list of files on the command line with lots of "or
+    # file_name"s, and has a character limit. I bet there is a correct
+    # way to do this, but it's certainly not easily discoverable.
     for n in `seq $N`; do
       echo Trying to make the definition with $n 'file(s)'
       dimensions="$(for f in $(head -n $n $TMP); do
@@ -174,7 +175,7 @@ do_a_redo()
           echo with all numbers? SAM seems to choke on that. Quitting.
           exit 1
         fi
-        echo Failed.  Making it with $((n-1)) 'file(s)' and will process rest later
+        echo Failed. Using $((n-1)) 'file(s)' and will process rest later
         dimensions="$(for f in $(head -n $((n-1)) $TMP); do
           printf "file_name %s or " $(basename $f);
         done | sed 's/ or $//')"
@@ -210,7 +211,8 @@ do_a_redo()
     vsleep 3m really
     makejoblist
 
-    cat /tmp/joblist.$$|grep $GWNAME-$def|tee $TMP|grep ' H '|awk '{print $1}'|\
+    cat /tmp/joblist.$$ | grep $GWNAME-$def | tee $TMP | \
+      grep ' H ' | awk '{print $1}'|\
     while read j; do
         echo There is a held $rfctime $stream $GWNAME job.  Killing it.
         jobsub_rm --jobid $j
@@ -224,7 +226,7 @@ do_a_redo()
       break
     else
       echo At $(date):
-      echo $(cat $TMP | grep ' R ' | wc -l) $rfctime $stream $GWNAME 'job(s)' running \
+      echo $(cat $TMP | grep ' R ' | wc -l) $rfctime $stream $GWNAME running \
            $(cat $TMP | grep ' I ' | wc -l) idle
     fi
     rm -f $TMP
