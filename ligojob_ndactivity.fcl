@@ -6,6 +6,7 @@
 #include "ElasticArmsHS.fcl"
 #include "FuzzyKVertex.fcl"
 #include "BreakPoint.fcl"
+#include "EliminateBeamSpills.fcl"
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
@@ -20,6 +21,10 @@ services:
   @table::standard_services
   CelestialLocator:    @local::standard_celestial
 }
+
+eliminatebeam: @local::standard_eliminatebeamspills
+
+eliminatebeam.spillfile: "dummy.txt"
 
 source:
 {
@@ -36,11 +41,15 @@ this_here_ligofilter: @local::standard_ligofilter
 this_here_ligoanalysis: @local::standard_ligoanalysis
 this_here_ligoanalysis.AnalysisClass: NDactivity
 
+# Use EBS *and* this
+this_here_ligoanalysis.CutNDmultislices: true
+
 
 physics:
 {
   filters:
   {
+    ebeam: @local::eliminatebeam
     ligofilter: @local::this_here_ligofilter
   }
 
@@ -55,7 +64,8 @@ physics:
     ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ ligofilter,
+  reco: [ ebeam,
+          ligofilter,
           calhit,
           slicer,
           multihough, # for breakpoint

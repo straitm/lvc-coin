@@ -21,11 +21,6 @@ services:
   CelestialLocator:    @local::standard_celestial
 }
 
-# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
-# tested that if it isn't here, it doesn't work.  But I don't know what
-# it does.
-services.IFBeam: {}
-
 source:
 {
   module_type: RootInput
