@@ -204,6 +204,11 @@ do_a_redo()
       grep 'JobsubJobId of first job:' | awk '{print $5}')
   else
     $testrel/ligo/submit.sh $unixtime $stream $def
+    ret=$?
+    if [ $ret -gt 1 ]; then
+      echo Failed to submit jobs.  Looks like a permanent failure.
+      exit 1
+    fi
   fi
 
   echo Now will watch $rfctime $stream

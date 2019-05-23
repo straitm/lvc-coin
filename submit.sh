@@ -69,19 +69,20 @@ fi
 # there by the grid.  (*Don't* do that for interactive jobs.)
 if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime \
      $realgweventtime $(basename $skymap); then
-  exit 1
+  exit 2
 fi
 
 fcl=ligojob_$type.$rfctime.fcl
+fqfcl=$SRT_PRIVATE_CONTEXT/job/ligojob_$type.$rfctime.fcl
 
-if grep -q "eliminatebeam.spillfile: " $fcl; then
+if grep -q "eliminatebeam.spillfile: " $fqfcl; then
   spilldir=/pnfs/nova/users/mstrait/spills
-  spillbase=$(grep eliminatebeam.spillfile: $fcl | cut -d\" -f 2)
+  spillbase=$(grep eliminatebeam.spillfile: $fqfcl | cut -d\" -f 2)
   spillfile=$spilldir/$spillbase
   if ! [ -e $spilldir/$spillbase ]; then
     echo I am confused.  We just made a fcl assuming
     echo $spillfile existed, but it does not.
-    exit 1
+    exit 2
   fi
 else
   echo Not using EliminateBeamSpills

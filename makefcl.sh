@@ -34,7 +34,7 @@ cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
 
 if grep -q "eliminatebeam.spillfile: " $fclout; then
   spilldir=/pnfs/nova/users/mstrait/spills
-  spillbase='spills-*-${rfctime}.txt'
+  spillbase=spills-*-${rfctime}.txt
   if ! ls $spilldir/$spillbase &> /dev/null; then
     echo Could not find a spill list file like
     echo $spilldir/$spillbase
@@ -43,16 +43,16 @@ if grep -q "eliminatebeam.spillfile: " $fclout; then
     exit 1
   fi
 
-  spillfile=$(ls $spilldir/spillbase | head -n 1)
+  spillfile=$(ls $spilldir/$spillbase | head -n 1)
 
-  if [ $(ls $spilldir/spillbase | wc -l) -gt 1 ]; then
+  if [ $(ls $spilldir/$spillbase | wc -l) -gt 1 ]; then
     echo Found more than one spill file with the same timestamp
     echo I do not know what is up with that. Using the first one.
   fi
   echo Using $spillfile
 
   # Use the base name only here since the grid will ship to to the PWD
-  sed -i 's/".*"/"'$spillbase'"/' $fclout
+  sed -i '/eliminatebeam.spillfile/s/".*"/"'$(basename $spillfile)'"/' $fclout
 fi
 
 echo $fclout created.  Here it is:
