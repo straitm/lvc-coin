@@ -99,7 +99,9 @@ find_redo_list()
       blocksam
       nneed=$(samweb list-files defname: $realdef | wc -l)
       if [ $ngood -eq $nneed ]; then
-        tar xzf $jobid.tgz -O | grep '^Spilltime: ' > spills-$unixtime-$rfctime.txt
+        tar xzf $jobid.tgz -O | grep '^Spilltime: ' | awk '{print $2}' \
+          > spills-$unixtime-$rfctime.txt
+        rm -f $jobid.tgz
       else
         blocksam
         samweb list-files defname: $realdef > $TMP
