@@ -55,6 +55,7 @@ nsamlistsrunning()
 # to three so that I can also do interactive queries while my scripts run.
 blocksam()
 {
+  if [ $REDOFAST ]; then return; fi
   local try=0
   while true; do
     n=$(nsamlistsrunning)
@@ -202,7 +203,7 @@ makerawdef()
 
   echo SAM selected these files:
 
-  cat $metadir/allfiles.$unixtime.$trigger | grep -E "$filepattern" | \
+  cat $metadir/allfiles.$unixtime.$trigger | grep -E "$filepattern" | sort | \
     tee $metadir/selectedfiles.$unixtime.$trigger
 
   if ! [ "$(cat $metadir/selectedfiles.$unixtime.$trigger)" ]; then
@@ -239,7 +240,7 @@ setup_fnal_security &> /dev/null
 
 # Sleep a little so we can launch a bunch of processes at once without having
 # *too* much racing.
-sleep $((RANDOM%16 + 1))
+if ! [ $REDOFAST ]; then sleep $((RANDOM%16 + 1)); fi
 
 if havedef $rawdef; then
   if havedef $recodef; then

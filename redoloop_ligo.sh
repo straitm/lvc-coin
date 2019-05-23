@@ -56,6 +56,7 @@ nsamlistsrunning()
 # to three so that I can also do interactive queries while my scripts run.
 blocksam()
 {
+  if [ $REDOFAST ]; then return; fi
   local try=0
   while true; do
     n=$(nsamlistsrunning)

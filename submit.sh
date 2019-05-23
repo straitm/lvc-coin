@@ -96,7 +96,7 @@ fi
 fails=0
 
 # Try to avoid races below
-sleep $((RANDOM % 32 ))
+if ! [ $REDOFAST ]; then sleep $((RANDOM % 32 )); fi
 
 while true; do
   kfree=$(df /tmp | tail -n 1 | awk '{print $3}')

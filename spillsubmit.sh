@@ -63,4 +63,5 @@ submit_nova_art.py \
 --tag $tag \
 --testrel $testrel \
 --config $fcl \
---expected_lifetime $lifetime
+--expected_lifetime $lifetime \
+--dest /pnfs/nova/scratch/users/mstrait/trash/
