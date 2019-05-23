@@ -24,10 +24,38 @@ if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
   exit 1
 fi
 
+fclout=$SRT_PRIVATE_CONTEXT/job/$fcl
+
 cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
   sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
       \nthis_here_ligoanalysis.NeedBGEventTime: \"$realgweventtime\"\
       \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $SRT_PRIVATE_CONTEXT/job/$fcl
+      \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $fclout
 
-echo $SRT_PRIVATE_CONTEXT/job/$fcl created
+if grep -q "eliminatebeam.spillfile: " $fclout; then
+  spilldir=/pnfs/nova/users/mstrait/spills
+  spillbase='spills-*-${rfctime}.txt'
+  if ! ls $spilldir/$spillbase &> /dev/null; then
+    echo Could not find a spill list file like
+    echo $spilldir/$spillbase
+    echo You cannot pass, flame of Udun, unless you run a job to
+    echo make the spill file first.
+    exit 1
+  fi
+
+  spillfile=$(ls $spilldir/spillbase | head -n 1)
+
+  if [ $(ls $spilldir/spillbase | wc -l) -gt 1 ]; then
+    echo Found more than one spill file with the same timestamp
+    echo I do not know what is up with that. Using the first one.
+  fi
+  echo Using $spillfile
+
+  # Use the base name only here since the grid will ship to to the PWD
+  sed -i 's/".*"/"'$spillbase'"/' $fclout
+fi
+
+echo $fclout created.  Here it is:
+echo ========================== BEGIN FCL FILE ==========================
+cat $fclout
+echo =========================== END FCL FILE ===========================

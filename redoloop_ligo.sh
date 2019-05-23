@@ -99,8 +99,9 @@ find_redo_list()
       blocksam
       nneed=$(samweb list-files defname: $realdef | wc -l)
       if [ $ngood -eq $nneed ]; then
+        spilldir=/pnfs/nova/users/mstrait/spills
         tar xzf $jobid.tgz -O | grep '^Spilltime: ' | awk '{print $2}' \
-          > spills-$unixtime-$rfctime.txt
+          > $spilldir/spills-$unixtime-$rfctime.txt
         rm -f $jobid.tgz
       else
         blocksam

@@ -74,6 +74,19 @@ fi
 
 fcl=ligojob_$type.$rfctime.fcl
 
+if grep -q "eliminatebeam.spillfile: " $fcl; then
+  spilldir=/pnfs/nova/users/mstrait/spills
+  spillbase=$(grep eliminatebeam.spillfile: $fcl | cut -d\" -f 2)
+  spillfile=$spilldir/$spillbase
+  if ! [ -e $spilldir/$spillbase ]; then
+    echo I am confused.  We just made a fcl assuming
+    echo $spillfile existed, but it does not.
+    exit 1
+  fi
+else
+  echo Not using EliminateBeamSpills
+fi
+
 njobs=$(samweb list-files defname: $def | wc -l)
 tag=$(cat $SRT_PRIVATE_CONTEXT/.base_release)
 testrel=/nova/app/users/mstrait/novasoft-ligo/
@@ -118,11 +131,10 @@ while true; do
   fi
 done
 
-# Remember to take out "--test_submission" and/or --nevts and/or set --njobs to
-# $njobs
 
 submit_nova_art.py \
 --inputfile $skymap \
+$(if [ $spillfile ]; then echo --inputfile $spillfile; fi) \
 --opportunistic \
 --maxopt \
 --logs \
