@@ -26,6 +26,28 @@ eliminatebeam: @local::standard_eliminatebeamspills
 
 eliminatebeam.spillfile: "dummy.txt"
 
+##
+# Do not use these lines yet.  Use the more conservative default cuts,
+# since I have already started processing and these only recover 0.788%
+# of the livetime
+##
+
+## Since we are only looking at events over ~100MeV, there's no reason
+## to set a long window to avoid neutron captures.  Just get away from
+## FEB flashers and Michels.
+# eliminatebeam.bufferafter: 70e-6
+#
+## DDactivity1 triggers are almost always 50us.  They are based on slice
+## duration, so it's possible that if a slice spans a microblock boundary, they
+## can be 100us.  It's very very unlikely that a slice is over 100us long
+## creating a 150us event.  So take 100us plus 50us as per
+## EliminateBeamSpills.fcl.
+# eliminatebeam.bufferbefore: 150e-6
+
+##
+# End "do not use these lines yet"
+##
+
 source:
 {
   module_type: RootInput
