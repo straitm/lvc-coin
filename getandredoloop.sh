@@ -70,7 +70,9 @@ fi
 
 if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
   rfctimesafeforsam=${rfctime//:/-}
-  $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
-    $outhistdir/$rfctimesafeforsam-$trigger
+  if [ $trigger != neardet-t00 ]; then
+    $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
+      $outhistdir/$rfctimesafeforsam-$trigger
+  fi
 fi
 ) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$log
