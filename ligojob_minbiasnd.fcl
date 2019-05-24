@@ -41,6 +41,11 @@ this_here_ligofilter: @local::standard_ligofilter
 this_here_ligoanalysis: @local::standard_ligoanalysis
 this_here_ligoanalysis.AnalysisClass: MinBiasND
 
+# Do *not* use this, because it will spuriously cut ~5% of 5ms events
+# and isn't needed because for this analysis we only look at MeV
+# events and cut out everything near GeV activity, beam-related
+# (that sneaks through EBS) and otherwise.
+this_here_ligoanalysis.CutNDmultislices: false
 
 physics:
 {
