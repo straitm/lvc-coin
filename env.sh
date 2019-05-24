@@ -12,6 +12,7 @@ fi
 
 outhistdir=/pnfs/nova/persistent/users/mstrait/ligo${tag}-$GWNAME/
 outhadddir=/nova/ana/users/mstrait/ligo${tag}results-$GWNAME/
+spilldir=/pnfs/nova/users/mstrait/spills
 
 # My naming convention for files I get from GraceDB that don't have the event
 # name in them.

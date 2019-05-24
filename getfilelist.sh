@@ -208,6 +208,9 @@ makerawdef()
 
   if ! [ "$(cat $metadir/selectedfiles.$unixtime.$trigger)" ]; then
     echo No files selected, nothing to do
+    if [ $trigger == neardet-t00 ]; then
+      touch $spilldir/spills-$unixtime-$rfctime.txt
+    fi
     exit 2
   fi
 
