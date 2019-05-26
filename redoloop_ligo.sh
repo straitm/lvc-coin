@@ -203,14 +203,14 @@ do_a_redo()
       grep 'JobsubJobId of first job:' | awk '{print $5}')
   else
     $testrel/ligo/submit.sh $unixtime $stream $def
-    if [ $NORETRY ]; then
-      echo You asked me to just submit the jobs and quit.  Good luck.
-      exit 2
-    fi
     ret=$?
     if [ $ret -gt 1 ]; then
       echo Failed to submit jobs.  Looks like a permanent failure.
       exit 1
+    fi
+    if [ $NORETRY ]; then
+      echo You asked me to just submit the jobs and quit.  Good luck.
+      exit 2
     fi
   fi
 
