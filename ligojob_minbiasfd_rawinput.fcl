@@ -14,7 +14,7 @@
 #include "CosmicTrack.fcl"
 #include "MattUpMuAnalysis.fcl"
 
-process_name: ligominbiasfd
+process_name: ligominbiasfdrawinput
 
 services:
 {

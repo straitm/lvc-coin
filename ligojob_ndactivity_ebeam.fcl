@@ -10,7 +10,7 @@
 #include "services.fcl"
 #include "CelestialLocator.fcl"
 
-process_name: ligondactivity
+process_name: ligondactivityebeam
 
 services:
 {

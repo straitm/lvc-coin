@@ -10,7 +10,7 @@
 #include "CelestialLocator.fcl"
 #include "RemoveBeamSpills.fcl"
 
-process_name: ligondactivity
+process_name: ligondactivityrbeam
 
 services:
 {

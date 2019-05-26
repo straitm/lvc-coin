@@ -2,7 +2,7 @@
 #include "ligofilter.fcl"
 #include "services.fcl"
 
-process_name: ligondactivity
+process_name: ligoblind
 
 services:
 {
