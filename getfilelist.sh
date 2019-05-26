@@ -27,7 +27,7 @@ elif [ $trigger == fardet-ddsnews ]; then
 elif [ $trigger == neardet-ligo ]; then
   filepattern='neardet.*_ligo_.*data.artdaq'
 elif [ $trigger == fardet-ligo ]; then
-  filepattern='fardet.*_ligo_.*data.artdaq' # or raw?
+  filepattern='fardet.*_ligo.*raw'
 elif [ $trigger == fardet-t02 ]; then
   filepattern='fardet.*_t02_.*data.artdaq'
 elif [ $trigger == neardet-t00 ]; then
