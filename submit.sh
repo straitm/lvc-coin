@@ -61,7 +61,12 @@ fi
 
 if [ $GWBLIND ]; then
   echo Doing blind analysis '(livetime report only)'
-  type=blind
+  if [ $analysis_type_key == fardet-ddsnews ] ||
+     [ $analysis_type_key == fardet-ligo ]; then
+    type=blind_rawinput
+  else
+    type=blind
+  fi
   lifetime=7200
 fi
 
