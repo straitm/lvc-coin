@@ -37,10 +37,12 @@ if [ $analysis_type_key == fardet-t02 ]; then
   fi
 elif [ $analysis_type_key == fardet-ddsnews ] ||
      [ $analysis_type_key == fardet-ligo ]; then
-  type=minbiasfd_rawinput
+  disk='--disk 20480'
   if [ "$typesuffix" == _noreco ]; then
+    type=minbiasfd$typesuffix
     lifetime=14400
   else
+    type=minbiasfd_rawinput
     lifetime=172800
   fi
 elif [ $analysis_type_key == fardet-ddenergy ]; then
@@ -61,8 +63,9 @@ fi
 
 if [ $GWBLIND ]; then
   echo Doing blind analysis '(livetime report only)'
-  if [ $analysis_type_key == fardet-ddsnews ] ||
-     [ $analysis_type_key == fardet-ligo ]; then
+  if ( [ $analysis_type_key == fardet-ddsnews ] ||
+       [ $analysis_type_key == fardet-ligo ] ) &&
+       [ $typesuffix != _noreco ]; then
     type=blind_rawinput
   else
     type=blind
@@ -146,6 +149,7 @@ $(if [ $spillfile ]; then echo --inputfile $spillfile; fi) \
 --logs \
 --histTier hists \
 $recoout \
+$disk \
 --copyOut \
 --jobname $GWNAME-$def \
 --defname $def \
