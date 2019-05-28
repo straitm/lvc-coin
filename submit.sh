@@ -9,7 +9,7 @@ if [ $# -ne 2 ] && [ $# -ne 3 ]; then
   echo "                       neardet-ddactivity1 or neardet-ddsnews."
   echo "      def, optional, is the SAM definition to use"
   echo "           (This feature is for the redo definitions)"
-  exit 1
+  exit 2
 fi
 
 unixtime=$1
@@ -58,7 +58,7 @@ elif [ $analysis_type_key == neardet-ddsnews ] ||
 else
   echo I cannot figure out what analysis type to run for $analysis_type_key
   echo which I got from $def
-  exit 1
+  exit 2
 fi
 
 if [ $GWBLIND ]; then
@@ -106,11 +106,11 @@ mkdir -p $outdir
 
 if [ -e $outdir/bad ]; then
   echo $(basename outdir) is marked bad, will not submit jobs
-  exit 1
+  exit 2
 fi
 if [ -e $outdir/complete ]; then
   echo $(basename outdir) is marked complete, will not submit jobs
-  exit 0
+  exit 2
 fi
 
 # This is needed because the way submission works these days is that it
