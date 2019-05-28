@@ -140,6 +140,30 @@ find_redo_list()
 
 resubmitdelay=$((60+RANDOM%300))
 
+# Works sometimes... at least?
+renamesamfile()
+{
+  file=$1
+  cd /pnfs/nova/persistent/users/mstrait/
+  fp=$(find -name $file)
+  if ! [ $fp ]; then
+    echo Could not find $file in $PWD.  Probably already renamed.
+  else
+    cd $(dirname $fp)
+    mv -v $file $(echo $file | sed s/.-/f-/)
+  fi
+  samweb retire-file $file
+
+  # Now refresh the list with the new filename
+
+  # Possibly the most fragile thing I've ever written
+  samweb stop-project $(samweb delete-definition $realdef 2> /dev/stdout | \
+    grep "is in use" | awk '{print $11}')
+  samweb delete-definition $realdef
+
+  $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $stream
+}
+
 do_a_redo()
 {
   N=$(cat $TMP | wc -l)
@@ -172,8 +196,10 @@ do_a_redo()
       if ! samweb create-definition $def "$dimensions"; then
         if [ $n -le 1 ]; then
           echo Failed with only $n file. Is this because a file name starts
-          echo with all numbers? SAM seems to choke on that. Quitting.
-          exit 1
+          echo with all numbers? SAM chokes on that. Renaming, starting over.
+          renamesamfile $(head -n 1 $TMP)
+          rm -f $TMP
+          return
         fi
         echo Failed. Using $((n-1)) 'file(s)' and will process rest later
         dimensions="$(for f in $(head -n $((n-1)) $TMP); do

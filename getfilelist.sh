@@ -245,6 +245,9 @@ setup_fnal_security &> /dev/null
 # *too* much racing.
 if ! [ $REDOFAST ]; then sleep $((RANDOM%16 + 1)); fi
 
+# These get messed up too easily.  For now, regenerate each time.
+samweb delete-definition $recodef
+
 if havedef $rawdef; then
   if havedef $recodef; then
     echo Have raw and reco SAM definitions already.  Doing no queries.
