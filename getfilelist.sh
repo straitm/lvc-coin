@@ -87,7 +87,7 @@ havedef()
 
     samweb list-files defname: $def > $tmplist
     for f in $(cat $tmplist); do
-      if samweb locate-file $f | grep -q persistent && 
+      if samweb locate-file $f | grep -q persistent &&
          ! [ -e $(samweb locate-file $f | sed s/dcache://)/$f ]; then
         echo $f in reco def does not exist.  Removing definition.
         samweb delete-definition $recodef
@@ -119,7 +119,7 @@ makerecodef()
   echo Looking for $(cat $tmplist | wc -l) reco file'(s)'...
   for raw in $(cat $tmplist); do
     base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
-    f=$outhistdir/../*/*/*${base}_*.reco.root 
+    f=$outhistdir/../*/*-$trigger/*${base}_*.reco.root
     echo Looking for "$f"
     if ls $f &> /dev/null; then
       found=0
