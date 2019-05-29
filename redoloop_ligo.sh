@@ -72,6 +72,38 @@ blocksam()
   fi
 }
 
+hasoutput()
+{
+  run=$1
+  sr=$2
+  dir=$outhistdir/$rfctimesafeforsam-$stream
+  if ! [ -e $dir ]; then
+    return 1
+  fi
+
+  cd $dir
+
+  base=*det_r*${run}_*s${sr}*_data*.hists.root
+  log=*det_r*${run}_*s${sr}*_data*log
+
+  if ! [ -e $(ls $log | head -n 1) ]; then
+    echo No log file, so not done > /dev/stderr
+    return 1
+  fi
+
+  if ! grep -q "input file" $log; then
+    echo Log file lacks mention of input file, output presumably junk > /dev/stderr
+    rm -f complete
+    rm -f $base
+  fi
+
+  if ! ls $base &> /dev/null; then
+    return 1
+  fi
+
+  return 0
+}
+
 find_redo_list()
 {
   # This loop allows starting up a new copy of this script if the old copy
@@ -112,9 +144,7 @@ find_redo_list()
     samweb list-files defname: $realdef | while read f; do
       basename $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s/ /' | \
       while read run sr; do
-        dir=$outhistdir/$rfctimesafeforsam-$stream
-        base=*det_r*${run}_*s${sr}*_data*.hists.root
-        if ! ls $dir/$base &> /dev/null; then
+        if ! hasoutput $run $sr; then
           echo $f
         fi
       done
