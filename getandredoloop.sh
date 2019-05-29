@@ -34,7 +34,8 @@ if [ $# -eq 5 ] || [ $# -eq 6 ]; then
   fi
   rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
   . $SRT_PRIVATE_CONTEXT/ligo/env.sh
-  log=$GWNAME-$month-$day-$year-$unixtime-$trigger.$(date "+%Y-%m-%dT%H:%M:%S").log
+  logbase=$GWNAME-$month-$day-$year-$unixtime-$trigger
+  log=$logbase.$(date "+%Y-%m-%dT%H:%M:%S").log
 elif [ $# -eq 2 ]; then
   trigger=$1
   export GWNAME=$2
@@ -72,6 +73,13 @@ else
 fi
 
 echo $(basename $0) running on $HOSTNAME
+
+if ps f -u mstrait | grep tee | grep -q ligometalog/$logbase; then
+  echo It looks like you are already running $(basename $0) with these
+  echo options.  Trying to run multiple copies is, at best, wasteful, and
+  echo might also be actively counterproductive, so I am quitting.
+  exit 1
+fi
 
 (
 $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger
