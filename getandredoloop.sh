@@ -97,7 +97,7 @@ recodef=$defbase-reco-$unixtime-$trigger
 rawdef=$defbase-artdaq-$unixtime-$trigger
 
 # getfilelist.sh only allows good definitions to exist
-if samweb list-definitions | grep -q $recodef; then
+if samweb describe-definition $recodef &> /dev/null; then
   def=$recodef
 else
   def=$rawdef

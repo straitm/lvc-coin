@@ -74,15 +74,13 @@ havedef()
   tmplist=/tmp/samlist.$$
 
   def=$1
-  blocksam
-  if samweb list-definitions | grep -qE "^$def$" &&
+  if samweb describe-definition $def &> /dev/null &&
      ! [ "$(samweb list-files defname: $def)" ]; then
     echo Deleting empty definition
     samweb delete-definition $def
   fi
 
-  blocksam
-  if samweb list-definitions | grep -qE "^$def$"; then
+  if samweb describe-definition $def &> /dev/null; then
     echo SAM definition $def exists for $unixtime
 
     samweb list-files defname: $def > $tmplist
@@ -224,14 +222,13 @@ makerawdef()
     fi
 
     # Just in case another script made the definition in the meanwhile?!
-    blocksam
-    if ! samweb list-definitions | grep -qE "^$def$"; then
+    if ! samweb describe-definition $def &> /dev/null; then
       samweb create-definition $def \
         "$(for f in $(cat $metadir/selectedfiles.$unixtime.$trigger | grep "$filepattern"); do
              printf "%s %s or " file_name $(basename $f);
            done | sed 's/ or $//')"
 
-      if ! samweb list-definitions | grep -qE "^$def$"; then
+      if ! samweb describe-definition $def &> /dev/null; then
         echo Failed to make a SAM definition
         exit 1
       fi
@@ -268,8 +265,7 @@ else
   def=$rawdef
 fi
 
-blocksam
-if ! samweb list-definitions | grep -qE "^$def$"; then
+if ! samweb describe-definition $def &> /dev/null; then
   echo Failed to get or make the definition
   exit 1
 fi
