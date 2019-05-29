@@ -79,13 +79,13 @@ for month in Jan Feb Mar Apr; do
     shortday=$(echo $day | sed s/^0//)
 
     for trig in neardet-ddactivity1 fardet-ddsnews fardet-t02; do
-      if [ -e 2019-${monthnum}-${day}T14:29:01.Z-${trig}.hadded.root ] ||
-         [ -e 2019-${monthnum}-${day}T13:29:01.Z-${trig}.hadded.root ]; then
+      if nogood; then
+        printf '              -'
+      elif [ -e 2019-${monthnum}-${day}T14:29:01.Z-${trig}.hadded.root ] ||
+           [ -e 2019-${monthnum}-${day}T13:29:01.Z-${trig}.hadded.root ]; then
         printf '              Y'
       elif ps f | grep tee | cut -d/ -f6- | grep $GWNAME-$month-$shortday-.*-$trig -q; then
         printf '              p'
-      elif nogood; then
-        printf '              -'
       else
         printf '               '
       fi
