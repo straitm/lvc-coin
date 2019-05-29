@@ -57,7 +57,7 @@ elif [ $# -eq 3 ]; then
   . $SRT_PRIVATE_CONTEXT/ligo/env.sh
   rfctime=$(hourbefore $realgweventtime)
   fracsec=$(cut -d. -f 2 -s <<< $realgweventtime | tr -d Z)
-  unixtime=$(TZ=UTC date +%s -d "${realgweventtime/T/ }").$fracsec
+  unixtime=$(TZ=UTC date +%s -d "${rfctime/T/ }").$fracsec
   logbase=sideband-$GWNAME-$trigger
   log=$logbase.$(date "+%Y-%m-%dT%H:%M:%S").log
 else
