@@ -93,7 +93,7 @@ elif [ $ret -eq 2 ]; then
 fi
 
 defbase=strait-ligo-coincidence
-recodef=$defbase-reco-$unixtime-$trigger
+recodef=$defbase-reco-$unixtime-$trigger-$gwbase
 rawdef=$defbase-artdaq-$unixtime-$trigger
 
 # getfilelist.sh only allows good definitions to exist

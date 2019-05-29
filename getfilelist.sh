@@ -44,7 +44,7 @@ fi
 defbase=strait-ligo-coincidence-artdaq-$unixtime
 recodefbase=strait-ligo-coincidence-reco-$unixtime
 rawdef=$defbase-$trigger
-recodef=$recodefbase-$trigger
+recodef=$recodefbase-$trigger-$gwbase
 
 nsamlistsrunning()
 {
@@ -249,9 +249,6 @@ if havedef $rawdef; then
   if echo $def | grep neardet; then
     echo For ND use artdaq regardless because broken
     def=$rawdef
-  elif havedef $recodef; then
-    echo Have raw and reco SAM definitions already.  Doing no queries.
-    def=$recodef
   elif makerecodef; then
     echo Made reco SAM definition
     def=$recodef
