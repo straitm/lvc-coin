@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# I don't understand why sometimes novasoft-ligo.tar is written to the PWD
+# and not /tmp, but try to make sure that it is somewhere reasonable
+cd /nova/ana/users/mstrait/ligometalog/
+
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
 if [ $# -ne 2 ] && [ $# -ne 3 ]; then
