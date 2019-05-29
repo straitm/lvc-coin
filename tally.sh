@@ -43,7 +43,7 @@ nogood()
   # Only one file selected for t02 and ddsnews each
   elif [ $month == Feb ] && [ $day -eq 1  ] && [ $det ==  fardet ]; then return 0
 
-  elif [ $month == Feb ] && [ $day -eq 20 ] && [ $det ==  fardet ]; then return 0
+  elif [ $month == Feb ] && [ $day -eq 20 ]; then return 0 #fardet and neardet
 
   # t02 has some data, but ddsnews doesn't.  Probably t02 therefore bad.
   elif [ $month == Mar ] && [ $day -eq 20 ] && [ $det ==  fardet ]; then return 0
