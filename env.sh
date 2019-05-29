@@ -70,7 +70,7 @@ if [ $GWCOMPAT ]; then
   GWNAME=${gwbase}compat
 fi
 
-mkdir -p $outhistdir $outhaddir
+mkdir -p $outhistdir $outhadddir
 
 if ! echo $PATH | grep -qE "$SRT_PRIVATE_CONTEXT/ligo([:/]|$)"; then
   PATH+=:$SRT_PRIVATE_CONTEXT/ligo
