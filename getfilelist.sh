@@ -249,7 +249,10 @@ if ! [ $REDOFAST ]; then sleep $((RANDOM%16 + 1)); fi
 samweb delete-definition $recodef
 
 if havedef $rawdef; then
-  if havedef $recodef; then
+  if echo $def | grep neardet; then
+    echo For ND use artdaq regardless because broken
+    def=$rawdef
+  elif havedef $recodef; then
     echo Have raw and reco SAM definitions already.  Doing no queries.
     def=$recodef
   elif makerecodef; then

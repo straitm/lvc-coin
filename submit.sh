@@ -22,7 +22,9 @@ if [ $3 ]; then
   def=$3
 fi
 
-if printf $def | grep -q -- -reco-; then
+# Don't use noreco for ND because of a bizarre problem in which
+# it can't see the slicer product in reco files.
+if printf $def | grep fardet | grep -q -- -reco-; then
   typesuffix=_noreco
 else
   recoout='--outTier out1:reco'
