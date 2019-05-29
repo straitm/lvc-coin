@@ -37,7 +37,7 @@ fi
 if [ $analysis_type_key == fardet-t02 ]; then
   type=minbiasfd$typesuffix
   if [ "$typesuffix" == _noreco ]; then
-    lifetime=14400
+    lifetime=21600
   else
     lifetime=40000
   fi
@@ -46,7 +46,7 @@ elif [ $analysis_type_key == fardet-ddsnews ] ||
   disk='--disk 20480'
   if [ "$typesuffix" == _noreco ]; then
     type=minbiasfd$typesuffix
-    lifetime=14400
+    lifetime=21600
   else
     type=minbiasfd_rawinput
     lifetime=172800
@@ -56,7 +56,7 @@ elif [ $analysis_type_key == fardet-ddenergy ]; then
   lifetime=14400
 elif [ $analysis_type_key == neardet-ddactivity1 ]; then
   type=ndactivity$typesuffix
-  lifetime=14400
+  lifetime=21600
 elif [ $analysis_type_key == neardet-ddsnews ] ||
      [ $analysis_type_key == neardet-ligo ]; then
   type=minbiasnd$typesuffix
