@@ -124,7 +124,7 @@ if ! [ $REDOFAST ]; then sleep $((RANDOM % 32 )); fi
 
 while true; do
   kfree=$(df /tmp | tail -n 1 | awk '{print $3}')
-  if [ $kfree -lt 1000000 ]; then
+  if [ $kfree -lt 1500000 ]; then
     echo /tmp is too full.  Waiting for it to clear out
     df -h /tmp | tail -n 1
     sleep 1m
