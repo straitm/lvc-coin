@@ -82,8 +82,8 @@ if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime \
   exit 2
 fi
 
-fcl=ligojob_$type.$rfctime.fcl
-fqfcl=$SRT_PRIVATE_CONTEXT/job/ligojob_$type.$rfctime.fcl
+fcl=ligojob_$type.$rfctime.$realgweventtime.$(basename $skymap).fcl
+fqfcl=$SRT_PRIVATE_CONTEXT/job/$fcl
 
 if grep -q "eliminatebeam.spillfile: " $fqfcl; then
   spilldir=/pnfs/nova/users/mstrait/spills

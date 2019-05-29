@@ -17,7 +17,7 @@ rfctime=$2
 realgweventtime=$3
 skymap=$4
 
-fcl=ligojob_$type.$rfctime.fcl
+fcl=ligojob_$type.$rfctime.$realgweventtime.$skymap.fcl
 
 if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
   echo Analysis type $type not supported
