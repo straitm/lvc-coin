@@ -7,6 +7,17 @@
 
 cd /nova/ana/users/mstrait/ligometalog/
 
+hourbefore()
+{
+  fracsec=$(echo $1 | cut -d. -f 2 | cut -dZ -f 1)
+  indate=$(echo $1 | cut -d. -f 1 | sed 's/T/ /')
+  export TZ=UTC
+  printf "%s.%sZ\n" \
+    $(date "+%Y-%m-%dT%H:%M:%S" -d @$(($(date +%s -d "$indate UTC") - 3600))) \
+    $fracsec
+}
+
+
 if [ $# -eq 5 ] || [ $# -eq 6 ]; then
   month=$1
   day=$2
@@ -32,7 +43,22 @@ elif [ $# -eq 2 ]; then
   rfctime=$realgweventtime
   fracsec=$(cut -d. -f 2 -s <<< $realgweventtime | tr -d Z)
   unixtime=$(TZ=UTC date +%s -d "${realgweventtime/T/ }").$fracsec
-  log=real-$GWNAME-$trigger.$(date "+%Y-%m-%dT%H:%M:%S").log
+  logbase=real-$GWNAME-$trigger
+  log=$logbase.$(date "+%Y-%m-%dT%H:%M:%S").log
+elif [ $# -eq 3 ]; then
+  if [ $3 != side ]; then
+    echo I expected the third argument to be literally \"side\"
+    exit 1
+  fi
+  trigger=$1
+  export GWNAME=$2
+  export SIDEBAND=1
+  . $SRT_PRIVATE_CONTEXT/ligo/env.sh
+  rfctime=$(hourbefore $realgweventtime)
+  fracsec=$(cut -d. -f 2 -s <<< $realgweventtime | tr -d Z)
+  unixtime=$(TZ=UTC date +%s -d "${realgweventtime/T/ }").$fracsec
+  logbase=sideband-$GWNAME-$trigger
+  log=$logbase.$(date "+%Y-%m-%dT%H:%M:%S").log
 else
   echo Syntax: $(basename $0) month day trigger year gwname '[UTC time]'
   echo "For example: $(basename $0) Jan 1 fardet-ddsnews 2019 S190426c"
@@ -41,6 +67,7 @@ else
   echo "That's for background time samples"
   echo
   echo "Or syntax for real events: $(basename $0) trigger gwname"
+  echo "Or syntax for sideband: $(basename $0) trigger gwname \"side\""
   exit 1
 fi
 

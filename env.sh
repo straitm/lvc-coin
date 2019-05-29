@@ -6,7 +6,9 @@ fi
 gwbase=${GWNAME%%compat}
 
 tag=bg
-if [ $REALGWEVENT ]; then
+if [ $SIDEBAND ]; then
+  tag=sideband
+elif [ $REALGWEVENT ]; then
   tag=
 fi
 
