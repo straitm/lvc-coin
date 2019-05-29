@@ -86,7 +86,7 @@ if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime \
   exit 2
 fi
 
-fcl=ligojob_$type.$rfctime.$realgweventtime.$(basename $skymap).fcl
+fcl=$(printf ligojob_$type.$rfctime.$realgweventtime.$(basename $skymap).fcl | sed s/:/-/g)
 fqfcl=$SRT_PRIVATE_CONTEXT/job/$fcl
 
 if grep -q "eliminatebeam.spillfile: " $fqfcl; then
