@@ -87,7 +87,7 @@ hasoutput()
   log=*det_r*${run}_*s${sr}*_data*log
 
   if ! [ -e "$(ls $log 2> /dev/null | head -n 1)" ]; then
-    echo No log file, so not done > /dev/stderr
+    echo No log file, so $run $sr not done > /dev/stderr
     return 1
   fi
 
