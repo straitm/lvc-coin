@@ -1564,7 +1564,8 @@ void ligoanalysis::produce(art::Event & evt)
   // merge slices that overlap in time to make slices-with-track counts
   // more Poissonian.
   const std::vector<mslice> sliceinfo =
-    fAnalysisClass == Blind? std::vector<mslice>(): make_sliceinfo_list(slice);
+    (fAnalysisClass == Blind || fAnalysisClass == DDenergy)?
+      std::vector<mslice>(): make_sliceinfo_list(slice);
 
   switch(fAnalysisClass){
     case NDactivity:
