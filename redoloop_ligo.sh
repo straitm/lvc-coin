@@ -86,13 +86,13 @@ hasoutput()
   base=*det_r*${run}_*s${sr}*_data*.hists.root
   log=*det_r*${run}_*s${sr}*_data*log
 
-  if ! [ -e $(ls $log | head -n 1) ]; then
+  if ! [ -e "$(ls $log 2> /dev/null | head -n 1)" ]; then
     echo No log file, so not done > /dev/stderr
     return 1
   fi
 
   if ! grep -q "input file" $log; then
-    echo Log file lacks mention of input file, output presumably junk > /dev/stderr
+    echo Log lacks mention of input file, output presumably junk > /dev/stderr
     rm -f complete
     rm -f $base
   fi
