@@ -30,7 +30,13 @@ fi
 # it can't see the slicer product in reco files.
 if printf $def | grep fardet | grep -q -- -reco-; then
   typesuffix=_noreco
-else
+elif [ $analysis_type_key == fardet-t02 ] ||
+     [ $analysis_type_key == fardet-ddsnews ] ||
+     [ $analysis_type_key == neardet-ddactivity1 ]; then
+  # Be sure to only add this for jobs if we really do want the reco
+  # file.  Besides wasting space, this causes a line to get written
+  # into the job's fcl file which won't make sense if the fcl file
+  # doesn't mention "out1".
   recoout='--outTier out1:reco'
 fi
 

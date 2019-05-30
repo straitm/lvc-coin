@@ -103,6 +103,14 @@ havedef()
 
 makerecodef()
 {
+  # These are the only trigger streams for which we might want to read
+  # reco files
+  if [ $trigger != fardet-t02 ] &&
+     [ $trigger != fardet-ddsnews ] &&
+     [ $trigger != neardet-ddactivity1 ]; then
+    return 1
+  fi
+
   tmplist=/tmp/tmplist.$$
   tmprecolist=/tmp/recolist.$$
   rm -f $tmprecolist
