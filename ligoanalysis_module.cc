@@ -1544,15 +1544,17 @@ void ligoanalysis::produce(art::Event & evt)
       return;
     }
 
-    evt.getByLabel("slicer", slice);
-    if(slice.failedToGet()){
-      fprintf(stderr, "Unexpected lack of slicer product!\n");
-      return;
-    }
+    if(fAnalysisClass != DDenergy){
+      evt.getByLabel("slicer", slice);
+      if(slice.failedToGet()){
+        fprintf(stderr, "Unexpected lack of slicer product!\n");
+        return;
+      }
 
-    if(slice->empty()){
-      fprintf(stderr, "Unexpected event with zero slices!\n");
-      return;
+      if(slice->empty()){
+        fprintf(stderr, "Unexpected event with zero slices!\n");
+        return;
+      }
     }
   }
 
