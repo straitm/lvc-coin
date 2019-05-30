@@ -55,6 +55,22 @@ nogood()
   return 1
 }
 
+TMPJOB=/tmp/mstrait.joblist.$$
+TMPLOOP=/tmp/mstrait.looplist.$$
+
+jobsub_q --user mstrait > $TMPJOB
+
+(ps f; ssh novagpvm11 ps f) | tee | cut -d/ -f6- > $TMPLOOP
+
+# Look for whether there's a job running even though there's no redoloop watching it.
+# Assume bg event from 8:30.
+running()
+{
+  unixtime=$(TZ=UTC date +%s -d"$month $shortday 8:29:01 2019")
+
+  cat $TMPJOB | grep -q $GWNAME-strait-ligo-coincidence-*-$unixtime-$trig
+}
+
 for month in Jan Feb Mar Apr; do
   for day in {01..31}; do 
     if ( [ $month == Feb ] && [ $day -gt 28 ] ) ||
@@ -84,13 +100,34 @@ for month in Jan Feb Mar Apr; do
       elif [ -e 2019-${monthnum}-${day}T14:29:01.Z-${trig}.hadded.root ] ||
            [ -e 2019-${monthnum}-${day}T13:29:01.Z-${trig}.hadded.root ]; then
         printf '              Y'
-      elif ps f | grep tee | cut -d/ -f6- | grep $GWNAME-$month-$shortday-.*-$trig -q; then
+      elif grep $GWNAME-$month-$shortday-.*-$trig -q $TMPLOOP; then
         printf '              p'
+      elif running; then
+        printf '              s'
       else
         printf '               '
+        if [ $trig == neardet-ddactivity1 ]; then
+          incompletend=1
+        elif [ $trig == fardet-ddsnews ]; then
+          incompletesnews=1
+        elif [ $trig == fardet-t02 ]; then
+          incompletepulser=1
+        fi
       fi
     done
     printf '\n'
   done
   printf -- '--------------------------------------------------------------\n'
 done
+
+if ! [ $incompletend ]; then
+  echo COMPLETE NEARDET-DDACTIVITY1
+fi
+if ! [ $incompletesnews ]; then
+  echo COMPLETE FARDET-DDSNEWS
+fi
+if ! [ $incompletepulser ]; then
+  echo COMPLETE FARDET-T02
+fi
+
+rm -f $TMPJOB $TMPLOOP
