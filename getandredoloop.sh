@@ -80,7 +80,7 @@ if ! klist &> /dev/null; then
   exit 1
 fi
 
-if (ssh novagpvm11 ps f -u mstrait; ps f -u mstrait) | grep tee | grep -q ligometalog/$logbase; then
+if (ssh novagpvm11 ps f -u mstrait; ps f -u mstrait) | grep tee | grep -B 3 ligometalog/$logbase; then
   echo It looks like you are already running $(basename $0) with these
   echo options.  Trying to run multiple copies is, at best, wasteful, and
   echo might also be actively counterproductive, so I am quitting.
