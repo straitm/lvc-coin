@@ -87,18 +87,20 @@ if (ssh novagpvm11 ps f -u mstrait; ps f -u mstrait) | grep tee | grep -q ligome
   exit 1
 fi
 
-echo Output going to /nova/ana/users/mstrait/ligometalog/$log
+fulllog=/nova/ana/users/mstrait/ligometalog/$log
+echo Output going to $fulllog
 
-(
-$SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger
+$SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger &> $fulllog
+
 ret=$?
+
 if [ $ret -eq 2 ]; then
   # if getfilelist returned 2, it means it found no files to process
   exit 0
 elif [ $ret -gt 0 ]; then
   echo getfilelist $unixtime $trigger failed
   exit 1
-fi
+fi &>> $fulllog
 
 defbase=strait-ligo-coincidence
 recodef=$defbase-reco-$unixtime-$trigger-$gwbase
@@ -117,5 +119,4 @@ if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
     $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
       $outhistdir/$rfctimesafeforsam-$trigger
   fi
-fi
-) &> /nova/ana/users/mstrait/ligometalog/$log
+fi &>> $fulllog
