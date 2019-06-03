@@ -87,6 +87,8 @@ if (ssh novagpvm11 ps f -u mstrait; ps f -u mstrait) | grep tee | grep -q ligome
   exit 1
 fi
 
+echo Output going to /nova/ana/users/mstrait/ligometalog/$log
+
 (
 $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger
 ret=$?
@@ -116,4 +118,4 @@ if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
       $outhistdir/$rfctimesafeforsam-$trigger
   fi
 fi
-) 2> /dev/stdout | tee /nova/ana/users/mstrait/ligometalog/$log
+) &> /nova/ana/users/mstrait/ligometalog/$log
