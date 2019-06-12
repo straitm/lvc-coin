@@ -971,7 +971,7 @@ static std::vector<mslice> make_sliceinfo_list(
   return sliceinfo;
 }
 
-// Helper function for count_supernova_like(). Selects hits that
+// Helper function for count_mev(). Selects hits that
 // are candidates to be put into hit pairs. Apply a low ADC cut if
 // 'adc_cut'. Always apply a high ADC cut. This is intended to be true
 // if we are searching for supernova-like events and false if we are
@@ -1547,7 +1547,7 @@ void ligoanalysis::produce(art::Event & evt)
     if(fAnalysisClass != DDenergy){
       evt.getByLabel("slicer", slice);
       if(slice.failedToGet()){
-        fprintf(stderr, "Unexpected lack of slicer product!\n");
+        fprintf(stderr, "No slicer product. Event filtered out in reco file?\n");
         return;
       }
 
