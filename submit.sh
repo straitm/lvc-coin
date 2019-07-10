@@ -77,7 +77,7 @@ if [ $GWBLIND ]; then
   echo Doing blind analysis '(livetime report only)'
   if ( [ $analysis_type_key == fardet-ddsnews ] ||
        [ $analysis_type_key == fardet-ligo ] ) &&
-       [ $typesuffix != _noreco ]; then
+       [ "$typesuffix" != _noreco ]; then
     type=blind_rawinput
   else
     type=blind
@@ -117,11 +117,11 @@ outdir=$outhistdir/$rfctimesafeforsam-$analysis_type_key
 mkdir -p $outdir
 
 if [ -e $outdir/bad ]; then
-  echo $(basename outdir) is marked bad, will not submit jobs
+  echo $(basename $outdir) is marked bad, will not submit jobs
   exit 2
 fi
 if [ -e $outdir/complete ]; then
-  echo $(basename outdir) is marked complete, will not submit jobs
+  echo $(basename $outdir) is marked complete, will not submit jobs
   exit 2
 fi
 

@@ -57,6 +57,11 @@ elif [ $gwbase == S190517h  ]; then realgweventtime="2019-05-17T05:51:01.830582Z
 elif [ $gwbase == S190519bj ]; then realgweventtime="2019-05-19T15:35:44.397949Z"
 elif [ $gwbase == S190521g  ]; then realgweventtime="2019-05-21T03:02:29.447266Z"
 elif [ $gwbase == S190521r  ]; then realgweventtime="2019-05-21T07:43:59.463379Z"
+elif [ $gwbase == S190602aq ]; then realgweventtime="2019-06-02T17:59:27.089355Z"
+elif [ $gwbase == S190630ag ]; then realgweventtime="2019-06-30T18:52:05.179550Z"
+elif [ $gwbase == S190701ah ]; then realgweventtime="2019-07-01T20:33:06.577637Z"
+elif [ $gwbase == S190706ai ]; then realgweventtime="2019-07-06T22:26:41.344727Z"
+elif [ $gwbase == S190707q  ]; then realgweventtime="2019-07-07T09:33:26.181226Z"
 else
   echo I do not know when $gwbase was.  Edit env.sh
   if ! [ $PS1 ]; then

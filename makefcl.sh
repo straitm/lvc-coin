@@ -17,7 +17,7 @@ rfctime=$2
 realgweventtime=$3
 skymap=$4
 
-fcl=$(printf ligojob_$type.$rfctime.$realgweventtime.$skymap.fcl | sed s/:/-/g)
+fcl=$(printf ligojob_$type.$rfctime.$realgweventtime.$(basename $skymap).fcl | sed s/:/-/g)
 
 if ! [ -e $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl ]; then
   echo Analysis type $type not supported

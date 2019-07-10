@@ -2,26 +2,6 @@
 
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
-# SAM definition that we need to do and redo
-realdef=$1
-unixtime=$(echo $realdef | cut -d- -f 5)
-fracsec=$(cut -d. -f 2 -s <<< $unixtime)
-rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
-rfctimesafeforsam=${rfctime//:/-}
-stream=$(echo $realdef | cut -d- -f 6-7)
-
-if ! [ $stream ]; then
-  echo Got a null stream from \"$realdef\", cannot continue
-  exit 1
-fi
-
-# If empty, the right thing happens (which is that we use a dummy skymap)
-skymap=$2
-
-TMP=/tmp/mstrait.redolist.$$
-
-iteration=0
-
 vsleep()
 {
   if ! [ "$2" == really ] && [ $REDOFAST ]; then
@@ -33,18 +13,6 @@ vsleep()
   echo Sleeping $1 and $add seconds
   sleep $1
   sleep $add
-}
-
-makejoblist()
-{
-  retrydelay=45
-  while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
-    echo jobsub_q failed.  Will try again.
-    vsleep $retrydelay really
-    if [ $retrydelay -lt 3600 ]; then
-      let retrydelay*=2
-    fi
-  done
 }
 
 nsamlistsrunning()
@@ -72,12 +40,64 @@ blocksam()
   fi
 }
 
+# SAM definition that we need to do and redo, either a raw/artdaq definition or
+# a reco definition.
+realdef=$1
+
+# maybe the same as realdef if realdef is raw/artdaq, but this is the
+# raw/artdaq definition and definitely lists all the runs/subruns we want to
+# process, unlike realdef, which may be broken by SAM "Error declaring metadata
+# for ... already exists" problems, which are then patched up by my "Desperate
+# measures" below.
+realrawdef=$2
+
+blocksam
+realdeffiles=$(samweb list-files defname: $realdef)
+if [ $realdef == $realrawdef ]; then
+  realrawdeffiles=$realdeffiles
+else
+  blocksam
+  realrawdeffiles=$(samweb list-files defname: $realrawdef)
+fi
+
+unixtime=$(echo $realdef | cut -d- -f 5)
+fracsec=$(cut -d. -f 2 -s <<< $unixtime)
+rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$unixtime).${fracsec}Z
+rfctimesafeforsam=${rfctime//:/-}
+stream=$(echo $realdef | cut -d- -f 6-7)
+
+if ! [ $stream ]; then
+  echo Got a null stream from \"$realdef\", cannot continue
+  exit 1
+fi
+
+# If empty, the right thing happens (which is that we use a dummy skymap)
+skymap=$2
+
+TMP=/tmp/mstrait.redolist.$$
+
+iteration=0
+
+makejoblist()
+{
+  retrydelay=45
+  while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
+    echo jobsub_q failed.  Will try again.
+    vsleep $retrydelay really
+    if [ $retrydelay -lt 3600 ]; then
+      let retrydelay*=2
+    fi
+  done
+}
+
 hasoutput()
 {
   run=$1
   sr=$2
   dir=$outhistdir/$rfctimesafeforsam-$stream
+  echo Looking for output histogram file for $run $sr $rfctime $stream > /dev/stderr
   if ! [ -e $dir ]; then
+    echo output histogram directory does not even exist > /dev/stderr
     return 1
   fi
 
@@ -98,6 +118,7 @@ hasoutput()
   fi
 
   if ! ls $base &> /dev/null; then
+    echo No hist file > /dev/stderr
     return 1
   fi
 
@@ -122,26 +143,22 @@ find_redo_list()
 
   if [ $stream == neardet-t00 ]; then
     if ! [ $jobid ]; then
-      blocksam
-      samweb list-files defname: $realdef > $TMP
+      echo $realdeffiles | tr ' ' '\n' > $TMP
     else
       jobsub_fetchlog --jobid $jobid
       ngood=$(tar xzf $jobid.tgz -O | \
               grep -c '^Art has completed and will exit with status 0\.$')
-      blocksam
-      nneed=$(samweb list-files defname: $realdef | wc -l)
+      nneed=$(echo $realdeffiles | wc -w)
       if [ $ngood -eq $nneed ]; then
         tar xzf $jobid.tgz -O | grep '^Spilltime: ' | awk '{print $2}' \
           > $spilldir/spills-$unixtime-$rfctime.txt
         rm -f $jobid.tgz
       else
-        blocksam
-        samweb list-files defname: $realdef > $TMP
+        echo $realdeffiles | tr ' ' '\n' > $TMP
       fi
     fi
   else
-    blocksam
-    samweb list-files defname: $realdef | while read f; do
+    for f in $realrawdeffiles; do
       basename $f | cut -d_ -f2-3 | sed -e's/r000//' -e's/_s/ /' | \
       while read run sr; do
         if ! hasoutput $run $sr; then
@@ -155,8 +172,8 @@ find_redo_list()
     echo No files need to be redone for $unixtime $stream, exiting
     rm -f $TMP
     exit 0
-  elif [ $iteration -gt 0 ]; then
-    echo $(cat $TMP | wc -l) files need to be redone:
+  else
+    echo $(cat $TMP | wc -l) files need to be done or redone:
     cat $TMP
     echo
   fi
@@ -174,37 +191,59 @@ resubmitdelay=$((60+RANDOM%300))
 renamesamfile()
 {
   file=$1
+  basefile=$(basename $file)
   cd /pnfs/nova/persistent/users/mstrait/
-  fp=$(find -name $file)
+  fp=$(find -name $basefile)
   if ! [ $fp ]; then
     echo Could not find $file in $PWD.  Probably already renamed.
+    return 
   else
     cd $(dirname $fp)
-    mv -v $file $(echo $file | sed s/.-/f-/)
+    mv -v $basefile $(echo $basefile | sed s/.-/f-/)
   fi
-  samweb retire-file $file
+  samweb retire-file $basefile
 
   # Now refresh the list with the new filename
 
   # Possibly the most fragile thing I've ever written
-  samweb stop-project $(samweb delete-definition $realdef 2> /dev/stdout | \
-    grep "is in use" | awk '{print $11}')
+  proj=$(samweb delete-definition $realdef 2> /dev/stdout | \
+    grep "is in use" | awk '{print $11}' | sed s/,//)
+  echo Going to stop project called $proj
+  samweb stop-project $proj
+
   samweb delete-definition $realdef
+
+  # Try again
+  samweb retire-file $basefile
 
   $SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $stream
 }
 
+rawtoreco()
+{
+  # we do want the raw/artdaq files, so just echo them back
+  if [ $realdef == $realrawdef ]; then
+    cat
+  else
+    # translate to reco files
+    while read file; do
+      echo $(dirname $outhistdir)/*/*-$stream/*-*-*-*-$(echo $file | cut -d_ -f 1-4)*reco.root
+    done
+  fi
+}
+
 do_a_redo()
 {
-  N=$(cat $TMP | wc -l)
-  NTOT=$(samweb list-files defname: $realdef | wc -l)
+  N=$(cat $TMP | wc -w)
+  NTOT=$(echo $realrawdeffiles | wc -w)
 
   printf 'Must %sdo %d out of %d file%s\n' \
     "$(if [ $iteration -gt 1 ]; then printf re; fi)" $N $NTOT \
     "$(if [ $NTOT -ne 1 ]; then printf s; fi)"
 
-  if [ $N -eq $NTOT ]; then
+  if [ $realdef == $realrawdef ] && [ $N -eq $NTOT ]; then
     # Avoid awkward limitations of SAM if we need to process the whole set
+    # and it is a raw/artdaq definition without strange problems.
     def=$realdef
   else
     def="redo_$(date +%Y%m%d)_$realdef" # defs cannot start with a number!
@@ -218,21 +257,23 @@ do_a_redo()
     # way to do this, but it's certainly not easily discoverable.
     for n in `seq $N`; do
       echo Trying to make the definition with $n 'file(s)'
-      dimensions="$(for f in $(head -n $n $TMP); do
+      dimensions="$(for f in $(head -n $n $TMP | rawtoreco); do
         printf "file_name %s or " $(basename $f);
       done | sed 's/ or $//')"
+
+      echo dimensions = $dimensions
 
       samweb delete-definition $def
       if ! samweb create-definition $def "$dimensions"; then
         if [ $n -le 1 ]; then
           echo Failed with only $n file. Is this because a file name starts
           echo with all numbers? SAM chokes on that. Renaming, starting over.
-          renamesamfile $(head -n 1 $TMP)
+          renamesamfile $(head -n 1 $TMP | rawtoreco)
           rm -f $TMP
           return
         fi
         echo Failed. Using $((n-1)) 'file(s)' and will process rest later
-        dimensions="$(for f in $(head -n $((n-1)) $TMP); do
+        dimensions="$(for f in $(head -n $((n-1)) $TMP | rawtoreco); do
           printf "file_name %s or " $(basename $f);
         done | sed 's/ or $//')"
         samweb create-definition $def "$dimensions"
@@ -276,7 +317,13 @@ do_a_redo()
     vsleep 3m really
     makejoblist
 
-    cat /tmp/joblist.$$ | grep $GWNAME-$def | tee $TMP | \
+    if [ $stream == neardet-t00 ]; then
+      jobnamepart=$def
+    else
+      jobnamepart=$GWNAME-$def
+    fi 
+
+    cat /tmp/joblist.$$ | grep $jobnamepart | tee $TMP | \
       grep ' H ' | awk '{print $1}'|\
     while read j; do
         echo There is a held $rfctime $stream $GWNAME job.  Killing it.

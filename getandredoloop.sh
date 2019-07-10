@@ -67,8 +67,9 @@ else
   echo "If UTC time is not given, the 8:30 SNEWS trigger time is used"
   echo "That's for background time samples"
   echo
-  echo "Or syntax for real events: $(basename $0) trigger gwname"
-  echo "Or syntax for sideband: $(basename $0) trigger gwname \"side\""
+  echo "Or for real events: $(basename $0) trigger gwname"
+  echo "For blind livetime: GWBLIND=1 $(basename $0) trigger gwname"
+  echo "Or for sideband: $(basename $0) trigger gwname \"side\""
   exit 1
 fi
 
@@ -76,11 +77,10 @@ echo $(basename $0) running on $HOSTNAME
 
 if ! klist &> /dev/null; then
   echo You should renew your kerberos ticket
-  echo Otherwise, I am going to hang on the next line
   exit 1
 fi
 
-if (ssh novagpvm11 ps f -u mstrait; ps f -u mstrait) | grep tee | grep -B 3 ligometalog/$logbase; then
+if ps f -u mstrait | grep tee | grep -B 3 ligometalog/$logbase; then
   echo It looks like you are already running $(basename $0) with these
   echo options.  Trying to run multiple copies is, at best, wasteful, and
   echo might also be actively counterproductive, so I am quitting.
@@ -98,9 +98,9 @@ if [ $ret -eq 2 ]; then
   # if getfilelist returned 2, it means it found no files to process
   exit 0
 elif [ $ret -gt 0 ]; then
-  echo getfilelist $unixtime $trigger failed
+  echo getfilelist $unixtime $trigger failed &>> $fulllog
   exit 1
-fi &>> $fulllog
+f
 
 defbase=strait-ligo-coincidence
 recodef=$defbase-reco-$unixtime-$trigger-$gwbase
@@ -113,10 +113,10 @@ else
   def=$rawdef
 fi
 
-if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def; then
+if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def $rawdef &>> $fulllog; then
   rfctimesafeforsam=${rfctime//:/-}
   if [ $trigger != neardet-t00 ]; then
     $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
-      $outhistdir/$rfctimesafeforsam-$trigger
+      $outhistdir/$rfctimesafeforsam-$trigger &>> $fulllog
   fi
-fi &>> $fulllog
+fi

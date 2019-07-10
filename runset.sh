@@ -33,13 +33,13 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-#if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime $realgweventtime $skymap; then
+if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "$realgweventtime" $skymap; then
 #if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" $skymap; then
-if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" ""; then
+#if ! $SRT_PRIVATE_CONTEXT/ligo/makefcl.sh $type $rfctime "2019-03-24T13:29:01Z" ""; then
   exit 1
 fi
 
-fcl=$SRT_PRIVATE_CONTEXT/job/ligojob_$type.$rfctime.fcl
+fcl=$SRT_PRIVATE_CONTEXT/job/$(printf ligojob_$type.$rfctime.$realgweventtime.$(basename $skymap).fcl | sed s/:/-/g)
 
 if ! [ -e $fcl ]; then
   echo I thought the fcl was $fcl
@@ -79,7 +79,7 @@ for f in $@; do
     echo $log already exists. Will overwrite.
   fi
 
-  echo $SRT_PRIVATE_CONTEXT/ligo/runone.sh $f $fcl $reco $hist $log
+  echo $SRT_PRIVATE_CONTEXT/ligo/runone.sh "$f" "$fcl" "$reco" "$hist" "$log"
 done | ~mstrait/bin/parallel -j 3 --line-buffer
 
 if [ $? -eq 0 ]; then

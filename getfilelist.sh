@@ -125,7 +125,7 @@ makerecodef()
   echo Looking for $(cat $tmplist | wc -l) reco file'(s)'...
   for raw in $(cat $tmplist); do
     base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
-    f=$outhistdir/../*/*-$trigger/*${base}_*.reco.root
+    f=$(dirname $outhistdir)/*/*-$trigger/*${base}_*.reco.root
     echo Looking for "$f"
     if ls $f &> /dev/null; then
       found=0
@@ -231,9 +231,9 @@ makerawdef()
 
     # Just in case another script made the definition in the meanwhile?!
     if ! samweb describe-definition $def &> /dev/null; then
-      samweb create-definition $def \
-        "$(for f in $(cat $metadir/selectedfiles.$unixtime.$trigger | grep "$filepattern"); do
-             printf "%s %s or " file_name $(basename $f);
+      timeout 5m samweb create-definition $def \
+        "$(for f in $(grep "$filepattern" $metadir/selectedfiles.$unixtime.$trigger); do
+             printf "file_name %s or " $(basename $f);
            done | sed 's/ or $//')"
 
       if ! samweb describe-definition $def &> /dev/null; then
@@ -254,8 +254,8 @@ if ! [ $REDOFAST ]; then sleep $((RANDOM%16 + 1)); fi
 samweb delete-definition $recodef
 
 if havedef $rawdef; then
-  if echo $def | grep neardet; then
-    echo For ND use artdaq regardless because broken
+  if true; then # XXX
+    echo Use artdaq regardless because broken
     def=$rawdef
   elif makerecodef; then
     echo Made reco SAM definition
