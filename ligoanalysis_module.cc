@@ -1519,8 +1519,9 @@ void ligoanalysis::produce(art::Event & evt)
       // marked incomplete).  Could use these, probably, but would need to
       // modify code to handle overlaps to determine when the overlaps are in
       // these cases, and the complexity doesn't seem worth it.
-      if(event_length_tdc/TDC_PER_US != 5050){
-        printf("Rejecting LIGO_TRIGGER with length other than 5050us\n");
+      const int len = event_length_tdc/TDC_PER_US;
+      if(len != 5050){
+        printf("Rejecting LIGO_TRIGGER with length %dus != 5050us\n", len);
         return;
       }
     }
