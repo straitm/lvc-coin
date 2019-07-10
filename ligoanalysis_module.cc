@@ -197,6 +197,12 @@ struct ligohist{
 // the time requested for this sub-trigger) and less than 5000*64, so as
 // to exclude the parts of the first and last microslice that we'll use
 // in the adjacent subtriggers.
+//
+// This works in the usual case in which the trigger requested 5000us
+// and got 5050us because the trigger time was in the middle of a
+// microslice. It also works in the case that the trigger time was on
+// the microslice boundary and we got 5000us readouts without overlaps.
+// In this case, there are no negative TDC values.
 static bool uniquedata_tdc(const double livetime, const int tdc)
 {
   if(livetime < 0.005) return true;
@@ -1520,8 +1526,8 @@ void ligoanalysis::produce(art::Event & evt)
       // modify code to handle overlaps to determine when the overlaps are in
       // these cases, and the complexity doesn't seem worth it.
       const int len = event_length_tdc/TDC_PER_US;
-      if(len != 5050){
-        printf("Rejecting LIGO_TRIGGER with length %dus != 5050us\n", len);
+      if(len != 5050 && len != 5000){
+        printf("Rejecting LIGO_TRIGGER length %dus != 5050 or 5000\n", len);
         return;
       }
     }
