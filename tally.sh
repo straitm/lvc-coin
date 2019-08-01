@@ -43,7 +43,7 @@ fi
 
 cd $outhadddir
 
-! $commands && printf '            neardet-ddactivity1   fardet-ddsnews        fardet-t02\n'
+! $commands && printf '            neardet-ddactivity1        fardet-t02\n'
 
 nogood()
 {
@@ -127,7 +127,7 @@ for month in Jan Feb Mar Apr; do
 
     shortday=$(echo $day | sed s/^0//)
 
-    for trig in neardet-ddactivity1 fardet-ddsnews fardet-t02; do
+    for trig in neardet-ddactivity1 fardet-t02; do
       if ! nogood; then
         if [ $trig == neardet-ddactivity1 ]; then
         let totalnd++
@@ -168,7 +168,7 @@ for month in Jan Feb Mar Apr; do
   ! $commands && printf -- '--------------------------------------------------------------\n'
 done
 
-for trig in neardet-ddactivity1 fardet-ddsnews fardet-t02; do
+for trig in neardet-ddactivity1 fardet-t02; do
   for file in *${trig}.{pdf,hadded.root}; do
     # takes care of unexpanded stars
     if ! [ -e $file ]; then continue; fi
@@ -206,7 +206,6 @@ div()
 }
 
 ! $commands && echo $GWNAME $(div $completend $totalnd) nd-act \
-             $(div $completesnews $totalsnews) fd-ddsnews \
              $(div $completepulser $totalpulser) t02
 
 rm -f $TMPJOB $TMPLOOP
