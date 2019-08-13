@@ -1266,8 +1266,11 @@ static void count_upmu(const art::Event & evt)
 
     double ra, dec;
     track_ra_dec(ra, dec, evt, correctdir);
-    for(unsigned int q = 0; q < npointres; q++)
+    for(unsigned int q = 0; q < npointres; q++){
+      printf("Up-mu track pointing at region %d with ra,dec = %f %f\n",
+             q, ra, dec);
       npoint[q] += points(ra, dec, q, false);
+    }
   }
 
   for(unsigned int q = 0; q < npointres; q++){
