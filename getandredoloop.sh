@@ -88,9 +88,12 @@ if ps f -u mstrait | grep tee | grep -B 3 ligometalog/$logbase; then
 fi
 
 fulllog=/nova/ana/users/mstrait/ligometalog/$log
-echo Output going to $fulllog
+echo Output going to log file. You might want to do:
+echo tail -f $fulllog
 
-$SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger &> $fulllog
+exec > $fulllog 2>&1
+
+$SRT_PRIVATE_CONTEXT/ligo/getfilelist.sh $unixtime $trigger
 
 ret=$?
 
@@ -98,9 +101,9 @@ if [ $ret -eq 2 ]; then
   # if getfilelist returned 2, it means it found no files to process
   exit 0
 elif [ $ret -gt 0 ]; then
-  echo getfilelist $unixtime $trigger failed &>> $fulllog
+  echo getfilelist $unixtime $trigger failed
   exit 1
-f
+fi
 
 defbase=strait-ligo-coincidence
 recodef=$defbase-reco-$unixtime-$trigger-$gwbase
@@ -113,10 +116,10 @@ else
   def=$rawdef
 fi
 
-if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def $rawdef &>> $fulllog; then
+if $SRT_PRIVATE_CONTEXT/ligo/redoloop_ligo.sh $def $rawdef; then
   rfctimesafeforsam=${rfctime//:/-}
   if [ $trigger != neardet-t00 ]; then
     $SRT_PRIVATE_CONTEXT/ligo/combine.sh \
-      $outhistdir/$rfctimesafeforsam-$trigger &>> $fulllog
+      $outhistdir/$rfctimesafeforsam-$trigger
   fi
 fi

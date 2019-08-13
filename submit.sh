@@ -132,6 +132,13 @@ fails=0
 # Try to avoid races below
 if ! [ $REDOFAST ]; then sleep $((RANDOM % 32 )); fi
 
+# Don't start if anyone else is running any jobsub anything
+while ps -A w | grep -v grep | grep -q jobsub; do
+  echo There are jobsub processes running, waiting
+  sleep $((RANDOM%9 + 5))
+done
+
+# But that could race, so also check for the state of /tmp
 while true; do
   kfree=$(df /tmp | tail -n 1 | awk '{print $3}')
   if [ $kfree -lt 1500000 ]; then

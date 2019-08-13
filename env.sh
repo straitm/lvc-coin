@@ -44,6 +44,10 @@ elif [ $gwbase == GW170817 ]; then realgweventtime="2017-08-17T12:41:04.4Z"
 elif [ $gwbase == GW170818 ]; then realgweventtime="2017-08-18T02:25:09.1Z"
 elif [ $gwbase == GW170823 ]; then realgweventtime="2017-08-23T13:13:58.5Z"
 
+# From PHYS. REV. D 100, 023007 (2019)
+# No skymap available?
+elif [ $gwbase == GW151216  ]; then realgweventtime="2015-12-16T09:24:16.165Z"
+
 #03
 elif [ $gwbase == S190412m  ]; then realgweventtime="2019-04-12T05:30:44.165622Z"
 elif [ $gwbase == S190421ar ]; then realgweventtime="2019-04-21T21:38:56.250977Z"
@@ -62,6 +66,8 @@ elif [ $gwbase == S190630ag ]; then realgweventtime="2019-06-30T18:52:05.179550Z
 elif [ $gwbase == S190701ah ]; then realgweventtime="2019-07-01T20:33:06.577637Z"
 elif [ $gwbase == S190706ai ]; then realgweventtime="2019-07-06T22:26:41.344727Z"
 elif [ $gwbase == S190707q  ]; then realgweventtime="2019-07-07T09:33:26.181226Z"
+
+elif [ $gwbase == S190728q  ]; then realgweventtime="2019-07-28T06:45:10.546797Z"
 else
   echo I do not know when $gwbase was.  Edit env.sh
   if ! [ $PS1 ]; then

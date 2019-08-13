@@ -2,4 +2,10 @@
 
 e=$1
 
-wget -q -O - https://gracedb.ligo.org/apiweb/superevents/S190630ag/files/${e}-1-Preliminary.xml,0 | grep ISOTime | cut -d\> -f 2 | cut -d\< -f 1
+set -o pipefail
+
+url=https://gracedb.ligo.org/apiweb/superevents/$e/files/${e}-1-Preliminary.xml,0
+
+if ! wget -q -O - $url | grep ISOTime | cut -d\> -f 2 | cut -d\< -f 1; then
+  wget $url -O /dev/null
+fi

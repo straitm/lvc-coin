@@ -2,6 +2,9 @@
 
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
+# Sleep $1 seconds plus randomly 0-9 more seconds
+# Except don't sleep if $REDOFAST.
+# Except if $2 is "really", then really do sleep.
 vsleep()
 {
   if ! [ "$2" == really ] && [ $REDOFAST ]; then
@@ -80,6 +83,16 @@ iteration=0
 
 makejoblist()
 {
+  # The computing folks complained about me running jobsub_q too much, so
+  # add a random delay to prevent them from stacking up as fast.
+  # They also say they have an API for advanced usage, which maybe I need.
+  while ps -A w | grep -v grep | grep -q jobsub; do
+    echo There are jobsub processes running, waiting
+    vsleep 5 really
+  done
+
+  sleep $((RANDOM % 60 + 10))
+
   retrydelay=45
   while ! jobsub_q --user mstrait > /tmp/joblist.$$; do
     echo jobsub_q failed.  Will try again.
@@ -346,6 +359,7 @@ do_a_redo()
 }
 
 while true; do
+  kinit -R # Try to renew the Kerberos ticket.  Does this help?
   find_redo_list # exits if nothing to redo
   do_a_redo
 done

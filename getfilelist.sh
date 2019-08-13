@@ -35,7 +35,8 @@ elif [ $trigger == neardet-t00 ]; then
 elif [ $trigger == fardet-ddenergy ]; then
   filepattern='fardet.*_ddenergy_.*data.artdaq'
 elif [ $trigger == neardet-ddactivity1 ]; then
-  filepattern='neardet.*_ddactivity1_.*data.artdaq'
+  # Changed from "DDActivity1" to "ddactivity1" sometime in late 2015, it seems
+  filepattern='neardet.*_[Dd][Dd][Aa]ctivity1_.*data.artdaq'
 else
   echo unknown trigger \"$trigger\"
   exit 1

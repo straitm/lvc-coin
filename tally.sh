@@ -87,27 +87,42 @@ nogood()
 TMPJOB=/tmp/mstrait.joblist.$$
 TMPLOOP=/tmp/mstrait.looplist.$$
 
+# The computing folks complained about me running jobsub_q too much, so
+# add a random delay to prevent them from stacking up as fast.
+# They also say they have an API for advanced usage, which maybe I need.
+while ps -A w | grep -v grep | grep -q jobsub; do
+  echo There are jobsub processes running, waiting > /dev/stderr
+  sleep $((RANDOM%9 + 5))
+done
+
+sleep $((RANDOM % 6 + 1))
 jobsub_q --user mstrait > $TMPJOB
 
-(ps f; ssh novagpvm11 ps f) | tee | cut -d/ -f6- > $TMPLOOP
+ps f | cut -d/ -f6- > $TMPLOOP
+
+looping()
+{
+  grep "$month $shortday $trig 20.. $GWNAME" -q $TMPLOOP
+}
 
 # Look for whether there's a job running even though there's no redoloop watching it.
 # Assume bg event from 8:30.
 running()
 {
-  unixtime=$(TZ=UTC date +%s -d"$month $shortday 8:29:01 2019")
+  # Not UTC!
+  unixtime=$(date +%s -d"$month $shortday 8:29:01 2019")
 
-  cat $TMPJOB | grep -q $GWNAME-strait-ligo-coincidence-*-$unixtime-$trig
+  cat $TMPJOB | grep -q $GWNAME-strait-ligo-coincidence-.*-$unixtime-$trig
 }
 
 completend=0
 completesnews=0
 completepulser=0
 
-for month in Jan Feb Mar Apr; do
+for month in Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec; do
   for day in {01..31}; do 
     if ( [ $month == Feb ] && [ $day -gt 28 ] ) ||
-       ( [ $month == Apr ] && [ $day -gt 30 ] ); then
+       ( ( [ $month == Apr ] || [ $month == Jun ] || [ $month == Sep ] || [ $month == Nov ] ) && [ $day -gt 30 ] ); then
       continue
     fi
 
@@ -120,8 +135,24 @@ for month in Jan Feb Mar Apr; do
       monthnum=03
     elif [ $month == Apr ]; then
       monthnum=04
+    elif [ $month == May ]; then
+      monthnum=05
+    elif [ $month == Jun ]; then
+      monthnum=06
+    elif [ $month == Jul ]; then
+      monthnum=07
+    elif [ $month == Aug ]; then
+      monthnum=08
+    elif [ $month == Sep ]; then
+      monthnum=09
+    elif [ $month == Oct ]; then
+      monthnum=10
+    elif [ $month == Nov ]; then
+      monthnum=11
+    elif [ $month == Dec ]; then
+      monthnum=12
     else
-      echo I only know about 4 months.  I am but a child. >/dev/stderr
+      echo I only know about 12 months. > /dev/stderr
       exit 1
     fi
 
@@ -150,14 +181,16 @@ for month in Jan Feb Mar Apr; do
         elif [ $trig == fardet-t02 ]; then
           let completepulser++
         fi
-      elif grep $GWNAME-$month-$shortday-.*-$trig -q $TMPLOOP; then
-        ! $commands && printf '              p'
+      elif looping; then
+        if ! $commands; then
+          if running; then printf '             ps'
+          else             printf '              p'; fi
+        fi
       elif running; then
         ! $commands && printf '              s'
       else
         if $commands; then
-          printf "throttle; echo $month $shortday $trig $GWNAME;\n"
-          printf "getandredoloop.sh $month $shortday $trig 2019 $GWNAME &> /dev/null & sleep 1\n"
+          printf "throttle; echo $month $shortday $trig $GWNAME; getandredoloop.sh $month $shortday $trig 2019 $GWNAME &> /dev/null & sleep 2\n"
         else
           printf '               '
         fi
@@ -186,8 +219,24 @@ for trig in neardet-ddactivity1 fardet-t02; do
       month=Mar
     elif [ $monthnum == 04 ]; then
       month=Apr
+    elif [ $monthnum == 05 ]; then
+      month=May
+    elif [ $monthnum == 06 ]; then
+      month=Jun
+    elif [ $monthnum == 07 ]; then
+      month=Jul
+    elif [ $monthnum == 08 ]; then
+      month=Aug
+    elif [ $monthnum == 09 ]; then
+      month=Sep
+    elif [ $monthnum == 10 ]; then
+      month=Oct
+    elif [ $monthnum == 11 ]; then
+      month=Nov
+    elif [ $monthnum == 12 ]; then
+      month=Dec
     else
-      echo I only know about 4 months.  This file is suspicious: > /dev/stderr
+      echo I only know about 12 months.  This file is suspicious: > /dev/stderr
       echo $file > /dev/stderr
       if $remove; then rm -v $file; fi
       continue
