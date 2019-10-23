@@ -12,7 +12,8 @@ throttle() {
 }
 
 
-for e in S190602aq S190630ag S190701ah S190706ai S190707q; do
+for e in S190910d; do
+  mkdir -p /nova/ana/users/mstrait/ligobgresults-$e
   cat $SRT_PRIVATE_CONTEXT/ligo/goodnd.txt | while read m d; do
     throttle
     cd /nova/ana/users/mstrait/ligobgresults-$e
@@ -22,8 +23,8 @@ for e in S190602aq S190630ag S190701ah S190706ai S190707q; do
   done
 
   cat $SRT_PRIVATE_CONTEXT/ligo/goodfd.txt | while read m d; do
-    cd /nova/ana/users/mstrait/ligobgresults-$e
     throttle
+    cd /nova/ana/users/mstrait/ligobgresults-$e
     getandredoloop.sh $m $d fardet-t02 2019 $e > /dev/null &
     echo Started $m $d far $e
     sleep 1
