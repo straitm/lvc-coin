@@ -80,6 +80,22 @@ nogood()
   elif [ $month == Apr ] && [ $day -eq 7  ]; then return 0 # fardet and neardet
   elif [ $month == Apr ] && [ $day -eq 8  ]; then return 0 # fardet and neardet
   elif [ $month == Apr ] && [ $day -eq 9  ] && [ $det == fardet ]; then return 0
+
+  elif [ $month == May ] && [ $day -eq 2  ] && [ $det == neardet ]; then return 0
+
+  elif [ $month == Jul ] && [ $day -eq 31 ] && [ $det == neardet ]; then return 0
+
+  # XXX "year" not defined
+  elif [ "$year" == 2018 ] && [ $month == Jul ] && [ $day -eq 8  ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Aug ] && [ $day -eq 26 ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Oct ] && [ $day -eq 7  ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Oct ] && [ $day -eq 26 ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Oct ] && [ $day -eq 27 ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Nov ] && [ $day -eq 7  ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Nov ] && [ $day -eq 14 ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Dec ] && [ $day -eq 8  ] && [ $det == neardet ]; then return 0
+  elif [ "$year" == 2018 ] && [ $month == Dec ] && [ $day -eq 18 ] && [ $det == neardet ]; then return 0
+
   fi
   return 1
 }
@@ -90,7 +106,7 @@ TMPLOOP=/tmp/mstrait.looplist.$$
 # The computing folks complained about me running jobsub_q too much, so
 # add a random delay to prevent them from stacking up as fast.
 # They also say they have an API for advanced usage, which maybe I need.
-while ps -A w | grep -v grep | grep -q jobsub; do
+while ps -u mstrait fw | grep -v grep | grep -q jobsub; do
   echo There are jobsub processes running, waiting > /dev/stderr
   sleep $((RANDOM%9 + 5))
 done

@@ -216,6 +216,7 @@ makerawdef()
   if ! [ "$(cat $metadir/selectedfiles.$unixtime.$trigger)" ]; then
     echo No files selected, nothing to do
     if [ $trigger == neardet-t00 ]; then
+      echo Making empty spill list file since there are no spills.
       touch $spilldir/spills-$unixtime-$rfctime.txt
     fi
     exit 2

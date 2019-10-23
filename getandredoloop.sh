@@ -87,6 +87,11 @@ if ps f -u mstrait | grep tee | grep -B 3 ligometalog/$logbase; then
   exit 1
 fi
 
+if [ $trigger == neardet-t00 ] && [ -e $spilldir/spills-$unixtime-$rfctime.txt ]; then
+  echo Looks like a spill file has already been generated for this time
+  exit 0
+fi
+
 fulllog=/nova/ana/users/mstrait/ligometalog/$log
 echo Output going to log file. You might want to do:
 echo tail -f $fulllog

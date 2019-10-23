@@ -86,7 +86,7 @@ makejoblist()
   # The computing folks complained about me running jobsub_q too much, so
   # add a random delay to prevent them from stacking up as fast.
   # They also say they have an API for advanced usage, which maybe I need.
-  while ps -A w | grep -v grep | grep -q jobsub; do
+  while ps -u mstrait fw | grep -v grep | grep -q jobsub; do
     echo There are jobsub processes running, waiting
     vsleep 5 really
   done

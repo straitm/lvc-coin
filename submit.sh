@@ -82,7 +82,7 @@ if [ $GWBLIND ]; then
   else
     type=blind
   fi
-  lifetime=7200
+  lifetime=14400
 fi
 
 # Tell the fcl we are reading the skymap from the CWD since it will be shipped
@@ -133,7 +133,7 @@ fails=0
 if ! [ $REDOFAST ]; then sleep $((RANDOM % 32 )); fi
 
 # Don't start if anyone else is running any jobsub anything
-while ps -A w | grep -v grep | grep -q jobsub; do
+while ps -u mstrait fw | grep -v grep | grep -q jobsub; do
   echo There are jobsub processes running, waiting
   sleep $((RANDOM%9 + 5))
 done
@@ -159,6 +159,7 @@ while true; do
   fi
 done
 
+# $(if ! [ $GWBLIND ]; then echo --inputfile $skymap; fi) \
 
 submit_nova_art.py \
 --inputfile $skymap \

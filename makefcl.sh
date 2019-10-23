@@ -26,11 +26,18 @@ fi
 
 fclout=$SRT_PRIVATE_CONTEXT/job/$fcl
 
-cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
-  sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligoanalysis.NeedBGEventTime: \"$realgweventtime\"\
-      \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
-      \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $fclout
+#if [ $GWBLIND ]; then
+#  cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
+#    sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
+#        \nthis_here_ligoanalysis.NeedBGEventTime: \"$realgweventtime\"\
+#        \nthis_here_ligofilter.GWEventTime: \"$rfctime\"" > $fclout
+#else
+  cat $SRT_PRIVATE_CONTEXT/job/ligojob_$type.fcl | \
+    sed "/this_here_ligoanalysis: @local/a this_here_ligoanalysis.GWEventTime: \"$rfctime\"\
+        \nthis_here_ligoanalysis.NeedBGEventTime: \"$realgweventtime\"\
+        \nthis_here_ligofilter.GWEventTime: \"$rfctime\"\
+        \nthis_here_ligoanalysis.SkyMap: \"$skymap\"" > $fclout
+#fi
 
 if grep -q "eliminatebeam.spillfile: " $fclout; then
   spilldir=/pnfs/nova/users/mstrait/spills
