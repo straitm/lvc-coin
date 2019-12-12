@@ -1423,6 +1423,7 @@ static void count_tracks_containedslices(const art::Event & evt,
     }
   }
 
+#ifdef LOUD
   printf("Slices with tracks: %2lu (",
          slices_with_tracks.size());
   for(unsigned int q = 0; q < npointres; q++) printf("%lu%s",
@@ -1448,6 +1449,7 @@ static void count_tracks_containedslices(const art::Event & evt,
   for(std::set<int>::iterator i = contained_shower_slices.begin();
       i != contained_shower_slices.end(); i++)
     printf("  slice %3d\n", *i);
+#endif
 
   THplusequals(
     lh_tracks, timbin, slices_with_tracks.size(), livetime);
@@ -1556,10 +1558,8 @@ void ligoanalysis::produce(art::Event & evt)
 
     if(fAnalysisClass != DDenergy){
       evt.getByLabel("slicer", slice);
-      if(slice.failedToGet()){
-        fprintf(stderr, "No slicer product. Event filtered out in reco file?\n");
-        return;
-      }
+      // Event probably filtered out in reco file
+      if(slice.failedToGet()) return;
 
       if(slice->empty()){
         fprintf(stderr, "Unexpected event with zero slices!\n");
