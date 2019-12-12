@@ -1490,6 +1490,8 @@ static bool more_than_one_physics_slice(art::Event & evt)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
+  // Event probably filtered out in reco file
+  if(slice.failedToGet()) return false;
   return slice->size() > 2;
 }
 
