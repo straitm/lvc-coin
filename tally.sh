@@ -52,6 +52,10 @@ nogood()
   # Avoid irritating special case for the first entry below
   if false; then nasal demons
 
+  # Only do Jan-Apr at the FD, not that the other months are bad
+  elif [ $month != Jan ] && [ $month != Feb ] &&
+       [ $month != Mar ] && [ $month != Apr ] && [ $det == fardet ]; then return 0
+
   # t02 has a missing portion outside the ddsnews window, and ddsnews also does,
   # oddly, at a different time.
   elif [ $month == Jan ] && [ $day -eq 1  ] && [ $det ==  fardet ]; then return 0
@@ -84,6 +88,13 @@ nogood()
   elif [ $month == May ] && [ $day -eq 2  ] && [ $det == neardet ]; then return 0
 
   elif [ $month == Jul ] && [ $day -eq 31 ] && [ $det == neardet ]; then return 0
+
+  elif [ $month == Aug ] && [ $day -eq 1 ] && [ $det == neardet ]; then return 0
+  elif [ $month == Aug ] && [ $day -eq 2 ] && [ $det == neardet ]; then return 0
+  elif [ $month == Aug ] && [ $day -eq 10 ] && [ $det == neardet ]; then return 0
+  elif [ $month == Aug ] && [ $day -eq 11 ] && [ $det == neardet ]; then return 0
+  elif [ $month == Aug ] && [ $day -eq 12 ] && [ $det == neardet ]; then return 0
+  elif [ $month == Aug ] && [ $day -eq 20 ] && [ $det == neardet ]; then return 0
 
   # XXX "year" not defined
   elif [ "$year" == 2018 ] && [ $month == Jul ] && [ $day -eq 8  ] && [ $det == neardet ]; then return 0
@@ -135,7 +146,7 @@ completend=0
 completesnews=0
 completepulser=0
 
-for month in Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec; do
+for month in Jan Feb Mar Apr May Jun Jul Aug; do
   for day in {01..31}; do 
     if ( [ $month == Feb ] && [ $day -gt 28 ] ) ||
        ( ( [ $month == Apr ] || [ $month == Jun ] || [ $month == Sep ] || [ $month == Nov ] ) && [ $day -gt 30 ] ); then

@@ -32,6 +32,8 @@ if printf $def | grep fardet | grep -q -- -reco-; then
   typesuffix=_noreco
 elif [ $analysis_type_key == fardet-t02 ] ||
      [ $analysis_type_key == fardet-ddsnews ] ||
+     [ $analysis_type_key == fardet-ligo ] ||
+     [ $analysis_type_key == neardet-ligo ] ||
      [ $analysis_type_key == neardet-ddactivity1 ]; then
   # Be sure to only add this for jobs if we really do want the reco
   # file.  Besides wasting space, this causes a line to get written
