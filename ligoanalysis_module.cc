@@ -462,7 +462,7 @@ static bool compare_ac_raw(const ac_raw & a, const ac_raw & b)
   return a.raw > b.raw;
 }
 
-// Takes a skymap and smears it with a gaussian to take into account our
+// Takes a skymap and smears it with a Gaussian to take into account our
 // detector resolution.
 //
 // Mostly copied from the example code in the Healpix package in
@@ -516,7 +516,7 @@ static double find_critical_value(const int q)
   // above which we are in the 90% CL region. The convenient way to
   // retrieve probabilities from the map is interpolated values at
   // unevenly spaced points. Scale these by their effective area to do
-  // the intergration, but set the critical value using unscaled values.
+  // the integration, but set the critical value using unscaled values.
   std::vector<ac_raw> vals;
 
   int ni = 1000, nj = 1000;
