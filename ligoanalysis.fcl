@@ -9,6 +9,12 @@ standard_ligoanalysis:
   # UTC, always with a Z at the end (to emphasize that it is UTC).
   GWEventTime: "2017-03-26T17:46:40.5Z"
 
+  # If we want to measure the skymap-dependent background for a gravitational
+  # wave at NeedBGEventTime, set this to the time of the GW, and set
+  # GWEventTime to the time we're using as a background sample.  Otherwise,
+  # leave this as the empty string.
+  NeedBGEventTime: ""
+
   # Length of the window in seconds.  We will look for half this amount of
   # time to each side of the absolute time given above.  Must be an integer.
   WindowSize: 1000
