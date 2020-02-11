@@ -52,6 +52,9 @@
 #include "alm_healpix_tools.h" // alm2map(), etc.
 #include "alm_powspec_tools.h" // smoothWithGauss()
 
+// Define this if you want to print extra information
+#define LOUD
+
 // The sky map from LIGO/Virgo, if available and necessary, i.e. if we
 // are analyzing events with pointing.  Two copies, the first smeared
 // with our pointing resolution and the other smeared also with a larger
@@ -990,6 +993,35 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   std::vector<mhit> mhits;
 
+  // Geometrically about correct, but perhaps should be scaled by density
+  // or radiation length or neutron cross section or something. Or not,
+  // since which of those is right depends on what you're looking at.
+  const double planes_per_cell = 76./39.;
+
+  // Optimized for the FD, and at the ND, you can set this to any
+  // positive value and it has the same result.
+  const int planebuffer = 15;
+  const int cellbuffer = planebuffer * planes_per_cell;
+
+  #ifdef LOUD
+    if(adc_cut){ // Only print once out of the two times this function is called
+      for(unsigned int j = 1; j < sliceinfo.size(); j++){
+        const unsigned int
+          nexplane = std::min(895, (int)sliceinfo[j].maxplane + planebuffer) -
+                     std::max(0,   (int)sliceinfo[j].minplane - planebuffer),
+          nexcellx = std::min(383, (int)sliceinfo[j].maxcellx + cellbuffer) -
+                     std::max(0,   (int)sliceinfo[j].mincellx - cellbuffer),
+          nexcelly = std::min(383, (int)sliceinfo[j].maxcelly + cellbuffer) -
+                     std::max(0,   (int)sliceinfo[j].mincelly - cellbuffer);
+        const float fracx = nexplane*nexcellx/(896*384.),
+                    fracy = nexplane*nexcelly/(896*384.);
+        const float frac = (fracx+fracy)/2;
+        printf("Excluding a rectangle of %u by %u %u in x y = %.5f of FD\n",
+               nexplane, nexcellx, nexcelly, frac);
+      }
+    }
+  #endif
+
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
     if(!uniquedata_tdc(livetime, noiseslice.Cell(i)->TDC())) continue;
 
@@ -1047,22 +1079,12 @@ static std::vector<mhit> select_hits_for_mev_search(
     // Start at 1 to exclude the "noise" slice, where all the signal is.
     for(unsigned int j = 1; j < sliceinfo.size(); j++){
       // Optimized for the FD.  The ND isn't sensitive to these.
-      const float time_until_slc_cut =  2e3;
+      const float time_until_slc_cut = 2e3;
 
       // Use slice duration as a simple way of identifying events which dump a lot
       // of energy in a small volume.
       const float sliceduration = sliceinfo[j].maxtns - sliceinfo[j].mintns;
       const float time_since_slc_cut = sliceduration > 2000? 200e3: 13e3;
-
-      // Geometrically about correct, but perhaps should be scaled by density
-      // or radiation length or neutron cross section or something. Or not,
-      // since which of those is right depends on what you're looking at.
-      const double planes_per_cell = 76./39.;
-
-      // Optimized for the FD, and at the ND, you can set this to any
-      // positive value and it has the same result.
-      const int planebuffer = 15;
-      const int cellbuffer = planebuffer * planes_per_cell;
 
       if(tns > sliceinfo[j].mintns - time_until_slc_cut &&
          tns < sliceinfo[j].maxtns + time_since_slc_cut &&
