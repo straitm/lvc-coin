@@ -1,0 +1,40 @@
+#include "CalHit.fcl"
+#include "Slicer4D.fcl"
+#include "services.fcl"
+#include "BackTracker.fcl"
+#include "CelestialLocator.fcl"
+
+process_name: ligoreco
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantTracer: false wantSummary: true }
+  TimeTracker:  { printSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+  CelestialLocator:    @local::standard_celestial
+}
+
+services.BackTracker: @local::standard_backtracker
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+physics:
+{
+  producers:
+  {
+    calhit: @local::standard_calhit
+    slicer: @local::standard_slicer4d
+  }
+
+  reco: [ calhit, slicer ]
+}
+
+# Never want CAFs, so avoid prod4/prod5 CAF structure change problem
+# by just not looking at the CAF structure
+source.inputCommands: [ "keep *", "drop *_*caf*_*_*" ]
