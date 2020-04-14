@@ -8,6 +8,7 @@
 #include "BreakPoint.fcl"
 #include "services.fcl"
 #include "CelestialLocator.fcl"
+#include "BackTracker.fcl"
 
 
 # For up-mu
@@ -25,6 +26,8 @@ services:
   @table::standard_services
   CelestialLocator:    @local::standard_celestial
 }
+
+services.BackTracker: @local::standard_backtracker
 
 source:
 {

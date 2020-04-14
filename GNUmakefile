@@ -8,6 +8,7 @@ LIBCXXFILES := $(wildcard *.cxx)
 JOBFILES    := $(wildcard *.fcl)
 
 include SoftRelTools/standard.mk
+include SoftRelTools/arch_spec_nutools.mk
 include SoftRelTools/arch_spec_art.mk
 
 LIBLINK := \
@@ -22,7 +23,7 @@ LIBLINK := \
 # just a memory/disk tradeoff.
 override CPPFLAGS += -I$(HOME)/Healpix_3.31/src/cxx/basic_gcc/include \
                      -Wno-unknown-pragmas -fopenmp \
-                     -pipe
+                     -pipe -O3
 
 override LIBLIBS += $(LOADLIBES) \
  -L$(ART_LIB) \

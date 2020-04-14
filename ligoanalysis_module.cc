@@ -28,11 +28,14 @@
 
 #include "RecoBase/Track.h"
 
+#include "MCCheater/BackTracker.h"
+
 #include "CMap/service/DetectorService.h"
 #include "CelestialLocator/CelestialLocator.h"
 #include "NovaTimingUtilities/TimingUtilities.h"
 
-#include "TH2.h"
+#include "TH1.h"
+#include "TTree.h"
 
 #include <string>
 #include <vector>
@@ -53,7 +56,7 @@
 #include "alm_powspec_tools.h" // smoothWithGauss()
 
 // Define this if you want to print extra information
-#define LOUD
+//#define LOUD
 
 // The sky map from LIGO/Virgo, if available and necessary, i.e. if we
 // are analyzing events with pointing.  Two copies, the first smeared
@@ -79,18 +82,31 @@ static long long window_size_s = 1000;
 static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
-enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND, Blind,
-                        MAX_ANALYSIS_CLASS };
+enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND,
+                        SNonlyFD, SNonlyND,
+                        Blind, MAX_ANALYSIS_CLASS }
+  static analysis_class = MAX_ANALYSIS_CLASS;
 
 // Minimal hit information, distilled from CellHit
 struct mhit{
   float tns; // fine timing, in nanoseconds
   float tpos; // transverse position
   float pe; // photoelectrons
+  int16_t adc;
   uint16_t plane;
+  bool isx;
   int cell;
   bool supernovalike;
-  bool used; // has this hit been used in a pair yet?
+  bool used; // has this hit been used in a cluster yet?
+  bool paired; // has this hit been used in a cluster of size 2+ yet?
+  int truepdg; // For MC, what the truth is
+  double sincelastbigshower_s;
+};
+
+struct sncluster{
+  std::vector<mhit *> hits;
+  // I thought I'd store more in here, but maybe not and it should be a
+  // typedef?
 };
 
 // Minimal slice information, distilled from rb::Cluster
@@ -424,16 +440,159 @@ static ligohist lh_blind("blind", true);
 /**************************  End histograms **************************/
 /*********************************************************************/
 
-static void init_blind_hist()
-{
-  init_lh(lh_blind);
-}
+/***************************** Tree stuff ****************************/
 
-static void init_mev_hists()
+static TTree * sntree = NULL;
+
+// Anonymous struct for the output supernova analysis tree
+struct{
+  // Fraction of the hits that are caused by Monte Carlo particles.
+  // Typically 1 when the cluster is caused by a Monte Carlo event and
+  // 0 when it is caused by real detector activity, presumed to be
+  // unrelated to any supernova. Of course, it will always be zero if
+  // you are analyzing pure real data without Monte Carlo. It can be
+  // between 0 and 1 if a Monte Carlo hit was accidentally next to a
+  // background hit and got clustered with it.
+  //
+  // I *think* occasionally a hit can be a combination of real data
+  // and Monte Carlo which were very close in time, in which case it
+  // will either be counted as one or the other. I *think* any amount
+  // of MC will cause it to be counted as an MC hit. In any case, the
+  // numerator of 'truefrac' is always an integer.
+  //
+  // Occasionally a hit can be caused by an MC particle, but without
+  // enough information stored in the intermediate file for BackTracker
+  // to know that. This will cause 'truefrac' to be lower than it should
+  // be. I believe this to affect << 1% of hits. I studied the case of
+  // hits caused *only* by a positron annihilation gamma, whose true
+  // tracks are by default not saved. Brems might also be relevant.
+  float truefrac;
+
+  // The PDG ID of the particle that contributed the plurality of the
+  // PE to this cluster.  This might not be the majority of the energy
+  // because of differing attenuation, but is a reasonable proxy for
+  // the majority of the energy.  Anyway, in most cases one particle
+  // contributes all of the energy.
+  //
+  // The main cases of interest are:
+  //
+  //  11: Electron from elastic scattering (rare)
+  // -11: Positron from inverse beta decay
+  //  22: Gamma from neutron capture from inverse beta decay, or
+  //      Gamma from neutral current excitation of oxygen (except these
+  //      aren't simulated yet)
+  //
+  // Note that you never see a hit from a neutron, because the
+  // simulation considers the gammas that result from the neutron
+  // capture to be responsible for the energy deposition. This is
+  // arbitrary. What actually ionizes the scintillator is mainly the
+  // Compton electrons from gamma scattering (neutrino -> neutron ->
+  // gamma -> electron). Currently there's no way to distinguish between
+  // gammas resulting from different processes, but that would be nice.
+  int truepdg;
+
+  // Number of hits in the cluster.  Only hits above a certain ADC
+  // are accepted, so there may be other nearby hits that don't get
+  // included because they are presumed noise.  "A certain ADC" could
+  // be zero, in which case all hits are accepted.
+  int nhit;
+
+  // Mean time of the hits in this cluster in seconds since Jan 1, 1970,
+  // 0:00:00 UTC, the Unix Epoch. This is a convenient time format, but
+  // when stored in double precision and used with any time relevant
+  // to NOvA, it has a granularity of 238ns, which isn't great, but I
+  // think is good enough, but if it becomes annoying, there are other
+  // reasonable ways of storing time.
+  double time_s;
+
+  // Total number of photoelectrons in this cluster. This is a rough
+  // proxy for energy, but doesn't take into account attenuation. Since
+  // we're requiring a hit in both views, we could calculate energy
+  // better than this.
+  float pe;
+
+  // Lowest ADC of any hit in this cluster.  This is a measure of how
+  // likely part of the cluster is to be APD noise.
+  int16_t minhitadc;
+
+  // First and last planes in the cluster
+  int minplane;
+  int maxplane;
+
+  // First and last cells in the X view. Cell zero is on the east side
+  // of the detector. Currently always defined, since we require a hit
+  // in each view to form a cluster. If we relax this requirement, and
+  // there is no X hit, mincellx will be 9999 and maxcellx will be -1.
+  int mincellx;
+  int maxcellx;
+
+  // First and last cells in the Y view. Cell zero is on the bottom. See
+  // commentary on the X versions of these variables.
+  int mincelly;
+  int maxcelly;
+
+  // Time in seconds since the last "big" cosmic ray shower. This is
+  // of interest because big showers can dump many (thousands) of
+  // neutrons into the detector, which subsequently capture over the
+  // following 100s of microseconds. It's not clear which, if any of the
+  // following are relevant to NOvA, but they can also produce (1) B-12
+  // and N-12, high energy beta decay isotopes with lifetimes in the
+  // 10s of milliseconds (2) cosmogenic isotopes such as Li-9 that have
+  // decays that mimic supernova IBDs and have lifetimes in the 100s
+  // of milliseconds (3) other isotopes with lower energy simple beta
+  // decays, but even longer lifetimes.
+  //
+  // A "big" shower is defined as one with a length over 2 microseconds.
+  // This works, but is probably not so much a physical time duration as
+  // it is using the fact that large energy depositions cause "flasher"
+  // hits over the next few microseconds, a detector artifact.  It may also
+  // be connecting the beginning of the wave of neutron captures or muons
+  // truly separated in time by up to ~1-2 microseconds.
+  //
+  // If there was no previous big shower, this is set to the number of
+  // seconds between the cluster and the Unix Epoch (~2e9).
+  //
+  // In my short tests so far, it looks like this variable does not
+  // help identify background events that have not already been cut by
+  // removing hits spatially close to big showers for 200 microseconds.
+  // We could play with the definitions of "big shower" and the size of
+  // this hard cut.
+  double sincebigshower_s;
+
+} sninfo;
+
+/*********************************************************************/
+
+static void init_mev_stuff()
 {
   init_lh(lh_unsliced_hits);
   init_lh(lh_unsliced_big_hits);
   init_lh(lh_supernovalike);
+
+  art::ServiceHandle<art::TFileService> t;
+  sntree = t->make<TTree>("sn", "");
+
+  // These reduce the nonsense of typos that goes with TTree:Branch()
+  #define Q(x) #x
+  #define BR(x, t) sntree->Branch(Q(sninfo.x), &sninfo.x, Q(x/t))
+  BR(nhit,             I);
+  BR(truefrac,         F);
+  BR(truepdg,          I);
+  BR(time_s,           D);
+  BR(sincebigshower_s, D);
+  BR(pe,               F);
+  BR(minhitadc,        S);
+  BR(minplane,         I);
+  BR(maxplane,         I);
+  BR(mincellx,         I);
+  BR(maxcellx,         I);
+  BR(mincelly,         I);
+  BR(maxcelly,         I);
+}
+
+static void init_blind_hist()
+{
+  init_lh(lh_blind);
 }
 
 static void init_track_and_contained_hists()
@@ -635,12 +794,16 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
   else if(analysis_class_string == "MinBiasFD")  fAnalysisClass = MinBiasFD;
   else if(analysis_class_string == "MinBiasND")  fAnalysisClass = MinBiasND;
+  else if(analysis_class_string == "SNonlyFD")   fAnalysisClass = SNonlyFD;
+  else if(analysis_class_string == "SNonlyND")   fAnalysisClass = SNonlyND;
   else if(analysis_class_string == "Blind")      fAnalysisClass = Blind;
   else{
     fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
             "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
     exit(1);
   }
+
+  analysis_class = fAnalysisClass; // expose to static functions
 
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   needbgevent_unix_double_time = fNeedBGEventTime==""?0
@@ -661,16 +824,20 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       init_lh(lh_ddenergy_vhipertime);
       break;
     case MinBiasFD:
-      init_mev_hists();
       init_track_and_contained_hists();
       init_lh(lh_upmu_tracks);
       for(unsigned int q = 0; q < npointres; q++)
         init_lh_name_live(lh_upmu_tracks_point[q],
                           Form("upmu_tracks_point_%d",q), false);
+      // Fall-through
+    case SNonlyFD:
+      init_mev_stuff();
       break;
     case MinBiasND:
-      init_mev_hists();
       init_track_and_contained_hists();
+      // Fall-through
+    case SNonlyND:
+      init_mev_stuff();
       break;
     case Blind:
       init_blind_hist();
@@ -987,9 +1154,12 @@ static std::vector<mslice> make_sliceinfo_list(
 // searching for unmodeled bursts.
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
-  const double livetime, const bool adc_cut)
+  const double livetime, const bool adc_cut, unsigned long long evttime)
 {
   art::ServiceHandle<geo::Geometry> geo;
+
+  // profiling indicates that it is helpful to save this.
+  const unsigned int nslice = sliceinfo.size();
 
   std::vector<mhit> mhits;
 
@@ -1005,7 +1175,7 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   #ifdef LOUD
     if(adc_cut){ // Only print once out of the two times this function is called
-      for(unsigned int j = 1; j < sliceinfo.size(); j++){
+      for(unsigned int j = 1; j < nslice; j++){
         const unsigned int
           nexplane = std::min(895, (int)sliceinfo[j].maxplane + planebuffer) -
                      std::max(0,   (int)sliceinfo[j].minplane - planebuffer),
@@ -1022,76 +1192,105 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
   #endif
 
+  // Retain the last long slice time from the previous event
+  static double prev_longslicetime = 0;
+  const double LONGSLICEDURATION = 2000;
+
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
-    if(!uniquedata_tdc(livetime, noiseslice.Cell(i)->TDC())) continue;
+    const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(i);
 
-    const float fd_low_adc =  85, fd_high_adc =  600;
-    const float nd_low_adc = 107, nd_high_adc = 2500;
+    if(!uniquedata_tdc(livetime, hit->TDC())) continue;
 
-    const float low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
-    const float high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
+    // TODO consider relaxing these for the supernova analysis
+    // Were: 85, 600, 107, 2500
+    const int16_t fd_low_adc =  50, fd_high_adc =  600;
+    const int16_t nd_low_adc = 107, nd_high_adc = 2500;
 
-    if(adc_cut && noiseslice.Cell(i)->ADC() <= low_adc) continue;
-    if(noiseslice.Cell(i)->ADC() >= high_adc) continue;
+    const int16_t low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
+    const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
-    const int cell  = noiseslice.Cell(i)->Cell();
-    const int plane = noiseslice.Cell(i)->Plane();
+    if(adc_cut && hit->ADC() <= low_adc) continue;
+    if(hit->ADC() >= high_adc) continue;
 
-    if(gDet == caf::kNEARDET){
-      const int ndnplaneedge = 4;
+    const int cell  = hit->Cell();
+    const int plane = hit->Plane();
 
-      // Exclude the whole muon catcher. Can't reasonably have a
-      // supernova-type event hit planes on each side of a steel plane,
-      // and while they might hit adjacent scintillator planes in the
-      // muon catcher, I don't want to deal with all the additional
-      // complications there.
-      if(plane <= ndnplaneedge) continue;
-      if(plane >= 192-ndnplaneedge) continue;
+    // Cut only hit location, but don't do that for the supernova analysis, because
+    // we'll figure out the best such cuts downstream.
+    if(analysis_class != SNonlyFD && analysis_class != SNonlyND){
+      if(gDet == caf::kNEARDET){
+        const int ndnplaneedge = 4;
 
-      // At top of detector, stricter cut based on observed backgrounds
-      if(noiseslice.Cell(i)->View() == geo::kY && cell >= 96 - 20) continue;
+        // Exclude the whole muon catcher. Can't reasonably have a
+        // supernova-type event hit planes on each side of a steel plane,
+        // and while they might hit adjacent scintillator planes in the
+        // muon catcher, I don't want to deal with all the additional
+        // complications there.
+        if(plane <= ndnplaneedge) continue;
+        if(plane >= 192-ndnplaneedge) continue;
 
-      // Drop outermost cells. This excludes most muon tracks that
-      // just barely enter the detector, but don't get reconstructed.
-      const int ndncelledge_x = 4;
-      if(noiseslice.Cell(i)->View() == geo::kX &&
-         (cell <= ndncelledge_x || cell >= 96 - ndncelledge_x)) continue;
+        // At top of detector, stricter cut based on observed backgrounds
+        if(hit->View() == geo::kY && cell >= 96 - 20) continue;
+
+        // Drop outermost cells. This excludes most muon tracks that
+        // just barely enter the detector, but don't get reconstructed.
+        const int ndncelledge_x = 4;
+        if(hit->View() == geo::kX &&
+           (cell <= ndncelledge_x || cell >= 96 - ndncelledge_x)) continue;
+      }
+      else{ // far
+        const int fdnplaneedge = 2;
+        if(plane <= fdnplaneedge) continue;
+        if(plane >= 895-fdnplaneedge) continue;
+
+        if(hit->View() == geo::kY && cell >= 383 - 50)
+          continue;
+
+        const int fdncelledge_x = 10;
+        if(hit->View() == geo::kX &&
+           (cell <= fdncelledge_x || cell >= 383 - fdncelledge_x)) continue;
+      }
     }
-    else{ // far
-      const int fdnplaneedge = 2;
-      if(plane <= fdnplaneedge) continue;
-      if(plane >= 895-fdnplaneedge) continue;
 
-      if(noiseslice.Cell(i)->View() == geo::kY && cell >= 383 - 50)
-        continue;
+    const float tns = hit->TNS();
 
-      const int fdncelledge_x = 10;
-      if(noiseslice.Cell(i)->View() == geo::kX &&
-         (cell <= fdncelledge_x || cell >= 383 - fdncelledge_x)) continue;
-    }
-
-    const float tns = noiseslice.Cell(i)->TNS();
+    // with 238ns precision
+    const double absolute_hit_time = art_time_to_unix_double(evttime)+tns*1e-9;
 
     bool pass = true;
+
+    mhit h;
+    h.sincelastbigshower_s = absolute_hit_time - prev_longslicetime;
 
     // Exclude a rectangular box around each slice for a given time
     // period before and after the slice, with a given spatial buffer.
     // Start at 1 to exclude the "noise" slice, where all the signal is.
-    for(unsigned int j = 1; j < sliceinfo.size(); j++){
+    for(unsigned int j = 1; j < nslice; j++){
       // Optimized for the FD.  The ND isn't sensitive to these.
       const float time_until_slc_cut = 2e3;
 
       // Use slice duration as a simple way of identifying events which dump a lot
       // of energy in a small volume.
       const float sliceduration = sliceinfo[j].maxtns - sliceinfo[j].mintns;
-      const float time_since_slc_cut = sliceduration > 2000? 200e3: 13e3;
+      const bool longslice = sliceduration > LONGSLICEDURATION;
+      const float time_since_slc_cut = longslice? 200e3: 13e3;
+
+      if(longslice){
+        const double slicetime = art_time_to_unix_double(evttime)
+                                 + sliceinfo[j].mintns*1e-9;
+
+        const double longslice2hit = absolute_hit_time - slicetime;
+
+        if(longslice2hit > 0 && longslice2hit < h.sincelastbigshower_s)
+          h.sincelastbigshower_s = longslice2hit;
+      }
 
       if(tns > sliceinfo[j].mintns - time_until_slc_cut &&
          tns < sliceinfo[j].maxtns + time_since_slc_cut &&
          plane > sliceinfo[j].minplane - planebuffer &&
          plane < sliceinfo[j].maxplane + planebuffer){
 
-        if(noiseslice.Cell(i)->View() == geo::kX){
+        if(hit->View() == geo::kX){
           if(cell > sliceinfo[j].mincellx - cellbuffer &&
              cell < sliceinfo[j].maxcellx + cellbuffer) pass = false;
         }
@@ -1100,21 +1299,243 @@ static std::vector<mhit> select_hits_for_mev_search(
              cell < sliceinfo[j].maxcelly + cellbuffer) pass = false;
         }
       }
+      if(!pass) break;
     }
     if(!pass) continue;
 
-    mhit h;
     h.used  = false;
+    h.paired= false;
     h.tns   = tns;
     h.plane = plane;
+    h.isx   = hit->View() == geo::kX;
     h.cell  = cell;
     h.tpos  = geo->CellTpos(plane, cell);
-    h.pe    = noiseslice.Cell(i)->PE();
-    h.supernovalike = noiseslice.Cell(i)->ADC() > low_adc;
+    h.pe    = hit->PE();
+    h.adc   = hit->ADC();
+    h.supernovalike = h.adc > low_adc;
+
+    if(hit->IsMC()){
+      art::ServiceHandle<cheat::BackTracker> bt;
+      const std::vector<cheat::TrackIDE> & trackIDEs = bt->HitToTrackIDE(*hit);
+      const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
+      const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
+      h.truepdg = particle->PdgCode();
+    }
+    else{
+      h.truepdg = 0;
+    }
 
     mhits.push_back(h);
   }
+
+  // Save long slice time for next event
+  for(unsigned int j = 1; j < nslice; j++){
+    const float sliceduration = sliceinfo[j].maxtns - sliceinfo[j].mintns;
+    const bool longslice = sliceduration > LONGSLICEDURATION;
+    if(!longslice) continue;
+
+    const double longslicetime = art_time_to_unix_double(evttime)
+                                 + sliceinfo[j].mintns*1e-9;
+    if(longslicetime > prev_longslicetime) prev_longslicetime = longslicetime;
+  }
+
   return mhits;
+}
+
+// https://thedailywtf.com/articles/What_Is_Truth_0x3f_
+enum boOl { falSe, trUe, file_not_found };
+
+static boOl does_cluster(const sncluster & clu, const mhit & h)
+{
+  // 1. Check if this hit is exactly one plane away from an existing hit
+  // in the cluster.  If not, fail it.  If there's another hit between
+  // which would bridge them, that's fine because we will come back and
+  // check this hit again.
+  //
+  // TODO: should we allow 3 (5, 7?) plane differences to capture neutron
+  // hit clusters?
+  bool another_hit_one_plane_away = false;
+  int pastest = -1000;
+  for(unsigned int i = 0; i < clu.hits.size(); i++){
+    if(abs(h.plane - clu.hits[i]->plane) == 1)
+      another_hit_one_plane_away = true;
+    const int pastby = h.plane - clu.hits[i]->plane;
+    if(pastby > pastest) pastest = pastby;
+  }
+
+  if(pastest > 1) return file_not_found;
+
+  if(!another_hit_one_plane_away) return falSe;
+
+  // 2. Check that the hit is in time with the first hit of the cluster.
+  // Maybe it should have to be in time with the mean time of the
+  // cluster so far or something. I think checking against the first hit
+  // is good enough.
+
+  // Rough effective light speed in fiber
+  const float lightspeed = 17.; // cm/ns
+
+  // Intentionally bigger than optimum value suggested by MC (150ns FD,
+  // 10ns(!) ND) because we know that the data has a bigger time spread
+  // from, for instance, the very well known slice duration discrepancy
+  // (see, e.g., doc-19053).
+  const float timewindow = 250; // ns
+
+  const float time_i_corr = clu.hits[0]->tns + h.tpos / lightspeed;
+  const float time_j_corr = h.tns + clu.hits[0]->tpos / lightspeed;
+
+  if(fabs(time_j_corr - time_i_corr) > timewindow) return falSe;
+
+  // 3. Check that if this hit is in the same plane as another hit
+  // in the cluster, that they are nearby.  Otherwise, fail it.  This
+  // introduces an order dependence, and in principle we could pick
+  // a bad hit first, and then fail a subsequent good hit.  We could
+  // take hits tentatively waiting for a better one to come along.  But
+  // let's indefinitely shelve that idea for the day when the simple
+  // approach doesn't seem sufficient, which it probably is.
+
+  // Should be fairly large to admit neutron clusters
+  const int maxcelldist = 10;
+
+  bool in_same_plane_as_another_hit = false;
+  bool close_to_another_hit_in_w = false;
+
+  for(unsigned int i = 0; i < clu.hits.size(); i++)
+    if(h.plane == clu.hits[i]->plane)
+      in_same_plane_as_another_hit = true;
+
+  for(unsigned int i = 0; i < clu.hits.size(); i++)
+    if(h.plane == clu.hits[i]->plane &&
+       abs(h.cell - clu.hits[i]->cell) <= maxcelldist)
+      close_to_another_hit_in_w = true;
+
+  if(in_same_plane_as_another_hit && !close_to_another_hit_in_w) return falSe;
+
+  return trUe;
+}
+
+// For the given supernova cluster, return the true PDG id that contributed
+// the most hits.  Ignore hits with no truth information.
+static int plurality_of_truth(const sncluster & c)
+{
+  if(c.hits.empty()) return 0;
+
+  std::map<int, float> m;
+  for(const mhit * h : c.hits) if(h->truepdg != 0) m[h->truepdg] += h->pe;
+
+  float most = 0;
+  int best = 0;
+
+  for(const auto & x : m)
+    if(x.second > most){
+      most = x.second;
+      best = x.first;
+    }
+
+  return best;
+}
+
+// Return the fraction of hits in this supernova cluster with truth information
+static float fractrue(const sncluster & c)
+{
+  unsigned int ntrue = 0;
+  for(const mhit * h : c.hits) if(h->truepdg != 0) ntrue++;
+  return (float)ntrue/c.hits.size();
+}
+
+static double mean_tns(const sncluster & c)
+{
+  double sum = 0;
+  for(const mhit * h : c.hits) sum += h->tns;
+  return sum / c.hits.size();
+}
+
+static float sum_pe(const sncluster & c)
+{
+  float sum = 0;
+  for(const mhit * h : c.hits) sum += h->pe;
+  return sum;
+}
+
+static int min_plane(const sncluster & c)
+{
+  int ans = 9999;
+  for(const mhit * h : c.hits) if(h->plane < ans) ans = h->plane;
+  return ans;
+}
+
+static int max_plane(const sncluster & c)
+{
+  int ans = -1;
+  for(const mhit * h : c.hits) if(h->plane > ans) ans = h->plane;
+  return ans;
+}
+
+static int min_cell(const sncluster & c, const bool x)
+{
+  int ans = 9999;
+  for(const auto h : c.hits) if((h->isx ^ !x) && h->cell < ans) ans = h->cell;
+  return ans;
+}
+
+static int max_cell(const sncluster & c, const bool x)
+{
+  int ans = -1;
+  for(const auto h : c.hits) if((h->isx ^ !x) && h->cell > ans) ans = h->cell;
+  return ans;
+}
+
+static double since_last_big_shower(const sncluster & c)
+{
+  double sum = 0;
+  for(const auto h : c.hits) sum += h->sincelastbigshower_s;
+  return sum/c.hits.size();
+}
+
+static int16_t min_hit_adc(const sncluster & c)
+{
+  int16_t ans = SHRT_MAX;
+  for(const auto h : c.hits) if(h->adc < ans) ans = h->adc;
+  return ans;
+}
+
+static void savecluster(const art::Event & evt, const sncluster & c)
+{
+  static bool first = true;
+  static unsigned long long file_start_art_time = 0;
+
+  if(first){
+    first = false;
+    file_start_art_time = evt.time().value();
+  }
+
+  sninfo.nhit = c.hits.size();
+  sninfo.truefrac = fractrue(c);
+  sninfo.truepdg = plurality_of_truth(c);
+  sninfo.time_s = delta_art_time(evt.time().value(), file_start_art_time)
+                  + mean_tns(c)*1e-9;
+  sninfo.pe = sum_pe(c);
+  sninfo.minhitadc = min_hit_adc(c);
+  sninfo.minplane = min_plane(c);
+  sninfo.maxplane = max_plane(c);
+  sninfo.mincellx = min_cell(c, true);
+  sninfo.maxcellx = max_cell(c, true);
+  sninfo.mincelly = min_cell(c, false);
+  sninfo.maxcelly = max_cell(c, false);
+  sninfo.sincebigshower_s = since_last_big_shower(c);
+  sntree->Fill();
+}
+
+static bool compare_plane(const mhit & a, const mhit & b)
+{
+  return a.plane < b.plane;
+}
+
+static mhit hitwithplane(const unsigned int plane)
+{
+  mhit ans;
+  ans.plane = plane;
+  return ans;
 }
 
 // Search for supernova-like events if 'supernovalike'.  Otherwise
@@ -1131,73 +1552,75 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits =
-    select_hits_for_mev_search((*slice)[0],sliceinfo,livetime,supernovalike);
+    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime, supernovalike,
+      evt.time().value());
 
-  // Intentionally bigger than optimum value suggested by MC (150ns FD,
-  // 10ns(!) ND) because we know that the data has a bigger time spread
-  // from, for instance, the very well known slice duration discrepancy
-  // (see, e.g., doc-19053).
-  const float timewindow = 250; // ns
+  std::sort(mhits.begin(), mhits.end(), compare_plane);
 
-  unsigned int hitpairs = 0;
+  unsigned int hitclusters = 0;
 
-  // Rough effective light speed in fiber
-  const float lightspeed = 17.; // cm/ns
+  std::vector<sncluster> snclusters;
 
-  for(unsigned int i = 0; i < mhits.size(); i++){
+  // Starting with every eligible hit, form a cluster (possibly of size one)
+  const unsigned int nmhits = mhits.size(); // really seems to help speed
+  for(unsigned int i = 0; i < nmhits; i++){
     // Even if not doing a search for supernova-like events, only allow
     // supernova-like hits into pairs. It doesn't make physical sense
     // to pair low energy hits (the hypothesis is that the particle
     // wouldn't be able to cross two planes), and it takes forever to
     // run this O(n^2) algorithm on all the low energy hits, too.
     if(!mhits[i].supernovalike) continue;
-    for(unsigned int j = 0; j < mhits.size(); j++){
-      if(!mhits[j].supernovalike) continue;
-      if(i == j) continue;
-      if(mhits[i].used || mhits[j].used) continue;
+    if(mhits[i].used) continue;
 
-      if(abs(mhits[j].plane - mhits[i].plane) != 1) continue;
+    sncluster clu;
+    clu.hits.push_back(&mhits[i]);
+    mhits[i].used = true;
 
-      const float time_i_corr = mhits[i].tns + mhits[j].tpos / lightspeed;
-      const float time_j_corr = mhits[j].tns + mhits[i].tpos / lightspeed;
+    bool done = false;
+    do{
+      done = true;
 
-      if(fabs(time_j_corr - time_i_corr) > timewindow) continue;
+      // mhits is sorted by plane number. Find the first other hit
+      // that has a plane number at least as much as one less than the
+      // minimum plane number of this cluster so far. (Must find something,
+      // because this is satisfied by the first hit added to the cluster.)
+      const unsigned int startat =
+        std::lower_bound(mhits.begin(), mhits.end(), hitwithplane(min_plane(clu) - 1), compare_plane)
+        - mhits.begin();
 
-      hitpairs++;
+      for(unsigned int j = startat; j < nmhits; j++){
+        if(!mhits[j].supernovalike) continue;
+        if(mhits[j].used) continue;
 
-      #ifdef PRINTCELL
-        const int eveni = j%2 == 0?j:i,
-                  oddi  = j%2 == 1?j:i;
-        printf("Bighitpair: %4d %4d  %4d %4d\n",
-               mhits[eveni].plane, mhits[eveni].cell, // y
-               mhits[oddi ].plane, mhits[oddi ].cell); // x
-      #endif
+        const boOl res = does_cluster(clu, mhits[j]);
+        if(res == file_not_found) break;
+        if(res == falSe) continue;
 
-      // Do not allow these hits to be used again. This makes the number
-      // of pairs found slightly dependent on the order of the original
-      // list, for instance if the middle two of a group of four are
-      // picked first, you get one pair instead of two, but I think it
-      // is not a big deal.
-      mhits[i].used = mhits[j].used = true;
-      break;
+        clu.hits.push_back(&mhits[j]);
+        mhits[i].paired = mhits[j].paired = mhits[j].used = true;
+        done = false;
+      }
+    }while(!done);
+
+    snclusters.push_back(clu);
+    if(clu.hits.size() >= 2){
+      hitclusters++;
+      savecluster(evt, clu);
     }
   }
 
   unsigned int unpairedbighits = 0, unpairedsmallhits = 0;
-
-  for(unsigned int i = 0; i < mhits.size(); i++){
-    if(mhits[i].used) continue;
+  for(unsigned int i = 0; i < nmhits; i++){
+    if(mhits[i].paired) continue;
     (mhits[i].pe > bighit_threshold? unpairedbighits: unpairedsmallhits)++;
   }
 
   if(supernovalike){
-    printf("Supernova-like events: %u\n", hitpairs);
-    THplusequals(lh_supernovalike, timebin(evt), hitpairs, livetime);
+    printf("Supernova-like events: %u\n", hitclusters);
+    THplusequals(lh_supernovalike, timebin(evt), hitclusters, livetime);
   }else{
-    const unsigned int big = hitpairs + unpairedbighits;
+    const unsigned int big = hitclusters + unpairedbighits;
     const unsigned int all = big + unpairedsmallhits;
-    printf("Unsliced big hits:     %u\n", big);
-    printf("Unsliced hits:         %u\n", all);
     THplusequals(lh_unsliced_big_hits, timebin(evt), big, livetime);
     THplusequals(lh_unsliced_hits,     timebin(evt), all, livetime);
   }
@@ -1610,13 +2033,19 @@ void ligoanalysis::produce(art::Event & evt)
       count_ddenergy(evt);
       break;
     case MinBiasFD:
-      count_all_mev(evt, sliceinfo);
       count_tracks_containedslices(evt, sliceinfo);
       count_upmu(evt);
+      count_all_mev(evt, sliceinfo);
+      break;
+    case SNonlyFD:
+      count_mev(evt, true /* supernova-like */, sliceinfo);
       break;
     case MinBiasND:
-      count_all_mev(evt, sliceinfo);
       count_tracks_containedslices(evt, sliceinfo);
+      count_all_mev(evt, sliceinfo);
+      break;
+    case SNonlyND:
+      count_mev(evt, true /* supernova-like */, sliceinfo);
       break;
     case Blind:
       count_livetime(evt);

@@ -10,8 +10,12 @@ double rfc3339_to_unix_double(const std::string & stime);
 // bits are the number of nanoseconds to be added to that, to a double
 // which is the number of seconds since the UNIX Epoch.
 //
-// Note that some precision is lost in this process since a double
-// only holds about 16 decimal digits. The granularity at any relevant
-// time stamp is 2**-22 seconds = 238 nanoseconds, which does not matter
-// for my purposes.
+// Note that some precision is lost in this process since a double only holds
+// about 16 decimal digits. The granularity at any relevant time (start of NOvA
+// running through the Unix Time Apocalypse in 2038) is 2**-22 seconds = 238
+// nanoseconds, which does not matter for my purposes.
 double art_time_to_unix_double(const unsigned long long at);
+
+// Subtract b from a and return the result in seconds as a double. If the
+// result isn't larger than 1000 seconds, it has picosecond precision.
+double delta_art_time(const unsigned long long a, const unsigned long long b);

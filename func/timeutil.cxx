@@ -42,7 +42,27 @@ double rfc3339_to_unix_double(const std::string & stime)
   return unix_s + unix_fraction;
 }
 
+// Use with caution! The result has less precision than the input.  On the way
+// in, there is exactly nanosecond precision.  On the way out, for all dates
+// relevant to NOvA the granularity is ~238ns. That's true through the Unix
+// Time Apocalypse in 2038.
 double art_time_to_unix_double(const unsigned long long at)
 {
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
+}
+
+double delta_art_time(const unsigned long long a, const unsigned long long b)
+{
+  uint32_t a_s = a >> 32;
+  uint32_t b_s = b >> 32;
+  uint32_t a_ns = a;
+  uint32_t b_ns = b;
+
+  // Use 64 bit in case the difference is bigger than (1 << 31)
+  int64_t delta_s  = (int64_t)a_s - (int64_t)b_s;
+
+  // These aren't going to overflow because they only go up to 999,999,999
+  int32_t delta_ns = (int32_t)a_ns - (int32_t)b_ns;
+
+  return delta_s + delta_ns*1e-9;
 }
