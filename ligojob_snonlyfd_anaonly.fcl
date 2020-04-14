@@ -1,7 +1,6 @@
 #include "ligoanalysis.fcl"
 #include "services.fcl"
 #include "BackTracker.fcl"
-#include "CelestialLocator.fcl"
 
 process_name: ligosnonlyfd
 
@@ -11,8 +10,20 @@ services:
   scheduler:    { wantTracer: false wantSummary: true }
   TimeTracker:  { printSummary: true }
   message:      @local::standard_out
-  @table::standard_services
-  CelestialLocator:    @local::standard_celestial
+
+  # Load the services we need instead of @local::standard_services to save time
+  # on startup and allow for faster experimentation.  Mostly this avoids
+  # about 20s of loading bad channels.
+
+  # For CellTpos()
+  Geometry:        @local::standard_geo
+
+  # Required for some reason
+  CMap:            @local::standard_cmap
+  RunHistory:      @local::standard_runhistory
+  Detector:        @local::standard_detector
+  FiberBrightness: @local::standard_fiberbrightness
+  Calibrator:      @local::standard_calibrator
 }
 
 services.BackTracker: @local::standard_backtracker

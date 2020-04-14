@@ -74,10 +74,30 @@ static double skymap_crit_val[npointres] = { 0 };
 static const int TDC_PER_US = 64;
 static const int US_PER_MICROSLICE = 50; // I hope this is always true
 
+// Rough effective light speed in fiber
+static const float lightspeed = 17.; // cm/ns
+
 // Set from the FCL parameters
 static double gwevent_unix_double_time = 0;
 static double needbgevent_unix_double_time = 0;
 static long long window_size_s = 1000;
+
+// Relaxed for the supernova analysis
+// Were: 85, 600, 107, 2500
+static const int16_t fd_low_adc = 0, fd_high_adc =  600;
+static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
+
+// Smallest ADC to save a single hit as a cluster. Chosen so that the
+// number of single hits FD background events written out is roughly the
+// same as the number of multihit ones (instead of 30x as it would be
+// without a cut here).
+//
+// About 2/3 of the FD signal with any hits has only one hit. 70% of
+// that is above 65 DC.
+//
+// If we get a good IBD selector working, we might want to relax this
+// further.
+static const int16_t MINSINGLETONADC = 65;
 
 static int gDet = caf::kUNKNOWN;
 
@@ -100,6 +120,7 @@ struct mhit{
   bool used; // has this hit been used in a cluster yet?
   bool paired; // has this hit been used in a cluster of size 2+ yet?
   int truepdg; // For MC, what the truth is
+  float trueE; // for MC, what the true initial particle energy is
   double sincelastbigshower_s;
 };
 
@@ -114,6 +135,12 @@ struct mslice{
   float mintns, maxtns;
   uint16_t minplane, maxplane;
   uint16_t mincellx, maxcellx, mincelly, maxcelly;
+
+  // Used as a proxy for "big shower"
+  bool longslice;
+
+  // From rb::Cluster::TotalADC()
+  double totaladc;
 
   // Index into a reduced set of slices where if two overlap in time,
   // they are considered one.  This index is not contiguous.
@@ -491,6 +518,12 @@ struct{
   // gammas resulting from different processes, but that would be nice.
   int truepdg;
 
+  // For Monte Carlo, the true initial energy, in MeV, of the particle
+  // making the plurality of the cluster. This isn't the energy of the
+  // neutrino, but if it is a positron, it is close to the energy of the
+  // neutrino.
+  float trueE;
+
   // Number of hits in the cluster.  Only hits above a certain ADC
   // are accepted, so there may be other nearby hits that don't get
   // included because they are presumed noise.  "A certain ADC" could
@@ -514,6 +547,13 @@ struct{
   // Lowest ADC of any hit in this cluster.  This is a measure of how
   // likely part of the cluster is to be APD noise.
   int16_t minhitadc;
+
+  // Number of nanoseconds from the first hit to the last hit.  Large
+  // times may indicate background.  WARNING: We've seen that the Monte
+  // Carlo is overly optimistic about how tight the detector timing is,
+  // so cutting hard on this variable may look good in simulation, but
+  // remove many real events if there's a real supernova.
+  float timeext_ns;
 
   // First and last planes in the cluster
   int minplane;
@@ -578,10 +618,12 @@ static void init_mev_stuff()
   BR(nhit,             I);
   BR(truefrac,         F);
   BR(truepdg,          I);
+  BR(trueE,            F);
   BR(time_s,           D);
   BR(sincebigshower_s, D);
   BR(pe,               F);
   BR(minhitadc,        S);
+  BR(timeext_ns,       F);
   BR(minplane,         I);
   BR(maxplane,         I);
   BR(mincellx,         I);
@@ -754,7 +796,8 @@ static double find_critical_value(const int q)
 
 void ligoanalysis::beginRun(art::Run& run)
 {
-  if(fAnalysisClass == DDenergy || fAnalysisClass == Blind) return;
+  if(fAnalysisClass == DDenergy || fAnalysisClass == Blind ||
+     fAnalysisClass == SNonlyFD || fAnalysisClass == SNonlyND) return;
 
   art::ServiceHandle<ds::DetectorService> ds;
   art::ServiceHandle<locator::CelestialLocator> celloc;
@@ -1121,6 +1164,13 @@ static std::vector<mslice> make_sliceinfo_list(
 
     slc.mintns = (*slice)[i].MinTNS();
     slc.maxtns = (*slice)[i].MaxTNS();
+
+    const double LONGSLICEDURATION = 2000;
+    const float sliceduration = slc.maxtns - slc.mintns;
+    slc.longslice = sliceduration > LONGSLICEDURATION;
+
+    slc.totaladc = (*slice)[i].TotalADC();
+
     slc.minplane = (*slice)[i].MinPlane();
     slc.maxplane = (*slice)[i].MaxPlane();
     if((*slice)[i].NCell(geo::kX)){
@@ -1194,17 +1244,11 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   // Retain the last long slice time from the previous event
   static double prev_longslicetime = 0;
-  const double LONGSLICEDURATION = 2000;
 
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
     const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(i);
 
     if(!uniquedata_tdc(livetime, hit->TDC())) continue;
-
-    // TODO consider relaxing these for the supernova analysis
-    // Were: 85, 600, 107, 2500
-    const int16_t fd_low_adc =  50, fd_high_adc =  600;
-    const int16_t nd_low_adc = 107, nd_high_adc = 2500;
 
     const int16_t low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
     const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
@@ -1271,11 +1315,9 @@ static std::vector<mhit> select_hits_for_mev_search(
 
       // Use slice duration as a simple way of identifying events which dump a lot
       // of energy in a small volume.
-      const float sliceduration = sliceinfo[j].maxtns - sliceinfo[j].mintns;
-      const bool longslice = sliceduration > LONGSLICEDURATION;
-      const float time_since_slc_cut = longslice? 200e3: 13e3;
+      const float time_since_slc_cut = sliceinfo[j].longslice? 200e3: 13e3;
 
-      if(longslice){
+      if(sliceinfo[j].longslice){
         const double slicetime = art_time_to_unix_double(evttime)
                                  + sliceinfo[j].mintns*1e-9;
 
@@ -1320,9 +1362,11 @@ static std::vector<mhit> select_hits_for_mev_search(
       const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
       const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
       h.truepdg = particle->PdgCode();
+      h.trueE = particle->E();
     }
     else{
       h.truepdg = 0;
+      h.trueE = 0;
     }
 
     mhits.push_back(h);
@@ -1330,9 +1374,7 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   // Save long slice time for next event
   for(unsigned int j = 1; j < nslice; j++){
-    const float sliceduration = sliceinfo[j].maxtns - sliceinfo[j].mintns;
-    const bool longslice = sliceduration > LONGSLICEDURATION;
-    if(!longslice) continue;
+    if(!sliceinfo[j].longslice) continue;
 
     const double longslicetime = art_time_to_unix_double(evttime)
                                  + sliceinfo[j].mintns*1e-9;
@@ -1343,37 +1385,34 @@ static std::vector<mhit> select_hits_for_mev_search(
 }
 
 // https://thedailywtf.com/articles/What_Is_Truth_0x3f_
-enum boOl { falSe, trUe, file_not_found };
+enum boOl { falSe, trUe, past_plane_of_interest };
 
 static boOl does_cluster(const sncluster & clu, const mhit & h)
 {
-  // 1. Check if this hit is exactly one plane away from an existing hit
+  // 1. Check if this hit is zero or one plane away from an existing hit
   // in the cluster.  If not, fail it.  If there's another hit between
   // which would bridge them, that's fine because we will come back and
   // check this hit again.
   //
   // TODO: should we allow 3 (5, 7?) plane differences to capture neutron
   // hit clusters?
-  bool another_hit_one_plane_away = false;
-  int pastest = -1000;
+  bool another_hit_few_enough_planes_away = false;
+  int leastpast = 1000;
   for(unsigned int i = 0; i < clu.hits.size(); i++){
-    if(abs(h.plane - clu.hits[i]->plane) == 1)
-      another_hit_one_plane_away = true;
+    if(abs(h.plane - clu.hits[i]->plane) <= 1)
+      another_hit_few_enough_planes_away = true;
     const int pastby = h.plane - clu.hits[i]->plane;
-    if(pastby > pastest) pastest = pastby;
+    if(pastby < leastpast) leastpast = pastby;
   }
 
-  if(pastest > 1) return file_not_found;
+  if(leastpast > 1) return past_plane_of_interest;
 
-  if(!another_hit_one_plane_away) return falSe;
+  if(!another_hit_few_enough_planes_away) return falSe;
 
   // 2. Check that the hit is in time with the first hit of the cluster.
   // Maybe it should have to be in time with the mean time of the
   // cluster so far or something. I think checking against the first hit
   // is good enough.
-
-  // Rough effective light speed in fiber
-  const float lightspeed = 17.; // cm/ns
 
   // Intentionally bigger than optimum value suggested by MC (150ns FD,
   // 10ns(!) ND) because we know that the data has a bigger time spread
@@ -1381,10 +1420,18 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // (see, e.g., doc-19053).
   const float timewindow = 250; // ns
 
-  const float time_i_corr = clu.hits[0]->tns + h.tpos / lightspeed;
-  const float time_j_corr = h.tns + clu.hits[0]->tpos / lightspeed;
+  if(clu.hits[0]->plane%2 == h.plane%2){
+    // These hits are in the same view, so the times can be compared directly
+    if(fabs(clu.hits[0]->tns - h.tns) > timewindow) return falSe;
+  }
+  else{  
+    // These hits are in different views, so for each, use the other's
+    // transverse position to correct the time;
+    const float time_1st_corr = clu.hits[0]->tns +            h.tpos / lightspeed;
+    const float time_new_corr =            h.tns + clu.hits[0]->tpos / lightspeed;
 
-  if(fabs(time_j_corr - time_i_corr) > timewindow) return falSe;
+    if(fabs(time_new_corr - time_1st_corr) > timewindow) return falSe;
+  }
 
   // 3. Check that if this hit is in the same plane as another hit
   // in the cluster, that they are nearby.  Otherwise, fail it.  This
@@ -1414,8 +1461,30 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   return trUe;
 }
 
+// For the given supernova cluster, return the energy of the particle that
+// contributed the most pe-weighted hits.  Ignore hits with no truth
+// information.
+static float plurality_of_E(const sncluster & c)
+{
+  if(c.hits.empty()) return 0;
+
+  std::map<float, float> m;
+  for(const mhit * h : c.hits) if(h->trueE != 0) m[h->trueE] += h->pe;
+
+  float most = 0;
+  float best = 0;
+
+  for(const auto & x : m)
+    if(x.second > most){
+      most = x.second;
+      best = x.first;
+    }
+
+  return best*1000; // convert to MeV
+}
+
 // For the given supernova cluster, return the true PDG id that contributed
-// the most hits.  Ignore hits with no truth information.
+// the most pe-weighted hits.  Ignore hits with no truth information.
 static int plurality_of_truth(const sncluster & c)
 {
   if(c.hits.empty()) return 0;
@@ -1499,6 +1568,27 @@ static int16_t min_hit_adc(const sncluster & c)
   return ans;
 }
 
+static float time_ext_ns(const sncluster & c)
+{
+  double mintime = FLT_MAX, maxtime = FLT_MIN;
+  for(const auto & h : c.hits){
+    // Calculate all times as relative to the first hit.  Absolute time and
+    // overall sign don't matter because we're finding the extent.
+    float deltat = 0;
+    if(c.hits[0]->plane%2 == h->plane%2)
+      deltat = c.hits[0]->tns - h->tns;
+    else{
+      const float time_1st_corr = c.hits[0]->tns +         h->tpos / lightspeed;
+      const float time_oth_corr =         h->tns + c.hits[0]->tpos / lightspeed;
+      deltat = time_1st_corr - time_oth_corr;
+    }
+
+    if(deltat < mintime) mintime = deltat;
+    if(deltat > maxtime) maxtime = deltat;
+  }
+  return maxtime - mintime;
+}
+
 static void savecluster(const art::Event & evt, const sncluster & c)
 {
   static bool first = true;
@@ -1512,10 +1602,12 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.nhit = c.hits.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
+  sninfo.trueE = plurality_of_E(c);
   sninfo.time_s = delta_art_time(evt.time().value(), file_start_art_time)
                   + mean_tns(c)*1e-9;
   sninfo.pe = sum_pe(c);
-  sninfo.minhitadc = min_hit_adc(c);
+  sninfo.minhitadc  = min_hit_adc(c);
+  sninfo.timeext_ns = time_ext_ns(c);
   sninfo.minplane = min_plane(c);
   sninfo.maxplane = max_plane(c);
   sninfo.mincellx = min_cell(c, true);
@@ -1529,6 +1621,11 @@ static void savecluster(const art::Event & evt, const sncluster & c)
 static bool compare_plane(const mhit & a, const mhit & b)
 {
   return a.plane < b.plane;
+}
+
+static bool comparebytime(const sncluster & a, const sncluster & b)
+{
+  return mean_tns(a) < mean_tns(b);
 }
 
 static mhit hitwithplane(const unsigned int plane)
@@ -1567,8 +1664,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
     // Even if not doing a search for supernova-like events, only allow
     // supernova-like hits into pairs. It doesn't make physical sense
     // to pair low energy hits (the hypothesis is that the particle
-    // wouldn't be able to cross two planes), and it takes forever to
-    // run this O(n^2) algorithm on all the low energy hits, too.
+    // wouldn't be able to cross two planes).
     if(!mhits[i].supernovalike) continue;
     if(mhits[i].used) continue;
 
@@ -1593,7 +1689,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
         if(mhits[j].used) continue;
 
         const boOl res = does_cluster(clu, mhits[j]);
-        if(res == file_not_found) break;
+        if(res == past_plane_of_interest) break;
         if(res == falSe) continue;
 
         clu.hits.push_back(&mhits[j]);
@@ -1602,12 +1698,16 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
       }
     }while(!done);
 
-    snclusters.push_back(clu);
-    if(clu.hits.size() >= 2){
+    if((clu.hits.size() >= 2 && clu.hits.size() <= 7) ||
+       (clu.hits.size() == 1 && clu.hits[0]->adc >= MINSINGLETONADC)){
+      snclusters.push_back(clu);
       hitclusters++;
-      savecluster(evt, clu);
     }
   }
+
+  std::sort(snclusters.begin(), snclusters.end(), comparebytime);
+
+  for(const auto & c : snclusters) savecluster(evt, c);
 
   unsigned int unpairedbighits = 0, unpairedsmallhits = 0;
   for(unsigned int i = 0; i < nmhits; i++){
