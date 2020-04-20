@@ -136,11 +136,19 @@ struct mslice{
   uint16_t minplane, maxplane;
   uint16_t mincellx, maxcellx, mincelly, maxcelly;
 
+  float sliceduration;
+
   // Used as a proxy for "big shower"
   bool longslice;
 
   // From rb::Cluster::TotalADC()
   double totaladc;
+
+  // From rb::Cluster::MeanX(), etc.
+  double meanx, meany, meanz;
+
+  // Time in seconds since the beginning of the file.
+  double time_s;
 
   // Index into a reduced set of slices where if two overlap in time,
   // they are considered one.  This index is not contiguous.
@@ -469,7 +477,7 @@ static ligohist lh_blind("blind", true);
 
 /***************************** Tree stuff ****************************/
 
-static TTree * sntree = NULL;
+static TTree * sntree = NULL, * showertree = NULL;
 
 // Anonymous struct for the output supernova analysis tree
 struct{
@@ -530,12 +538,8 @@ struct{
   // be zero, in which case all hits are accepted.
   int nhit;
 
-  // Mean time of the hits in this cluster in seconds since Jan 1, 1970,
-  // 0:00:00 UTC, the Unix Epoch. This is a convenient time format, but
-  // when stored in double precision and used with any time relevant
-  // to NOvA, it has a granularity of 238ns, which isn't great, but I
-  // think is good enough, but if it becomes annoying, there are other
-  // reasonable ways of storing time.
+  // Mean time of the hits in this cluster in seconds since the beginning
+  // of the file.
   double time_s;
 
   // Total number of photoelectrons in this cluster. This is a rough
@@ -601,6 +605,29 @@ struct{
 
 } sninfo;
 
+// Anonymous struct to hold shower information.  We might be able to
+// connect large showers to subsequent SN-like events using this.
+//
+// (Why is this not just an mslice? Maybe there's a reason?)
+struct {
+  // Mean time of the hits in this cluster in seconds since the
+  // beginning of the file.
+  double time_s;
+
+  // From rb::Cluster::TotalADC()
+  double totaladc;
+
+  // Time in ns from the first hit to the last hit. Mostly a proxy
+  // for whether the shower walloped some FEBs enough that there were
+  // flashers, and enough activity that they were lumped into the same
+  // slice. Maybe useful beyond this.
+  float sliceduration;
+
+  // Mean position in cm as gotten from rb::Cluster::MeanX(), etc.
+  double meanx, meany, meanz;
+
+} shwinfo;
+
 /*********************************************************************/
 
 static void init_mev_stuff()
@@ -614,22 +641,31 @@ static void init_mev_stuff()
 
   // These reduce the nonsense of typos that goes with TTree:Branch()
   #define Q(x) #x
-  #define BR(x, t) sntree->Branch(Q(sninfo.x), &sninfo.x, Q(x/t))
-  BR(nhit,             I);
-  BR(truefrac,         F);
-  BR(truepdg,          I);
-  BR(trueE,            F);
-  BR(time_s,           D);
-  BR(sincebigshower_s, D);
-  BR(pe,               F);
-  BR(minhitadc,        S);
-  BR(timeext_ns,       F);
-  BR(minplane,         I);
-  BR(maxplane,         I);
-  BR(mincellx,         I);
-  BR(maxcellx,         I);
-  BR(mincelly,         I);
-  BR(maxcelly,         I);
+  #define BRN(x, t) sntree->Branch(Q(sninfo.x), &sninfo.x, Q(x/t))
+  #define BRH(x, t) showertree->Branch(Q(shwinfo.x), &shwinfo.x, Q(x/t))
+  BRN(nhit,             I);
+  BRN(truefrac,         F);
+  BRN(truepdg,          I);
+  BRN(trueE,            F);
+  BRN(time_s,           D);
+  BRN(sincebigshower_s, D);
+  BRN(pe,               F);
+  BRN(minhitadc,        S);
+  BRN(timeext_ns,       F);
+  BRN(minplane,         I);
+  BRN(maxplane,         I);
+  BRN(mincellx,         I);
+  BRN(maxcellx,         I);
+  BRN(mincelly,         I);
+  BRN(maxcelly,         I);
+
+  showertree = t->make<TTree>("shw", "");
+  BRH(time_s,        D);
+  BRH(totaladc,      D);
+  BRH(sliceduration, F);
+  BRH(meanx,         D);
+  BRH(meany,         D);
+  BRH(meanz,         D);
 }
 
 static void init_blind_hist()
@@ -1149,11 +1185,24 @@ static void count_ddenergy(const art::Event & evt)
   }
 }
 
+static bool compare_mslice_time(const mslice & a, const mslice & b)
+{
+  return a.time_s < b.time_s;
+}
+
 // Builds list of distilled slice information
-static std::vector<mslice> make_sliceinfo_list(
+static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
   const art::Handle< std::vector<rb::Cluster> > & slice)
 {
   std::vector<mslice> sliceinfo;
+
+  static bool first = true;
+  static unsigned long long file_start_art_time = 0;
+
+  if(first){
+    first = false;
+    file_start_art_time = evt.time().value();
+  }
 
   // Include slice zero, the "noise" slice, to preserve numbering
   for(unsigned int i = 0; i < slice->size(); i++){
@@ -1166,10 +1215,17 @@ static std::vector<mslice> make_sliceinfo_list(
     slc.maxtns = (*slice)[i].MaxTNS();
 
     const double LONGSLICEDURATION = 2000;
-    const float sliceduration = slc.maxtns - slc.mintns;
-    slc.longslice = sliceduration > LONGSLICEDURATION;
+    slc.sliceduration = slc.maxtns - slc.mintns;
+    slc.longslice = slc.sliceduration > LONGSLICEDURATION;
 
     slc.totaladc = (*slice)[i].TotalADC();
+
+    slc.time_s = delta_art_time(evt.time().value(), file_start_art_time)
+                    + (*slice)[i].MeanTNS()*1e-9;
+
+    slc.meanx = (*slice)[i].MeanX();
+    slc.meany = (*slice)[i].MeanY();
+    slc.meanz = (*slice)[i].MeanZ();
 
     slc.minplane = (*slice)[i].MinPlane();
     slc.maxplane = (*slice)[i].MaxPlane();
@@ -1194,6 +1250,31 @@ static std::vector<mslice> make_sliceinfo_list(
     // *exclude*.
     sliceinfo.push_back(slc);
   }
+
+  std::vector<mslice> tosave;
+  for(unsigned int i = 1; i < sliceinfo.size(); i++){
+    const mslice & slc = sliceinfo[i];
+
+    // "Tuned" by plotting these against each other and cutting out the hot
+    // spot (presumed to be single muons) with rough symmetry between the two
+    // variables.
+    if(slc.sliceduration > 900 || slc.totaladc > 1.5e5)
+      tosave.push_back(slc);
+  }
+
+  std::sort(tosave.begin(), tosave.end(), compare_mslice_time);
+
+  for(const auto & s : tosave){
+    shwinfo.time_s = s.time_s;
+    shwinfo.totaladc = s.totaladc;
+    shwinfo.sliceduration = s.sliceduration;
+    shwinfo.meanx = s.meanx;
+    shwinfo.meany = s.meany;
+    shwinfo.meanz = s.meanz;
+
+    showertree->Fill();
+  }
+
   return sliceinfo;
 }
 
@@ -1205,8 +1286,7 @@ static std::vector<mslice> make_sliceinfo_list(
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
   const double livetime, const bool adc_cut, unsigned long long evttime)
-{
-  art::ServiceHandle<geo::Geometry> geo;
+{ art::ServiceHandle<geo::Geometry> geo;
 
   // profiling indicates that it is helpful to save this.
   const unsigned int nslice = sliceinfo.size();
@@ -1424,7 +1504,7 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
     // These hits are in the same view, so the times can be compared directly
     if(fabs(clu.hits[0]->tns - h.tns) > timewindow) return falSe;
   }
-  else{  
+  else{
     // These hits are in different views, so for each, use the other's
     // transverse position to correct the time;
     const float time_1st_corr = clu.hits[0]->tns +            h.tpos / lightspeed;
@@ -2122,7 +2202,7 @@ void ligoanalysis::produce(art::Event & evt)
   // more Poissonian.
   const std::vector<mslice> sliceinfo =
     (fAnalysisClass == Blind || fAnalysisClass == DDenergy)?
-      std::vector<mslice>(): make_sliceinfo_list(slice);
+      std::vector<mslice>(): make_sliceinfo_list(evt, slice);
 
   switch(fAnalysisClass){
     case NDactivity:
