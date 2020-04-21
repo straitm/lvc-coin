@@ -1286,7 +1286,8 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
   const double livetime, const bool adc_cut, unsigned long long evttime)
-{ art::ServiceHandle<geo::Geometry> geo;
+{
+  art::ServiceHandle<geo::Geometry> geo;
 
   // profiling indicates that it is helpful to save this.
   const unsigned int nslice = sliceinfo.size();
@@ -1393,8 +1394,8 @@ static std::vector<mhit> select_hits_for_mev_search(
       // Optimized for the FD.  The ND isn't sensitive to these.
       const float time_until_slc_cut = 2e3;
 
-      // Use slice duration as a simple way of identifying events which dump a lot
-      // of energy in a small volume.
+      // Use slice duration as a simple way of identifying events which dump a
+      // lot of energy in a small volume.
       const float time_since_slc_cut = sliceinfo[j].longslice? 200e3: 13e3;
 
       if(sliceinfo[j].longslice){
@@ -1507,8 +1508,9 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   else{
     // These hits are in different views, so for each, use the other's
     // transverse position to correct the time;
-    const float time_1st_corr = clu.hits[0]->tns +            h.tpos / lightspeed;
-    const float time_new_corr =            h.tns + clu.hits[0]->tpos / lightspeed;
+    const float
+      time_1st_corr = clu.hits[0]->tns +            h.tpos / lightspeed,
+      time_new_corr =            h.tns + clu.hits[0]->tpos / lightspeed;
 
     if(fabs(time_new_corr - time_1st_corr) > timewindow) return falSe;
   }
@@ -1761,7 +1763,8 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
       // minimum plane number of this cluster so far. (Must find something,
       // because this is satisfied by the first hit added to the cluster.)
       const unsigned int startat =
-        std::lower_bound(mhits.begin(), mhits.end(), hitwithplane(min_plane(clu) - 1), compare_plane)
+        std::lower_bound(mhits.begin(), mhits.end(),
+                         hitwithplane(min_plane(clu) - 1), compare_plane)
         - mhits.begin();
 
       for(unsigned int j = startat; j < nmhits; j++){
