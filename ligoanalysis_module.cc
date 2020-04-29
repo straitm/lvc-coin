@@ -36,6 +36,7 @@
 
 #include "TH1.h"
 #include "TTree.h"
+#include "TRandom3.h"
 
 #include <string>
 #include <vector>
@@ -43,6 +44,8 @@
 #include <algorithm>
 
 #include <signal.h>
+
+#include "progress.cpp"
 
 #include "func/timeutil.h"
 
@@ -75,6 +78,12 @@ static const int TDC_PER_US = 64;
 static const int US_PER_MICROSLICE = 50; // I hope this is always true
 
 // Rough effective light speed in fiber
+//
+// Note: PhotonTransport uses an index of 1.59 -> 18.9cm/ns. But for
+// rays at just the critical angle (see doc-2665), it is effectively
+// 16.9cm/ns. So the mean speed is 17.9cm/ns. PhotonTransport adds a
+// time from a histogram to the time gotten from the index. Does that
+// model the angular effect?
 static const float lightspeed = 17.; // cm/ns
 
 // Set from the FCL parameters
@@ -84,6 +93,9 @@ static long long window_size_s = 1000;
 
 // Relaxed for the supernova analysis
 // Were: 85, 600, 107, 2500
+//
+// XXX should raise 600 or remove the limit entirely, probably,
+// since we'll cut later
 static const int16_t fd_low_adc = 0, fd_high_adc =  600;
 static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
 
@@ -93,7 +105,7 @@ static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
 // without a cut here).
 //
 // About 2/3 of the FD signal with any hits has only one hit. 70% of
-// that is above 65 DC.
+// that is above 65 ADC.
 //
 // If we get a good IBD selector working, we might want to relax this
 // further.
@@ -103,12 +115,13 @@ static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
 enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND,
-                        SNonlyFD, SNonlyND,
+                        MichelFD, SNonlyFD, SNonlyND,
                         Blind, MAX_ANALYSIS_CLASS }
   static analysis_class = MAX_ANALYSIS_CLASS;
 
-// Minimal hit information, distilled from CellHit
+// Hit information, distilled from CellHit, plus more info
 struct mhit{
+  unsigned int hitid; // CellHit->ID()
   float tns; // fine timing, in nanoseconds
   float tpos; // transverse position
   float pe; // photoelectrons
@@ -155,11 +168,34 @@ struct mslice{
   int mergeslice;
 };
 
+// Minimal track information, distilled from rb::Track, for use
+// in correlating later activity to track ends
+struct mtrack{
+  // The plane the track ended. If this was an X plane, the X cell the
+  // track ended, and the estimated nearest Y cell. If it was a Y plane,
+  // vice versa.
+  uint16_t endplane, endcellx, endcelly;
+
+  // Whether the last plane is X.  This is redundant with 'endplane',
+  // but I can never remember whether X planes are even or odd, and this
+  // massively reduces the potential for error.
+  bool lastisx;
+
+  // True if the rb::Track end point doesn't seem to match the collection of
+  // hits.
+  bool endconfused;
+
+  // Time in seconds since the beginning of the file.
+  double time_s;
+} mtrackMCMLXXXI;
+
 class ligoanalysis : public art::EDProducer {
   public:
   explicit ligoanalysis(fhicl::ParameterSet const& pset);
   virtual ~ligoanalysis() { }; // compiles, but does not run, without this
   void produce(art::Event& evt);
+
+  void beginJob();
 
   void beginRun(art::Run& run);
 
@@ -477,7 +513,7 @@ static ligohist lh_blind("blind", true);
 
 /***************************** Tree stuff ****************************/
 
-static TTree * sntree = NULL, * showertree = NULL;
+static TTree * sntree = NULL, * showertree = NULL, * tracktree = NULL;
 
 // Anonymous struct for the output supernova analysis tree
 struct{
@@ -603,6 +639,17 @@ struct{
   // this hard cut.
   double sincebigshower_s;
 
+  // The NOvA run number
+  unsigned int run;
+
+  // The event number, where in this case "event" means a 5ms data
+  // segment (or whatever length of time was read out for each "event"
+  // for this data).
+  unsigned int event;
+
+  // The hit number inside the event for one of the hits of this cluster.
+  unsigned int hitid;
+
 } sninfo;
 
 // Anonymous struct to hold shower information.  We might be able to
@@ -643,6 +690,7 @@ static void init_mev_stuff()
   #define Q(x) #x
   #define BRN(x, t) sntree->Branch(Q(sninfo.x), &sninfo.x, Q(x/t))
   #define BRH(x, t) showertree->Branch(Q(shwinfo.x), &shwinfo.x, Q(x/t))
+  #define BRT(x, t) tracktree->Branch(Q(x), &mtrackMCMLXXXI.x, Q(x/t))
   BRN(nhit,             I);
   BRN(truefrac,         F);
   BRN(truepdg,          I);
@@ -658,6 +706,9 @@ static void init_mev_stuff()
   BRN(maxcellx,         I);
   BRN(mincelly,         I);
   BRN(maxcelly,         I);
+  BRN(run,              i);
+  BRN(event,            i);
+  BRN(hitid,            i);
 
   showertree = t->make<TTree>("shw", "");
   BRH(time_s,        D);
@@ -666,6 +717,14 @@ static void init_mev_stuff()
   BRH(meanx,         D);
   BRH(meany,         D);
   BRH(meanz,         D);
+
+  tracktree = t->make<TTree>("trk", "");
+  BRT(endplane,    S);
+  BRT(endcellx,    S);
+  BRT(endcelly,    S);
+  BRT(lastisx,     O);
+  BRT(endconfused, O);
+  BRT(time_s,      D);
 }
 
 static void init_blind_hist()
@@ -830,9 +889,18 @@ static double find_critical_value(const int q)
   return crit;
 }
 
+void ligoanalysis::beginJob()
+{
+  // art provides no way of knowing how much events we will process,
+  // and its own progress indicator is of limited use.
+  printf("For progress indicator, assuming a 9k event long readout\n");
+  initprogressindicator(9000, 3);
+}
+
 void ligoanalysis::beginRun(art::Run& run)
 {
   if(fAnalysisClass == DDenergy || fAnalysisClass == Blind ||
+     fAnalysisClass == MichelFD ||
      fAnalysisClass == SNonlyFD || fAnalysisClass == SNonlyND) return;
 
   art::ServiceHandle<ds::DetectorService> ds;
@@ -873,6 +941,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   else if(analysis_class_string == "DDenergy")   fAnalysisClass = DDenergy;
   else if(analysis_class_string == "MinBiasFD")  fAnalysisClass = MinBiasFD;
   else if(analysis_class_string == "MinBiasND")  fAnalysisClass = MinBiasND;
+  else if(analysis_class_string == "MichelFD")   fAnalysisClass = MichelFD;
   else if(analysis_class_string == "SNonlyFD")   fAnalysisClass = SNonlyFD;
   else if(analysis_class_string == "SNonlyND")   fAnalysisClass = SNonlyND;
   else if(analysis_class_string == "Blind")      fAnalysisClass = Blind;
@@ -910,6 +979,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
                           Form("upmu_tracks_point_%d",q), false);
       // Fall-through
     case SNonlyFD:
+    case MichelFD:
       init_mev_stuff();
       break;
     case MinBiasND:
@@ -1190,6 +1260,157 @@ static bool compare_mslice_time(const mslice & a, const mslice & b)
   return a.time_s < b.time_s;
 }
 
+struct hit { uint16_t plane, cell; };
+
+static bool comparecell(const hit & a, const hit & b)
+{
+  return a.cell < b.cell;
+}
+
+static bool compareplane(const hit & a, const hit & b)
+{
+  return a.plane < b.plane;
+}
+
+static bool comparemtracktime(const mtrack & a, const mtrack & b)
+{
+  return a.time_s < b.time_s;
+}
+
+static void save_mtracks(const art::Event & evt)
+{
+  static unsigned long long file_start_art_time = 0;
+
+  static bool first = true;
+  if(first){
+    first = false;
+    file_start_art_time = evt.time().value();
+  }
+
+  art::ServiceHandle<geo::Geometry> geo;
+
+  art::Handle< std::vector<rb::Track> > tracks;
+  evt.getByLabel("windowtrack", tracks);
+
+  // Don't assume input tracks are stored in time order. Process them
+  // all, sort, and write out in time order.
+  std::vector<mtrack> mtracks;
+
+  for(const auto & trk : *tracks){
+    if(!trk.Is3D()) continue;
+
+    // I don't know of any documentation that explains what order
+    // hits are stored, and I can't find a pattern that convinces
+    // me I can trust the order for anything.  Sort them myself.
+
+    std::vector<hit> xhits, yhits;
+
+    for(unsigned int c = 0; c < trk.NYCell(); c++){
+      hit h;
+      h.cell  = trk.YCell(c)->Cell();
+      h.plane = trk.YCell(c)->Plane();
+      yhits.push_back(h);
+    }
+    for(unsigned int c = 0; c < trk.NXCell(); c++){
+      hit h;
+      h.cell  = trk.XCell(c)->Cell();
+      h.plane = trk.XCell(c)->Plane();
+      xhits.push_back(h);
+    }
+
+    // Efficiency note:
+    // Don't have to do full sorts here, but it's not slow, so...
+
+    // Sort Y cells into time order, assuming a regular downwards cosmic
+    std::sort(yhits.begin(), yhits.end(), comparecell);
+    std::reverse(yhits.begin(), yhits.end());
+
+    // Ok, this is the bottom of the track in the Y view
+    uint16_t minycell = yhits[yhits.size()-1].cell;
+    const uint16_t lastyplane = yhits[yhits.size()-1].plane;
+
+    // Figure out if the track end is in X or Y
+
+    // Sort X cells into rough time order according to Y information
+    std::sort(xhits.begin(), xhits.end(), compareplane);
+    const bool increasingz = yhits[0].plane < yhits[yhits.size()-1].plane;
+    if(!increasingz) std::reverse(xhits.begin(), xhits.end());
+
+    const uint16_t lastxplane = xhits[xhits.size()-1].plane;
+
+    // In time order, is X cell number increasing?
+    const bool increasingx = xhits[0].cell < xhits[xhits.size()-1].cell;
+
+    uint16_t endxcell = (*(increasingx?
+      std::max_element(xhits.begin(), xhits.end(), comparecell):
+      std::min_element(xhits.begin(), xhits.end(), comparecell))).cell;
+
+    const uint16_t endplane = increasingz? std::max(lastyplane, lastxplane)
+                                         : std::min(lastyplane, lastxplane);
+
+    const bool endisx = endplane == lastxplane;
+
+    // Now, one of endxcell and minycell needs to be improved using
+    // reconstructed track information.
+
+    // Naively expect the end of the track to be lower than the
+    // beginning.  Is it true?
+    const bool forwardstrack = trk.Stop().Y() < trk.Start().Y();
+
+    const double endx = forwardstrack? trk.Stop().X(): trk.Start().X();
+    const double endy = forwardstrack? trk.Stop().Y(): trk.Start().Y();
+    const double endz = forwardstrack? trk.Stop().Z(): trk.Start().Z();
+
+    // Get a better cell position for the view that doesn't have the last
+    // hit(s).  But only do this if the reco agrees with me that the muon
+    // stopped in the last plane with hits
+    int recoplane = 0, recocell = 0;
+    try{
+      const double plnz = 6.6479;
+      geo->getPlaneAndCellID(endx, endy, endz-plnz, recoplane, recocell);
+    }
+    catch(...){
+      // Assume this means the end is outside of the detector,
+      // so we don't want it
+      continue;
+    }
+
+    recoplane++; // because I shifted by one to find the orthogonal cell
+
+    if(recoplane == endplane){
+      if(endisx) minycell = recocell;
+      else       endxcell = recocell;
+    }
+
+    // exiters
+    if(endplane == 0 || endplane == 895) continue;
+    if(minycell < 10) continue;
+    if(endxcell < 5 || endxcell > 378) continue;
+
+    struct mtrack thisone;
+
+    thisone.endconfused = recoplane != endplane;
+    thisone.endcelly = minycell;
+    thisone.endcellx = endxcell;
+    thisone.endplane = endplane;
+    thisone.lastisx = endisx;
+
+    thisone.time_s =
+      delta_art_time(evt.time().value(), file_start_art_time)
+                    + trk.MeanTNS()*1e-9;
+
+    mtracks.push_back(thisone);
+  }
+
+  std::sort(mtracks.begin(), mtracks.end(), comparemtracktime);
+
+  for(mtrack & marshproofnorth : mtracks){
+    mtrackMCMLXXXI = marshproofnorth;
+    tracktree->Fill();
+  }
+
+}
+
 // Builds list of distilled slice information
 static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
   const art::Handle< std::vector<rb::Cluster> > & slice)
@@ -1305,7 +1526,7 @@ static std::vector<mhit> select_hits_for_mev_search(
   const int cellbuffer = planebuffer * planes_per_cell;
 
   #ifdef LOUD
-    if(adc_cut){ // Only print once out of the two times this function is called
+    if(adc_cut){ // Only print once out of the 2 times this function is called
       for(unsigned int j = 1; j < nslice; j++){
         const unsigned int
           nexplane = std::min(895, (int)sliceinfo[j].maxplane + planebuffer) -
@@ -1340,9 +1561,10 @@ static std::vector<mhit> select_hits_for_mev_search(
     const int cell  = hit->Cell();
     const int plane = hit->Plane();
 
-    // Cut only hit location, but don't do that for the supernova analysis, because
-    // we'll figure out the best such cuts downstream.
-    if(analysis_class != SNonlyFD && analysis_class != SNonlyND){
+    // Cut only hit location, but don't do that for the supernova analysis,
+    // because we'll figure out the best such cuts downstream.
+    if(analysis_class != SNonlyFD && analysis_class != MichelFD &&
+       analysis_class != SNonlyND){
       if(gDet == caf::kNEARDET){
         const int ndnplaneedge = 4;
 
@@ -1377,10 +1599,15 @@ static std::vector<mhit> select_hits_for_mev_search(
       }
     }
 
-    const float tns = hit->TNS();
+    static TRandom3 randfortiming;
+
+    // Smear out MC timing as per my study shown in doc-45041
+    const float tns = hit->TNS()
+      + (hit->IsMC()?randfortiming.Gaus()*23.:0);
 
     // with 238ns precision
-    const double absolute_hit_time = art_time_to_unix_double(evttime)+tns*1e-9;
+    const double absolute_hit_time =
+      art_time_to_unix_double(evttime)+tns*1e-9;
 
     bool pass = true;
 
@@ -1392,11 +1619,18 @@ static std::vector<mhit> select_hits_for_mev_search(
     // Start at 1 to exclude the "noise" slice, where all the signal is.
     for(unsigned int j = 1; j < nslice; j++){
       // Optimized for the FD.  The ND isn't sensitive to these.
-      const float time_until_slc_cut = 2e3;
+      // For the GW supernova-like search, a rough optimization gave
+      // 2us for sig/sqrt(bg).  For the stopped muon analysis, let's do
+      // 1us since that's about where it's unlikely to select track hits
+      // as track-associated hits.
+      const float time_until_slc_cut = analysis_class == MichelFD?1e3:2e3;
 
-      // Use slice duration as a simple way of identifying events which dump a
-      // lot of energy in a small volume.
-      const float time_since_slc_cut = sliceinfo[j].longslice? 200e3: 13e3;
+      // Roughly optimized for sig/sqrt(bg) for the GW supernova-like
+      // search. For the stopped muon analysis, see previous comment.
+      const float time_since_slc_cut =
+        analysis_class == MichelFD?
+          1e3:
+          (sliceinfo[j].longslice? 200e3: 13e3);
 
       if(sliceinfo[j].longslice){
         const double slicetime = art_time_to_unix_double(evttime)
@@ -1426,6 +1660,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
     if(!pass) continue;
 
+    h.hitid = hit->ID();
     h.used  = false;
     h.paired= false;
     h.tns   = tns;
@@ -1439,7 +1674,7 @@ static std::vector<mhit> select_hits_for_mev_search(
 
     if(hit->IsMC()){
       art::ServiceHandle<cheat::BackTracker> bt;
-      const std::vector<cheat::TrackIDE> & trackIDEs = bt->HitToTrackIDE(*hit);
+      const std::vector<cheat::TrackIDE> & trackIDEs=bt->HitToTrackIDE(*hit);
       const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
       const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
       h.truepdg = particle->PdgCode();
@@ -1586,7 +1821,7 @@ static int plurality_of_truth(const sncluster & c)
   return best;
 }
 
-// Return the fraction of hits in this supernova cluster with truth information
+// Return fraction of hits in this supernova cluster with truth information
 static float fractrue(const sncluster & c)
 {
   unsigned int ntrue = 0;
@@ -1660,8 +1895,9 @@ static float time_ext_ns(const sncluster & c)
     if(c.hits[0]->plane%2 == h->plane%2)
       deltat = c.hits[0]->tns - h->tns;
     else{
-      const float time_1st_corr = c.hits[0]->tns +         h->tpos / lightspeed;
-      const float time_oth_corr =         h->tns + c.hits[0]->tpos / lightspeed;
+      const float
+        time_1st_corr = c.hits[0]->tns +         h->tpos / lightspeed,
+        time_oth_corr =         h->tns + c.hits[0]->tpos / lightspeed;
       deltat = time_1st_corr - time_oth_corr;
     }
 
@@ -1697,6 +1933,9 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.mincelly = min_cell(c, false);
   sninfo.maxcelly = max_cell(c, false);
   sninfo.sincebigshower_s = since_last_big_shower(c);
+  sninfo.run = evt.run();
+  sninfo.event = evt.event();
+  sninfo.hitid = c.hits[0]->hitid;
   sntree->Fill();
 }
 
@@ -1731,8 +1970,8 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits =
-    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime, supernovalike,
-      evt.time().value());
+    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime,
+      supernovalike, evt.time().value());
 
   std::sort(mhits.begin(), mhits.end(), compare_plane);
 
@@ -1799,7 +2038,6 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   }
 
   if(supernovalike){
-    printf("Supernova-like events: %u\n", hitclusters);
     THplusequals(lh_supernovalike, timebin(evt), hitclusters, livetime);
   }else{
     const unsigned int big = hitclusters + unpairedbighits;
@@ -1910,8 +2148,9 @@ static void count_upmu(const art::Event & evt)
 
 // Counts tracks with various cuts and contained slices and adds the
 // results to the output histograms
-static void count_tracks_containedslices(const art::Event & evt,
-                                         const std::vector<mslice> & sliceinfo)
+static void
+count_tracks_containedslices(const art::Event & evt,
+                             const std::vector<mslice> & sliceinfo)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -1935,9 +2174,11 @@ static void count_tracks_containedslices(const art::Event & evt,
   // Find out what slice each track is in and make a list of slices with
   // tracks that aren't fully contained
   std::vector<int> trk_slices(tracks->size(), -1);
-  std::set<int> slices_with_tracks, slices_with_uc_tracks, slices_with_huc_tracks;
-  std::set<int> contained_slices;
-  std::set<int> contained_shower_slices;
+  std::set<int> slices_with_tracks,
+                slices_with_uc_tracks,
+                slices_with_huc_tracks,
+                contained_slices,
+                contained_shower_slices;
   for(unsigned int i = 0; i < slice->size(); i++){
     if(!(*slice)[i].NCell(geo::kX) || !(*slice)[i].NCell(geo::kY))
       continue;
@@ -1987,7 +2228,8 @@ static void count_tracks_containedslices(const art::Event & evt,
       continue;
     }
 
-    trk_slices[i] = which_slice_is_this_track_in((*tracks)[i], slice, sliceinfo);
+    trk_slices[i] =
+      which_slice_is_this_track_in((*tracks)[i], slice, sliceinfo);
 
     if(un_contained_track((*tracks)[i]))
       slices_with_uc_tracks.insert(trk_slices[i]);
@@ -2110,7 +2352,7 @@ static void count_livetime(const art::Event & evt)
 {
   const double livetime = rawlivetime(evt);
   const double veryrawlivetime = rawlivetime(evt, true);
-  printf("Livetime %g seconds, of which %g used\n", veryrawlivetime, livetime);
+  printf("Livetime %g seconds, %g used\n", veryrawlivetime, livetime);
   THplusequals(lh_blind, timebin(evt, true), 0, livetime);
 }
 
@@ -2128,6 +2370,11 @@ static bool more_than_one_physics_slice(art::Event & evt)
 // and only reconstruct the new ones, but that is non-trivial.
 void ligoanalysis::produce(art::Event & evt)
 {
+  {
+    static unsigned int n = 0;
+    progressindicator(n++);
+  }
+
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
 
@@ -2176,9 +2423,10 @@ void ligoanalysis::produce(art::Event & evt)
 
   art::Handle< std::vector<rb::Cluster> > slice;
   if(fAnalysisClass != Blind){
-    // Reject any ND trigger with multiple physics slices.  This is a crude way
-    // of getting rid of NuMI events, previously used by the seasonal multi-mu
-    // analysis because RemoveBeamSpills doesn't really work.
+    // Reject any ND trigger with multiple physics slices. This is a
+    // crude way of getting rid of NuMI events, previously used by the
+    // seasonal multi-mu analysis because RemoveBeamSpills doesn't
+    // really work.
     if(fCutNDmultislices &&
        (fAnalysisClass == NDactivity || fAnalysisClass == MinBiasND) &&
        more_than_one_physics_slice(evt)){
@@ -2197,6 +2445,9 @@ void ligoanalysis::produce(art::Event & evt)
       }
     }
   }
+
+  if(fAnalysisClass == SNonlyFD || fAnalysisClass == MichelFD)
+    save_mtracks(evt);
 
   // Make list of all times and locations of "physics" slices. For the
   // MeV search, we will exclude other hits near them in time to drop
@@ -2221,6 +2472,7 @@ void ligoanalysis::produce(art::Event & evt)
       count_all_mev(evt, sliceinfo);
       break;
     case SNonlyFD:
+    case MichelFD:
       count_mev(evt, true /* supernova-like */, sliceinfo);
       break;
     case MinBiasND:
