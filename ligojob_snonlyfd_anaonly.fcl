@@ -7,9 +7,9 @@ process_name: ligosnonlyfd
 services:
 {
   TFileService: { fileName: "histos.root" }
+
   scheduler:    { wantTracer: false wantSummary: true }
   TimeTracker:  { printSummary: true }
-  message:      @local::standard_out
 
   # Load the services we need instead of @local::standard_services to save time
   # on startup and allow for faster experimentation.  Mostly this avoids
@@ -24,6 +24,9 @@ services:
   Detector:        @local::standard_detector
   FiberBrightness: @local::standard_fiberbrightness
   Calibrator:      @local::standard_calibrator
+
+  # Suppress "Begin processing the nth record" messages
+  message: { destinations: { debugmsg:{ type: "cout" threshold: "WARNING"} } }
 }
 
 services.BackTracker: @local::standard_backtracker

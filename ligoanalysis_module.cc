@@ -86,6 +86,10 @@ static const int US_PER_MICROSLICE = 50; // I hope this is always true
 // model the angular effect?
 static const float lightspeed = 17.; // cm/ns
 
+// z extent of a plane (slightly wrong at block boundaries, but for
+// my purposes, it doesn't matter)
+static const double plnz = 6.6479;
+
 // Set from the FCL parameters
 static double gwevent_unix_double_time = 0;
 static double needbgevent_unix_double_time = 0;
@@ -133,7 +137,17 @@ struct mhit{
   bool used; // has this hit been used in a cluster yet?
   bool paired; // has this hit been used in a cluster of size 2+ yet?
   int truepdg; // For MC, what the truth is
-  float trueE; // for MC, what the true initial particle energy is
+  float trueE; // for MC, what the true initial particle kinetic energy is
+  int16_t trueplane;
+  int16_t truecellx;
+  int16_t truecelly;
+
+  // The minimum time to the next slice overlapping this hit in space.
+  double toslice_s;
+  // The time since the previous slice overlapping this hit in space.
+  double sinceslice_s;
+
+  // The time since the previous big shower *anywhere*
   double sincelastbigshower_s;
 };
 
@@ -562,11 +576,20 @@ struct{
   // gammas resulting from different processes, but that would be nice.
   int truepdg;
 
-  // For Monte Carlo, the true initial energy, in MeV, of the particle
-  // making the plurality of the cluster. This isn't the energy of the
-  // neutrino, but if it is a positron, it is close to the energy of the
-  // neutrino.
+  // For Monte Carlo, the true initial kinetic energy, in MeV, of the
+  // particle making the plurality of the cluster. This isn't the energy
+  // of the neutrino, but if it is a positron, it is close to the energy
+  // of the neutrino.
   float trueE;
+
+  // For positrons, the true position of the neutrino interaction. For
+  // gammas from neutron capture, the true position the neutron was
+  // captured. The interaction is in either an X cell or a Y cell, and
+  // the other cell number is the one closest to the interaction in the
+  // other view.
+  int16_t trueplane;
+  int16_t truecellx;
+  int16_t truecelly;
 
   // Number of hits in the cluster.  Only hits above a certain ADC
   // are accepted, so there may be other nearby hits that don't get
@@ -578,11 +601,20 @@ struct{
   // of the file.
   double time_s;
 
-  // Total number of photoelectrons in this cluster. This is a rough
-  // proxy for energy, but doesn't take into account attenuation. Since
-  // we're requiring a hit in both views, we could calculate energy
-  // better than this.
-  float pe;
+  // Total number of photoelectrons in this cluster in x cells and y
+  // cells, respectively. The sum is a rough proxy for energy, but
+  // doesn't take into account attenuation. When we have hits in both
+  // views, we can calculate energy better than this.
+  float pex;
+  float pey;
+
+  // Photoelectrons, corrected for attenuation, to get the number we
+  // would have gotten if the fibers were perfectly clear. At the
+  // moment, left as zero and filled in at a later stage of processing.
+  // This is because we don't match up prompt and delayed components
+  // of inverse-beta-decay events here and that may change your mind
+  // about where the event was.
+  float unattpe;
 
   // Lowest ADC of any hit in this cluster.  This is a measure of how
   // likely part of the cluster is to be APD noise.
@@ -610,6 +642,13 @@ struct{
   // commentary on the X versions of these variables.
   int mincelly;
   int maxcelly;
+
+  // The time until and since the last slice that overlaps this hit
+  // in space, plus a buffer of several cells and planes.  If this
+  // hit is during such a slice, both are zero.  If there is no such
+  // slice for one or the other case, that one is set to 1e9.
+  double toslice_s;
+  double sinceslice_s;
 
   // Time in seconds since the last "big" cosmic ray shower. This is
   // of interest because big showers can dump many (thousands) of
@@ -695,9 +734,16 @@ static void init_mev_stuff()
   BRN(truefrac,         F);
   BRN(truepdg,          I);
   BRN(trueE,            F);
+  BRN(trueplane,        S);
+  BRN(truecellx,        S);
+  BRN(truecelly,        S);
   BRN(time_s,           D);
+  BRN(toslice_s,        D);
+  BRN(sinceslice_s,     D);
   BRN(sincebigshower_s, D);
-  BRN(pe,               F);
+  BRN(pex,              F);
+  BRN(pey,              F);
+  BRN(unattpe,          F);
   BRN(minhitadc,        S);
   BRN(timeext_ns,       F);
   BRN(minplane,         I);
@@ -719,9 +765,9 @@ static void init_mev_stuff()
   BRH(meanz,         D);
 
   tracktree = t->make<TTree>("trk", "");
-  BRT(endplane,    S);
-  BRT(endcellx,    S);
-  BRT(endcelly,    S);
+  BRT(endplane,    s);
+  BRT(endcellx,    s);
+  BRT(endcelly,    s);
   BRT(lastisx,     O);
   BRT(endconfused, O);
   BRT(time_s,      D);
@@ -893,8 +939,12 @@ void ligoanalysis::beginJob()
 {
   // art provides no way of knowing how much events we will process,
   // and its own progress indicator is of limited use.
+  #if 0
   printf("For progress indicator, assuming a 9k event long readout\n");
   initprogressindicator(9000, 3);
+  #endif
+  printf("For progress indicator, assuming a 1e6 event MC\n");
+  initprogressindicator(1000000, 3);
 }
 
 void ligoanalysis::beginRun(art::Run& run)
@@ -1366,7 +1416,6 @@ static void save_mtracks(const art::Event & evt)
     // stopped in the last plane with hits
     int recoplane = 0, recocell = 0;
     try{
-      const double plnz = 6.6479;
       geo->getPlaneAndCellID(endx, endy, endz-plnz, recoplane, recocell);
     }
     catch(...){
@@ -1499,6 +1548,63 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
   return sliceinfo;
 }
 
+static void trueposition(int16_t & trueplane, int16_t & truecellx,
+                         int16_t & truecelly,
+                         const TLorentzVector & pos)
+{
+  art::ServiceHandle<geo::Geometry> g;
+  int pln = -1, cl = -1;
+
+  const double x = pos.X(), y = pos.Y(), z = pos.Z();
+  
+  // Find the cell nearest to the true starting position of this particle
+  // (or whatever position we were passed).  Since "cell" means "inside
+  // scintillator", we have to hunt around nearby for it.  Look 2cm in 
+  // 0.2mm steps in all.  This still doesn't work perfectly, but it has
+  // 99.9% success, and most failures are around the detector edges, where
+  // maybe they aren't really failures (if the particle interaction was
+  // really outside the detector and something scattered in).
+  for(int i = 0; i < 2; i++){
+    const double Z = z - i*plnz;
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 1.0, 0.0, 0.0, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.0, 1.0, 0.0, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.0, 0.0, 1.0, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.7, 0.7, 0.0, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.7, 0.0, 0.7, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.0, 0.7, 0.7, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z,-0.7, 0.7, 0.0, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z,-0.7, 0.0, 0.7, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.0,-0.7, 0.7, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.6, 0.6, 0.6, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z,-0.6, 0.6, 0.6, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z, 0.6,-0.6, 0.6, 2), pln, cl);
+    }catch(...){
+    try{ g->getPlaneAndCellID(g->CellId(x, y, Z,-0.6,-0.6, 0.6, 2), pln, cl);
+    }catch(...){
+      #if 0
+      printf("No %d cell for %.1f %.1f %.1f\n", i, x, y, Z);
+      #endif
+      pln = cl = -1;
+    } } } } } } } } } } } } }
+
+    if(i == 0) trueplane = pln;
+
+    if(pln % 2 == 0) truecelly = cl;
+    else truecellx = cl;
+  }
+}
+
 // Helper function for count_mev(). Selects hits that
 // are candidates to be put into hit pairs. Apply a low ADC cut if
 // 'adc_cut'. Always apply a high ADC cut. This is intended to be true
@@ -1609,28 +1715,16 @@ static std::vector<mhit> select_hits_for_mev_search(
     const double absolute_hit_time =
       art_time_to_unix_double(evttime)+tns*1e-9;
 
-    bool pass = true;
-
     mhit h;
     h.sincelastbigshower_s = absolute_hit_time - prev_longslicetime;
+    h.sinceslice_s = 1e9;
+    h.toslice_s = 1e9;
 
-    // Exclude a rectangular box around each slice for a given time
-    // period before and after the slice, with a given spatial buffer.
     // Start at 1 to exclude the "noise" slice, where all the signal is.
     for(unsigned int j = 1; j < nslice; j++){
-      // Optimized for the FD.  The ND isn't sensitive to these.
-      // For the GW supernova-like search, a rough optimization gave
-      // 2us for sig/sqrt(bg).  For the stopped muon analysis, let's do
-      // 1us since that's about where it's unlikely to select track hits
-      // as track-associated hits.
-      const float time_until_slc_cut = analysis_class == MichelFD?1e3:2e3;
-
-      // Roughly optimized for sig/sqrt(bg) for the GW supernova-like
-      // search. For the stopped muon analysis, see previous comment.
-      const float time_since_slc_cut =
-        analysis_class == MichelFD?
-          1e3:
-          (sliceinfo[j].longslice? 200e3: 13e3);
+      // Previously cut from 2e3 before to 13e3 after, and for 200e3
+      // after for long slices.  Now write out information and do
+      // the cut downstream.
 
       if(sliceinfo[j].longslice){
         const double slicetime = art_time_to_unix_double(evttime)
@@ -1642,23 +1736,32 @@ static std::vector<mhit> select_hits_for_mev_search(
           h.sincelastbigshower_s = longslice2hit;
       }
 
-      if(tns > sliceinfo[j].mintns - time_until_slc_cut &&
-         tns < sliceinfo[j].maxtns + time_since_slc_cut &&
-         plane > sliceinfo[j].minplane - planebuffer &&
+      const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
+      const double timeto_s = (sliceinfo[j].mintns - tns)*1e-9;
+
+      if(plane > sliceinfo[j].minplane - planebuffer &&
          plane < sliceinfo[j].maxplane + planebuffer){
 
-        if(hit->View() == geo::kX){
-          if(cell > sliceinfo[j].mincellx - cellbuffer &&
-             cell < sliceinfo[j].maxcellx + cellbuffer) pass = false;
-        }
-        else{ // Y view
-          if(cell > sliceinfo[j].mincelly - cellbuffer &&
-             cell < sliceinfo[j].maxcelly + cellbuffer) pass = false;
+        if((hit->View() == geo::kX &&
+            (cell > sliceinfo[j].mincellx - cellbuffer &&
+             cell < sliceinfo[j].maxcellx + cellbuffer))
+           ||
+           (hit->View() != geo::kX &&
+            (cell > sliceinfo[j].mincelly - cellbuffer &&
+             cell < sliceinfo[j].maxcelly + cellbuffer))){
+
+          if(timesince_s > 0 && timesince_s < h.sinceslice_s)
+            h.sinceslice_s = timesince_s;
+
+          if(timeto_s > 0 && timeto_s < h.toslice_s)
+            h.toslice_s = timeto_s;
+
+          // It's in the middle of the time range of the slice
+          if(timesince_s <= 0 && timeto_s <= 0)
+            h.toslice_s = h.sinceslice_s = 0;
         }
       }
-      if(!pass) break;
     }
-    if(!pass) continue;
 
     h.hitid = hit->ID();
     h.used  = false;
@@ -1678,11 +1781,16 @@ static std::vector<mhit> select_hits_for_mev_search(
       const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
       const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
       h.truepdg = particle->PdgCode();
-      h.trueE = particle->E();
+      h.trueE = particle->T();
+      trueposition(h.trueplane, h.truecellx, h.truecelly,
+                   particle->Position());
     }
     else{
       h.truepdg = 0;
       h.trueE = 0;
+      h.trueplane = -1;
+      h.truecellx = -1;
+      h.truecelly = -1;
     }
 
     mhits.push_back(h);
@@ -1800,6 +1908,75 @@ static float plurality_of_E(const sncluster & c)
   return best*1000; // convert to MeV
 }
 
+// For the given supernova cluster, return the true plane of the particle
+// that contributed the most pe-weighted hits.
+static int16_t plurality_of_trueplane(const sncluster & c)
+{
+  if(c.hits.empty()) return -1;
+
+  std::map<int16_t, float> m;
+  for(const mhit * h : c.hits)
+    if(h->trueplane != -1)
+      m[h->trueplane] += h->pe;
+
+  float most = 0;
+  int16_t best = -1;
+
+  for(const auto & x : m)
+    if(x.second > most){
+      most = x.second;
+      best = x.first;
+    }
+
+  return best;
+}
+
+// For the given supernova cluster, return the true x cell of the particle
+// that contributed the most pe-weighted hits.
+static int16_t plurality_of_truecellx(const sncluster & c)
+{
+  if(c.hits.empty()) return -1;
+
+  std::map<int16_t, float> m;
+  for(const mhit * h : c.hits)
+    if(h->truecellx != -1)
+      m[h->truecellx] += h->pe;
+
+  float most = 0;
+  int16_t best = -1;
+
+  for(const auto & x : m)
+    if(x.second > most){
+      most = x.second;
+      best = x.first;
+    }
+
+  return best;
+}
+
+// For the given supernova cluster, return the true x cell of the particle
+// that contributed the most pe-weighted hits.
+static int16_t plurality_of_truecelly(const sncluster & c)
+{
+  if(c.hits.empty()) return -1;
+
+  std::map<int16_t, float> m;
+  for(const mhit * h : c.hits)
+    if(h->truecelly != -1)
+      m[h->truecelly] += h->pe;
+
+  float most = 0;
+  int16_t best = -1;
+
+  for(const auto & x : m)
+    if(x.second > most){
+      most = x.second;
+      best = x.first;
+    }
+
+  return best;
+}
+
 // For the given supernova cluster, return the true PDG id that contributed
 // the most pe-weighted hits.  Ignore hits with no truth information.
 static int plurality_of_truth(const sncluster & c)
@@ -1836,10 +2013,11 @@ static double mean_tns(const sncluster & c)
   return sum / c.hits.size();
 }
 
-static float sum_pe(const sncluster & c)
+// Return <pe in x cells, pe in y cells>
+static std::pair<float, float> sum_pe(const sncluster & c)
 {
-  float sum = 0;
-  for(const mhit * h : c.hits) sum += h->pe;
+  std::pair<float, float> sum(0, 0);
+  for(const mhit * h : c.hits) (h->isx?sum.first:sum.second) += h->pe;
   return sum;
 }
 
@@ -1869,6 +2047,20 @@ static int max_cell(const sncluster & c, const bool x)
   int ans = -1;
   for(const auto h : c.hits) if((h->isx ^ !x) && h->cell > ans) ans = h->cell;
   return ans;
+}
+
+static double to_slice(const sncluster & c)
+{
+  double sum = 0;
+  for(const auto h : c.hits) sum += h->toslice_s;
+  return sum/c.hits.size();
+}
+
+static double since_slice(const sncluster & c)
+{
+  double sum = 0;
+  for(const auto h : c.hits) sum += h->sinceslice_s;
+  return sum/c.hits.size();
 }
 
 static double since_last_big_shower(const sncluster & c)
@@ -1917,13 +2109,19 @@ static void savecluster(const art::Event & evt, const sncluster & c)
     file_start_art_time = evt.time().value();
   }
 
+  memset(&sninfo, 0, sizeof(sninfo));
+
   sninfo.nhit = c.hits.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
   sninfo.trueE = plurality_of_E(c);
+  sninfo.trueplane = plurality_of_trueplane(c);
+  sninfo.truecellx = plurality_of_truecellx(c);
+  sninfo.truecelly = plurality_of_truecelly(c);
   sninfo.time_s = delta_art_time(evt.time().value(), file_start_art_time)
                   + mean_tns(c)*1e-9;
-  sninfo.pe = sum_pe(c);
+  sninfo.pex = sum_pe(c).first;
+  sninfo.pey = sum_pe(c).second;
   sninfo.minhitadc  = min_hit_adc(c);
   sninfo.timeext_ns = time_ext_ns(c);
   sninfo.minplane = min_plane(c);
@@ -1932,6 +2130,8 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.maxcellx = max_cell(c, true);
   sninfo.mincelly = min_cell(c, false);
   sninfo.maxcelly = max_cell(c, false);
+  sninfo.toslice_s = to_slice(c);
+  sninfo.sinceslice_s = since_slice(c);
   sninfo.sincebigshower_s = since_last_big_shower(c);
   sninfo.run = evt.run();
   sninfo.event = evt.event();
