@@ -943,14 +943,6 @@ static double find_critical_value(const int q)
 
 void ligoanalysis::beginJob()
 {
-  // art provides no way of knowing how much events we will process,
-  // and its own progress indicator is of limited use.
-  #if 0
-  printf("For progress indicator, assuming a 9k event long readout\n");
-  initprogressindicator(9000, 3);
-  #endif
-  printf("For progress indicator, assuming a 1e6 event MC\n");
-  initprogressindicator(1000000, 3);
 }
 
 void ligoanalysis::beginRun(art::Run& run)
@@ -2577,6 +2569,16 @@ void ligoanalysis::produce(art::Event & evt)
 {
   {
     static unsigned int n = 0;
+    if(n == 0){
+      // art provides no way of knowing how much events we will process,
+      // and its own progress indicator is of limited use.
+      #if 0
+      printf("For progress indicator, assuming a 9k event long readout\n");
+      initprogressindicator(9000, 3);
+      #endif
+      printf("For progress indicator, assuming a 1e6 event MC\n");
+      initprogressindicator(1000000, 6);
+    }
     progressindicator(n++);
   }
 
