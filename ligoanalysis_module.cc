@@ -1483,9 +1483,9 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
     slc.totaladc = (*slice)[i].TotalADC();
 
-    slc.time_s = art_time_plus_some_ns(evt.time().value(), 
+    slc.time_s = art_time_plus_some_ns(evt.time().value(),
                       (*slice)[i].MeanTNS()).first;
-    slc.time_ns = art_time_plus_some_ns(evt.time().value(), 
+    slc.time_ns = art_time_plus_some_ns(evt.time().value(),
                       (*slice)[i].MeanTNS()).second;
 
     slc.meanx = (*slice)[i].MeanX();
@@ -1552,10 +1552,10 @@ static void trueposition(int16_t & trueplane, int16_t & truecellx,
   int pln = -1, cl = -1;
 
   const double x = pos.X(), y = pos.Y(), z = pos.Z();
-  
+
   // Find the cell nearest to the true starting position of this particle
   // (or whatever position we were passed).  Since "cell" means "inside
-  // scintillator", we have to hunt around nearby for it.  Look 2cm in 
+  // scintillator", we have to hunt around nearby for it.  Look 2cm in
   // 0.2mm steps in all.  This still doesn't work perfectly, but it has
   // 99.9% success, and most failures are around the detector edges, where
   // maybe they aren't really failures (if the particle interaction was
@@ -1670,11 +1670,10 @@ static std::vector<mhit> select_hits_for_mev_search(
       if(gDet == caf::kNEARDET){
         const int ndnplaneedge = 4;
 
-        // Exclude the whole muon catcher. Can't reasonably have a
-        // supernova-type event hit planes on each side of a steel plane,
-        // and while they might hit adjacent scintillator planes in the
-        // muon catcher, I don't want to deal with all the additional
-        // complications there.
+        // Exclude whole muon catcher. Can't reasonably have a supernova
+        // event hit planes on each side of a steel plane, and while
+        // they might hit adjacent scintillator planes in the muon
+        // catcher, I don't want to deal with the complications.
         if(plane <= ndnplaneedge) continue;
         if(plane >= 192-ndnplaneedge) continue;
 
@@ -1774,12 +1773,17 @@ static std::vector<mhit> select_hits_for_mev_search(
     if(hit->IsMC()){
       art::ServiceHandle<cheat::BackTracker> bt;
       const std::vector<cheat::TrackIDE> & trackIDEs=bt->HitToTrackIDE(*hit);
-      const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
-      const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
-      h.truepdg = particle->PdgCode();
-      h.trueE = particle->T();
-      trueposition(h.trueplane, h.truecellx, h.truecelly,
-                   particle->Position());
+
+      // Very occasionally, this is empty, maybe when "uninteresting"
+      // particles are pruned, but turned out to give the only hits?
+      if(!trackIDEs.empty()){
+        const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
+        const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
+        h.truepdg = particle->PdgCode();
+        h.trueE = particle->T();
+        trueposition(h.trueplane, h.truecellx, h.truecelly,
+                     particle->Position());
+      }
     }
     else{
       h.truepdg = 0;
@@ -2076,6 +2080,7 @@ static int16_t min_hit_adc(const sncluster & c)
 static float time_ext_ns(const sncluster & c)
 {
   double mintime = FLT_MAX, maxtime = FLT_MIN;
+  if(c.hits.size() <= 1) return 0;
   for(const auto & h : c.hits){
     // Calculate all times as relative to the first hit.  Absolute time and
     // overall sign don't matter because we're finding the extent.
@@ -2099,6 +2104,11 @@ static void savecluster(const art::Event & evt, const sncluster & c)
 {
   memset(&sninfo, 0, sizeof(sninfo));
 
+  if(c.hits.empty()){
+    fprintf(stderr, "savecluster: got empty cluster, skipping\n");
+    return;
+  }
+
   sninfo.nhit = c.hits.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
@@ -2106,9 +2116,9 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.trueplane = plurality_of_trueplane(c);
   sninfo.truecellx = plurality_of_truecellx(c);
   sninfo.truecelly = plurality_of_truecelly(c);
-  sninfo.time_s = art_time_plus_some_ns(evt.time().value(), 
+  sninfo.time_s = art_time_plus_some_ns(evt.time().value(),
                     mean_tns(c)).first;
-  sninfo.time_ns = art_time_plus_some_ns(evt.time().value(), 
+  sninfo.time_ns = art_time_plus_some_ns(evt.time().value(),
                     mean_tns(c)).second;
   sninfo.pex = sum_pe(c).first;
   sninfo.pey = sum_pe(c).second;
@@ -2154,6 +2164,11 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
+
+  if(slice->empty()){
+    fprintf(stderr, "Unexpected empty slice vector, skipping\n");
+    return;
+  }
 
   const double livetime = rawlivetime(evt);
 
