@@ -51,6 +51,54 @@ double art_time_to_unix_double(const unsigned long long at)
   return (at >> 32) + (at & 0xffffffffULL)*1e-9;
 }
 
+static std::pair<uint32_t, uint32_t>
+art_time_minus_some_ns(const unsigned long long art, const double somens)
+{
+  std::pair<uint32_t, uint32_t> ans;
+  ans.first = art >> 32;
+  ans.second = art;
+
+  const uint64_t total_ns_to_subtract = somens + 0.5;
+  
+  const uint32_t s_to_subtract  = total_ns_to_subtract / 1000000000;
+  const uint32_t ns_to_subtract = total_ns_to_subtract % 1000000000;
+
+  if(ns_to_subtract > ans.second){
+    ans.second += 1000000000;
+    ans.first--;
+  }
+
+  ans.second -= ns_to_subtract;
+  ans.first -= s_to_subtract;
+
+  return ans;
+}
+
+// Adds exactly up to rounding to the nearest nanosecond
+std::pair<uint32_t, uint32_t>
+art_time_plus_some_ns(const unsigned long long art, const double somens)
+{
+  if(somens < 0) return art_time_minus_some_ns(art, -somens);
+
+  std::pair<uint32_t, uint32_t> ans;
+  ans.first = art >> 32;
+  ans.second = art;
+
+  const uint64_t total_ns_to_add = somens + 0.5;
+
+  const uint32_t s_to_add  = total_ns_to_add / 1000000000;
+  const uint32_t ns_to_add = total_ns_to_add % 1000000000;
+
+  ans.second += ns_to_add;
+  if(ans.second > 1000000000){
+    ans.second -= 1000000000;
+    ans.first++;
+  }
+  ans.first += s_to_add;
+
+  return ans;
+}
+
 double delta_art_time(const unsigned long long a, const unsigned long long b)
 {
   uint32_t a_s = a >> 32;

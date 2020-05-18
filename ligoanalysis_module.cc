@@ -174,8 +174,9 @@ struct mslice{
   // From rb::Cluster::MeanX(), etc.
   double meanx, meany, meanz;
 
-  // Time in seconds since the beginning of the file.
-  double time_s;
+  // Time in integer seconds and nanoseconds since Jan 1, 1970
+  uint32_t time_s;
+  uint32_t time_ns;
 
   // Index into a reduced set of slices where if two overlap in time,
   // they are considered one.  This index is not contiguous.
@@ -199,8 +200,8 @@ struct mtrack{
   // hits.
   bool endconfused;
 
-  // Time in seconds since the beginning of the file.
-  double time_s;
+  uint32_t time_s;
+  uint32_t time_ns;
 } mtrackMCMLXXXI;
 
 class ligoanalysis : public art::EDProducer {
@@ -597,9 +598,10 @@ struct{
   // be zero, in which case all hits are accepted.
   int nhit;
 
-  // Mean time of the hits in this cluster in seconds since the beginning
-  // of the file.
-  double time_s;
+  // Mean time of the hits in this cluster in seconds and nanoseconds
+  // since Jan 1, 1970.
+  uint32_t time_s;
+  uint32_t time_ns;
 
   // Total number of photoelectrons in this cluster in x cells and y
   // cells, respectively. The sum is a rough proxy for energy, but
@@ -696,9 +698,10 @@ struct{
 //
 // (Why is this not just an mslice? Maybe there's a reason?)
 struct {
-  // Mean time of the hits in this cluster in seconds since the
-  // beginning of the file.
-  double time_s;
+  // Mean time of the hits in this cluster in seconds and nanoseconds
+  // since Jan 1, 1970.
+  uint32_t time_s;
+  uint32_t time_ns;
 
   // From rb::Cluster::TotalADC()
   double totaladc;
@@ -737,7 +740,8 @@ static void init_mev_stuff()
   BRN(trueplane,        S);
   BRN(truecellx,        S);
   BRN(truecelly,        S);
-  BRN(time_s,           D);
+  BRN(time_s,           i);
+  BRN(time_ns,          i);
   BRN(toslice_s,        D);
   BRN(sinceslice_s,     D);
   BRN(sincebigshower_s, D);
@@ -757,7 +761,8 @@ static void init_mev_stuff()
   BRN(hitid,            i);
 
   showertree = t->make<TTree>("shw", "");
-  BRH(time_s,        D);
+  BRH(time_s,        i);
+  BRH(time_ns,       i);
   BRH(totaladc,      D);
   BRH(sliceduration, F);
   BRH(meanx,         D);
@@ -770,7 +775,8 @@ static void init_mev_stuff()
   BRT(endcelly,    s);
   BRT(lastisx,     O);
   BRT(endconfused, O);
-  BRT(time_s,      D);
+  BRT(time_s,      i);
+  BRT(time_ns,     i);
 }
 
 static void init_blind_hist()
@@ -1307,6 +1313,7 @@ static void count_ddenergy(const art::Event & evt)
 
 static bool compare_mslice_time(const mslice & a, const mslice & b)
 {
+  if(a.time_s == b.time_s) return a.time_ns < b.time_ns;
   return a.time_s < b.time_s;
 }
 
@@ -1324,19 +1331,12 @@ static bool compareplane(const hit & a, const hit & b)
 
 static bool comparemtracktime(const mtrack & a, const mtrack & b)
 {
+  if(a.time_s == b.time_s) return a.time_ns < b.time_ns;
   return a.time_s < b.time_s;
 }
 
 static void save_mtracks(const art::Event & evt)
 {
-  static unsigned long long file_start_art_time = 0;
-
-  static bool first = true;
-  if(first){
-    first = false;
-    file_start_art_time = evt.time().value();
-  }
-
   art::ServiceHandle<geo::Geometry> geo;
 
   art::Handle< std::vector<rb::Track> > tracks;
@@ -1445,8 +1445,9 @@ static void save_mtracks(const art::Event & evt)
     thisone.lastisx = endisx;
 
     thisone.time_s =
-      delta_art_time(evt.time().value(), file_start_art_time)
-                    + trk.MeanTNS()*1e-9;
+      art_time_plus_some_ns(evt.time().value(), trk.MeanTNS()).first;
+    thisone.time_ns =
+      art_time_plus_some_ns(evt.time().value(), trk.MeanTNS()).second;
 
     mtracks.push_back(thisone);
   }
@@ -1466,14 +1467,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 {
   std::vector<mslice> sliceinfo;
 
-  static bool first = true;
-  static unsigned long long file_start_art_time = 0;
-
-  if(first){
-    first = false;
-    file_start_art_time = evt.time().value();
-  }
-
   // Include slice zero, the "noise" slice, to preserve numbering
   for(unsigned int i = 0; i < slice->size(); i++){
     mslice slc;
@@ -1490,8 +1483,10 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
     slc.totaladc = (*slice)[i].TotalADC();
 
-    slc.time_s = delta_art_time(evt.time().value(), file_start_art_time)
-                    + (*slice)[i].MeanTNS()*1e-9;
+    slc.time_s = art_time_plus_some_ns(evt.time().value(), 
+                      (*slice)[i].MeanTNS()).first;
+    slc.time_ns = art_time_plus_some_ns(evt.time().value(), 
+                      (*slice)[i].MeanTNS()).second;
 
     slc.meanx = (*slice)[i].MeanX();
     slc.meany = (*slice)[i].MeanY();
@@ -1536,6 +1531,7 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
   for(const auto & s : tosave){
     shwinfo.time_s = s.time_s;
+    shwinfo.time_ns = s.time_ns;
     shwinfo.totaladc = s.totaladc;
     shwinfo.sliceduration = s.sliceduration;
     shwinfo.meanx = s.meanx;
@@ -2101,14 +2097,6 @@ static float time_ext_ns(const sncluster & c)
 
 static void savecluster(const art::Event & evt, const sncluster & c)
 {
-  static bool first = true;
-  static unsigned long long file_start_art_time = 0;
-
-  if(first){
-    first = false;
-    file_start_art_time = evt.time().value();
-  }
-
   memset(&sninfo, 0, sizeof(sninfo));
 
   sninfo.nhit = c.hits.size();
@@ -2118,8 +2106,10 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.trueplane = plurality_of_trueplane(c);
   sninfo.truecellx = plurality_of_truecellx(c);
   sninfo.truecelly = plurality_of_truecelly(c);
-  sninfo.time_s = delta_art_time(evt.time().value(), file_start_art_time)
-                  + mean_tns(c)*1e-9;
+  sninfo.time_s = art_time_plus_some_ns(evt.time().value(), 
+                    mean_tns(c)).first;
+  sninfo.time_ns = art_time_plus_some_ns(evt.time().value(), 
+                    mean_tns(c)).second;
   sninfo.pex = sum_pe(c).first;
   sninfo.pey = sum_pe(c).second;
   sninfo.minhitadc  = min_hit_adc(c);

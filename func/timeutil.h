@@ -19,3 +19,8 @@ double art_time_to_unix_double(const unsigned long long at);
 // Subtract b from a and return the result in seconds as a double. If the
 // result isn't larger than 1000 seconds, it has picosecond precision.
 double delta_art_time(const unsigned long long a, const unsigned long long b);
+
+// Take an art time in native format (high 32b = seconds, low = ns), add 
+// some nanoseconds to it, and return seconds and nanoseconds.
+std::pair<uint32_t, uint32_t>
+art_time_plus_some_ns(const unsigned long long art, const double somens);
