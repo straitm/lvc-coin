@@ -15,6 +15,11 @@ services:
   message:      @local::standard_out
   @table::standard_services
   CelestialLocator:    @local::standard_celestial
+
+  # Suppress "Begin processing nth record" messages, which when
+  # processing noiseless supernova-like MC can take the majority of the
+  # time!
+  message: { destinations: { debugmsg:{ type: "cout" threshold: "WARNING"} } }
 }
 
 services.BackTracker: @local::standard_backtracker

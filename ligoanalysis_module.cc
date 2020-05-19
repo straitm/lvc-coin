@@ -48,6 +48,8 @@
 #include "progress.cpp"
 
 #include "func/timeutil.h"
+#include "func/DaqChannelMask.h"
+
 
 // "`-._,-'"`-._,-'"`-._,-' BEGIN sky map stuff "`-._,-'"`-._,-'"`-._,-'
 #include "healpix_base.h"
@@ -98,9 +100,9 @@ static long long window_size_s = 1000;
 // Relaxed for the supernova analysis
 // Were: 85, 600, 107, 2500
 //
-// XXX should raise 600 or remove the limit entirely, probably,
-// since we'll cut later
-static const int16_t fd_low_adc = 0, fd_high_adc =  600;
+// At least for the FD, I want to apply the cuts later, so don't 
+// cut here.
+static const int16_t fd_low_adc = 0, fd_high_adc =10000;
 static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
 
 // Smallest ADC to save a single hit as a cluster. Chosen so that the
@@ -111,9 +113,8 @@ static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
 // About 2/3 of the FD signal with any hits has only one hit. 70% of
 // that is above 65 ADC.
 //
-// If we get a good IBD selector working, we might want to relax this
-// further.
-static const int16_t MINSINGLETONADC = 65;
+// I am relaxing this a bit for use with my IBD/betan selector.
+static const int16_t MINSINGLETONADC = 60;
 
 static int gDet = caf::kUNKNOWN;
 
@@ -149,6 +150,9 @@ struct mhit{
 
   // The time since the previous big shower *anywhere*
   double sincelastbigshower_s;
+
+  // Whether DaqChannelMask has marked this channel as noisy
+  bool noisy;
 };
 
 struct sncluster{
@@ -691,6 +695,9 @@ struct{
   // The hit number inside the event for one of the hits of this cluster.
   unsigned int hitid;
 
+  // Fraction of the hits in this cluster that are from noisy channels
+  float noisefrac;
+
 } sninfo;
 
 // Anonymous struct to hold shower information.  We might be able to
@@ -759,6 +766,7 @@ static void init_mev_stuff()
   BRN(run,              i);
   BRN(event,            i);
   BRN(hitid,            i);
+  BRN(noisefrac,        F);
 
   showertree = t->make<TTree>("shw", "");
   BRH(time_s,        i);
@@ -1641,6 +1649,32 @@ static std::vector<mhit> select_hits_for_mev_search(
   // Retain the last long slice time from the previous event
   static double prev_longslicetime = 0;
 
+  // Units are hits/event: cold threshold, hot threshold.
+  // A normal channel has about 120Hz.
+  // Andrey's more sophisticated treatment in
+  // novaddt/OnlineCalibration/HotMapMaker_module.cc uses thresholds
+  // of 1kHz sustained over 50ms (hot) and >90% of 50ms windows with
+  // no hits (cold). We aren't looking at enough data to find cold
+  // channels, so disable that. We're going to sample for 50ms,
+  // so to avoid masking off channels that are up to 10x the mean
+  // noisiness (~50Hz) 99% of the time, we need to set the threshold
+  // at 1200Hz -- a 1200Hz channel has a mean of 60 hits in 50ms.  Assuming
+  // Poisson, it has a 99% chance of < 80 hits in 50ms, so that's 8
+  // hits per event.
+  static sn::DaqChannelMask chmask(-1, 8.0);
+  {
+    static unsigned int evcollected = 0;
+    if(evcollected < 10){
+      for(unsigned int i = 0; i < noiseslice.NCell(); i++)
+        chmask.AddHit(*(noiseslice.Cell(i)));
+      evcollected++;
+    }
+    if(evcollected == 10){
+      chmask.IncrementDuration(10 * 0.005);
+      chmask.CalculateRates();
+    }
+  }
+
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
     const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(i);
 
@@ -1751,6 +1785,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
 
     h.hitid = hit->ID();
+    h.noisy = chmask.RatesCalculated() && chmask.ChannelIsMasked(*hit);
     h.used  = false;
     h.paired= false;
     h.tns   = tns;
@@ -1969,6 +2004,13 @@ static int16_t plurality_of_truecelly(const sncluster & c)
   return best;
 }
 
+static float noise_frac(const sncluster & c)
+{
+  unsigned int nn = 0;
+  for(const mhit * h : c.hits) nn += h->noisy;
+  return float(nn)/c.hits.size();
+}
+
 // For the given supernova cluster, return the true PDG id that contributed
 // the most pe-weighted hits.  Ignore hits with no truth information.
 static int plurality_of_truth(const sncluster & c)
@@ -2128,6 +2170,7 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.run = evt.run();
   sninfo.event = evt.event();
   sninfo.hitid = c.hits[0]->hitid;
+  sninfo.noisefrac = noise_frac(c);
   sntree->Fill();
 }
 
@@ -2572,12 +2615,13 @@ void ligoanalysis::produce(art::Event & evt)
     if(n == 0){
       // art provides no way of knowing how much events we will process,
       // and its own progress indicator is of limited use.
-      #if 0
-      printf("For progress indicator, assuming a 9k event long readout\n");
-      initprogressindicator(9000, 3);
-      #endif
+      #if 1
+      printf("For progress indicator, assuming a 220 event long readout\n");
+      initprogressindicator(220, 3);
+      #else
       printf("For progress indicator, assuming a 1e6 event MC\n");
       initprogressindicator(1000000, 6);
+      #endif
     }
     progressindicator(n++);
   }
