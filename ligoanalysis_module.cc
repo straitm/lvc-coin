@@ -126,7 +126,7 @@ enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND,
 
 // Hit information, distilled from CellHit, plus more info
 struct mhit{
-  unsigned int hitid; // CellHit->ID()
+  unsigned int hitid; // index into the noise slice hit array
   float tns; // fine timing, in nanoseconds
   float tpos; // transverse position
   float pe; // photoelectrons
@@ -626,28 +626,43 @@ struct{
   // likely part of the cluster is to be APD noise.
   int16_t minhitadc;
 
-  // Number of nanoseconds from the first hit to the last hit.  Large
-  // times may indicate background.  WARNING: We've seen that the Monte
-  // Carlo is overly optimistic about how tight the detector timing is,
-  // so cutting hard on this variable may look good in simulation, but
-  // remove many real events if there's a real supernova.
+  // Number of nanoseconds from the first hit to the last hit. Large
+  // times may indicate background. WARNING: We've seen that the Monte
+  // Carlo is overly optimistic about how tight the detector timing is.
+  // I have added an ad hoc correction which makes it look more like the
+  // data, but it probably isn't super reliable.
   float timeext_ns;
 
   // First and last planes in the cluster
   int minplane;
   int maxplane;
 
+  // Largest gap in planes. If there are fewer than three hits, this
+  // is just maxplane-minplane-1, or zero if maxplane == minplane. If
+  // there are three or more hits, this adds some information.
+  int planegap;
+
+  // Just maxplane - minplane + 1, for convenience.
+  int planeextent;
+
   // First and last cells in the X view. Cell zero is on the east side
   // of the detector. Currently always defined, since we require a hit
   // in each view to form a cluster. If we relax this requirement, and
-  // there is no X hit, mincellx will be 9999 and maxcellx will be -1.
+  // there is no X hit, mincellx and maxcellx will each be -1.
   int mincellx;
   int maxcellx;
+
+  // Same idea as planegap, planeextent.  If there are no x hits, each
+  // of these will be -1.
+  int cellxgap, cellxextent;
 
   // First and last cells in the Y view. Cell zero is on the bottom. See
   // commentary on the X versions of these variables.
   int mincelly;
   int maxcelly;
+
+  // See corresponding x variables.
+  int cellygap, cellyextent;
 
   // The time until and since the last slice that overlaps this hit
   // in space, plus a buffer of several cells and planes.  If this
@@ -687,12 +702,17 @@ struct{
   // The NOvA run number
   unsigned int run;
 
+  // The NOvA subrun number
+  unsigned int subrun;
+
   // The event number, where in this case "event" means a 5ms data
   // segment (or whatever length of time was read out for each "event"
   // for this data).
   unsigned int event;
 
   // The hit number inside the event for one of the hits of this cluster.
+  // It's the index of the hit in the noise slice, because CellHit::ID()
+  // seems to always return zero.
   unsigned int hitid;
 
   // Fraction of the hits in this cluster that are from noisy channels
@@ -737,9 +757,9 @@ static void init_mev_stuff()
 
   // These reduce the nonsense of typos that goes with TTree:Branch()
   #define Q(x) #x
-  #define BRN(x, t) sntree->Branch(Q(sninfo.x), &sninfo.x, Q(x/t))
-  #define BRH(x, t) showertree->Branch(Q(shwinfo.x), &shwinfo.x, Q(x/t))
-  #define BRT(x, t) tracktree->Branch(Q(x), &mtrackMCMLXXXI.x, Q(x/t))
+  #define BRN(x, t) sntree    ->Branch(Q(x), &sninfo.x, Q(x/t))
+  #define BRH(x, t) showertree->Branch(Q(x), &shwinfo.x, Q(x/t))
+  #define BRT(x, t) tracktree ->Branch(Q(x), &mtrackMCMLXXXI.x, Q(x/t))
   BRN(nhit,             I);
   BRN(truefrac,         F);
   BRN(truepdg,          I);
@@ -759,11 +779,18 @@ static void init_mev_stuff()
   BRN(timeext_ns,       F);
   BRN(minplane,         I);
   BRN(maxplane,         I);
+  BRN(planegap,         I);
+  BRN(planeextent,      I);
   BRN(mincellx,         I);
   BRN(maxcellx,         I);
+  BRN(cellxgap,         I);
+  BRN(cellxextent,      I);
   BRN(mincelly,         I);
   BRN(maxcelly,         I);
+  BRN(cellygap,         I);
+  BRN(cellyextent,      I);
   BRN(run,              i);
+  BRN(subrun,           i);
   BRN(event,            i);
   BRN(hitid,            i);
   BRN(noisefrac,        F);
@@ -1784,7 +1811,7 @@ static std::vector<mhit> select_hits_for_mev_search(
       }
     }
 
-    h.hitid = hit->ID();
+    h.hitid = i; // Because CellHit::ID() seems to always be zero
     h.noisy = chmask.RatesCalculated() && chmask.ChannelIsMasked(*hit);
     h.used  = false;
     h.paired= false;
@@ -1838,25 +1865,43 @@ static std::vector<mhit> select_hits_for_mev_search(
 // https://thedailywtf.com/articles/What_Is_Truth_0x3f_
 enum boOl { falSe, trUe, past_plane_of_interest };
 
+// Return trUe if this hit does cluster with the existing cluster,
+// falSe if it does not, but further hits should be checked,
+// and past_plane_of_interest if it does not and no more hits
+// should be checked because the hits are sorted by plane number
+// and this hit is too far downstream already.
 static boOl does_cluster(const sncluster & clu, const mhit & h)
 {
-  // 1. Check if this hit is zero or one plane away from an existing hit
-  // in the cluster.  If not, fail it.  If there's another hit between
+  // 1. Check if this hit is close enough in planes to an existing hit
+  // in the cluster. If not, fail it. If there's another hit between
   // which would bridge them, that's fine because we will come back and
   // check this hit again.
   //
-  // TODO: should we allow 3 (5, 7?) plane differences to capture neutron
-  // hit clusters?
+  // Should we allow non-adjacent planes to get neutron hit clusters?
+  // Yes, it seems so. It looks like 2.6% of neutrons do the golden
+  // thing of having hits in adjacent planes, but another 3.8% have hits
+  // in two (or more) non-adjacent planes. Unfortunately, they're spread
+  // out over many planes, with 1.1% two planes separated, 0.4% three
+  // planes, 0.7% four planes, 0.3% five planes, etc. (I think even is
+  // favored over odd because then both are either on the bright side or
+  // the dark side instead of being random.)
+  //
+  // What's the risk of accepting hits too far away from each other? (1)
+  // Lots background making huge file sizes that will just have to be
+  // cut later (2) Spoiling signal hits by attaching them to background
+  // hits. Well, we can detect (1) easily enough with a short test, and
+  // we'll just have to see about (2).
+  const int MAXPLANESAWAY = 10;
   bool another_hit_few_enough_planes_away = false;
   int leastpast = 1000;
   for(unsigned int i = 0; i < clu.hits.size(); i++){
-    if(abs(h.plane - clu.hits[i]->plane) <= 1)
+    if(abs(h.plane - clu.hits[i]->plane) <= MAXPLANESAWAY)
       another_hit_few_enough_planes_away = true;
     const int pastby = h.plane - clu.hits[i]->plane;
     if(pastby < leastpast) leastpast = pastby;
   }
 
-  if(leastpast > 1) return past_plane_of_interest;
+  if(leastpast > MAXPLANESAWAY) return past_plane_of_interest;
 
   if(!another_hit_few_enough_planes_away) return falSe;
 
@@ -1893,8 +1938,9 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // let's indefinitely shelve that idea for the day when the simple
   // approach doesn't seem sufficient, which it probably is.
 
-  // Should be fairly large to admit neutron clusters
-  const int maxcelldist = 10;
+  // Should be fairly large to admit neutron clusters, which are made
+  // out of gammas with mean free path ~25cm
+  const int MAXCELLDIST = 16;
 
   bool in_same_plane_as_another_hit = false;
   bool close_to_another_hit_in_w = false;
@@ -1905,7 +1951,7 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
 
   for(unsigned int i = 0; i < clu.hits.size(); i++)
     if(h.plane == clu.hits[i]->plane &&
-       abs(h.cell - clu.hits[i]->cell) <= maxcelldist)
+       abs(h.cell - clu.hits[i]->cell) <= MAXCELLDIST)
       close_to_another_hit_in_w = true;
 
   if(in_same_plane_as_another_hit && !close_to_another_hit_in_w) return falSe;
@@ -2057,22 +2103,62 @@ static std::pair<float, float> sum_pe(const sncluster & c)
 
 static int min_plane(const sncluster & c)
 {
-  int ans = 9999;
+  int ans = 9999; // There's always a plane, so result will never be 9999
   for(const mhit * h : c.hits) if(h->plane < ans) ans = h->plane;
   return ans;
 }
 
 static int max_plane(const sncluster & c)
 {
-  int ans = -1;
+  int ans = -1; // There's always a plane, so result will never be -1
   for(const mhit * h : c.hits) if(h->plane > ans) ans = h->plane;
   return ans;
+}
+
+static int plane_gap(const sncluster & c)
+{
+  std::vector<int> planes;
+  for(const auto h : c.hits) planes.push_back(h->plane);
+
+  if(planes.size() == 1) return 0;
+
+  std::sort(planes.begin(), planes.end());
+
+  int maxgap = 0;
+  for(unsigned int i = 0; i < planes.size()-1; i++){
+    const int gap = planes[i+1] - planes[i] - 1;
+    if(gap > maxgap)  maxgap = gap;
+  }
+
+  return maxgap;
+}
+
+static int cell_gap(const sncluster & c, const bool x)
+{
+  std::vector<int> cells;
+  for(const auto h : c.hits) if((h->isx ^ !x)) cells.push_back(h->cell);
+
+  if(cells.size() == 0) return -1;
+  if(cells.size() == 1) return 0;
+
+  std::sort(cells.begin(), cells.end());
+
+  int maxgap = 0;
+  for(unsigned int i = 0; i < cells.size()-1; i++){
+    const int gap = cells[i+1] - cells[i] - 1;
+    if(gap > maxgap)  maxgap = gap;
+  }
+
+  return maxgap;
 }
 
 static int min_cell(const sncluster & c, const bool x)
 {
   int ans = 9999;
   for(const auto h : c.hits) if((h->isx ^ !x) && h->cell < ans) ans = h->cell;
+
+  // It's more convenient if the invalid value is always -1
+  if(ans == 9999) ans = -1;
   return ans;
 }
 
@@ -2160,14 +2246,23 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.timeext_ns = time_ext_ns(c);
   sninfo.minplane = min_plane(c);
   sninfo.maxplane = max_plane(c);
+  sninfo.planegap = plane_gap(c);
+  sninfo.planeextent = sninfo.maxplane - sninfo.minplane + 1;
   sninfo.mincellx = min_cell(c, true);
   sninfo.maxcellx = max_cell(c, true);
+  sninfo.cellxgap = cell_gap(c, true);
+  sninfo.cellxextent = sninfo.maxcellx == -1? -1:
+                       sninfo.maxcellx - sninfo.mincellx + 1;
   sninfo.mincelly = min_cell(c, false);
   sninfo.maxcelly = max_cell(c, false);
+  sninfo.cellygap = cell_gap(c, false);
+  sninfo.cellyextent = sninfo.maxcelly == -1? -1:
+                       sninfo.maxcelly - sninfo.mincelly + 1;
   sninfo.toslice_s = to_slice(c);
   sninfo.sinceslice_s = since_slice(c);
   sninfo.sincebigshower_s = since_last_big_shower(c);
   sninfo.run = evt.run();
+  sninfo.subrun = evt.subRun();
   sninfo.event = evt.event();
   sninfo.hitid = c.hits[0]->hitid;
   sninfo.noisefrac = noise_frac(c);
