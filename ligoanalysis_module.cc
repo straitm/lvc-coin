@@ -100,7 +100,7 @@ static long long window_size_s = 1000;
 // Relaxed for the supernova analysis
 // Were: 85, 600, 107, 2500
 //
-// At least for the FD, I want to apply the cuts later, so don't 
+// At least for the FD, I want to apply the cuts later, so don't
 // cut here.
 static const int16_t fd_low_adc = 0, fd_high_adc =10000;
 static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
@@ -1626,6 +1626,12 @@ static void trueposition(int16_t & trueplane, int16_t & truecellx,
     if(pln % 2 == 0) truecelly = cl;
     else truecellx = cl;
   }
+
+  // I don't know why, but I get truecelly = 32690 in a small fraction
+  // of cases. Protect agains this. No apparent trouble with truecellx,
+  // but protect it too.
+  if(truecellx > 384) truecellx = -1;
+  if(truecelly > 384) truecelly = -1;
 }
 
 // Helper function for count_mev(). Selects hits that
@@ -1889,8 +1895,9 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // What's the risk of accepting hits too far away from each other? (1)
   // Lots background making huge file sizes that will just have to be
   // cut later (2) Spoiling signal hits by attaching them to background
-  // hits. Well, we can detect (1) easily enough with a short test, and
-  // we'll just have to see about (2).
+  // hits. Well, tests indicate that it about triples the file size. Since
+  // it also doubles the potential signal, that seems tolerable.
+  // We'll just have to see about (2).
   const int MAXPLANESAWAY = 10;
   bool another_hit_few_enough_planes_away = false;
   int leastpast = 1000;
@@ -1930,7 +1937,7 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
     if(fabs(time_new_corr - time_1st_corr) > timewindow) return falSe;
   }
 
-  // 3. Check that if this hit is in the same plane as another hit
+  // 3. Check that if this hit is in the same view as another hit
   // in the cluster, that they are nearby.  Otherwise, fail it.  This
   // introduces an order dependence, and in principle we could pick
   // a bad hit first, and then fail a subsequent good hit.  We could
@@ -1942,19 +1949,19 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // out of gammas with mean free path ~25cm
   const int MAXCELLDIST = 16;
 
-  bool in_same_plane_as_another_hit = false;
+  bool in_same_view_as_another_hit = false;
   bool close_to_another_hit_in_w = false;
 
   for(unsigned int i = 0; i < clu.hits.size(); i++)
-    if(h.plane == clu.hits[i]->plane)
-      in_same_plane_as_another_hit = true;
+    if(h.plane%2 == clu.hits[i]->plane%2)
+      in_same_view_as_another_hit = true;
 
   for(unsigned int i = 0; i < clu.hits.size(); i++)
-    if(h.plane == clu.hits[i]->plane &&
+    if(h.plane%2 == clu.hits[i]->plane%2 &&
        abs(h.cell - clu.hits[i]->cell) <= MAXCELLDIST)
       close_to_another_hit_in_w = true;
 
-  if(in_same_plane_as_another_hit && !close_to_another_hit_in_w) return falSe;
+  if(in_same_view_as_another_hit && !close_to_another_hit_in_w) return falSe;
 
   return trUe;
 }
