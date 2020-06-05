@@ -1840,7 +1840,11 @@ static std::vector<mhit> select_hits_for_mev_search(
         const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
         const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
         h.truepdg = particle->PdgCode();
-        h.trueE = particle->T();
+
+        // Warning: sim::Particle::T() is the *time*, not the kinetic
+        // energy like it should be!
+        h.trueE = particle->E() - particle->Mass();
+
         trueposition(h.trueplane, h.truecellx, h.truecelly,
                      particle->Position());
       }
