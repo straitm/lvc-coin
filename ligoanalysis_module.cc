@@ -534,8 +534,8 @@ static ligohist lh_blind("blind", true);
 
 static TTree * sntree = NULL, * showertree = NULL, * tracktree = NULL;
 
-// Anonymous struct for the output supernova analysis tree
-struct{
+// Structure of the output supernova analysis tree
+struct sninfo_t{
   // Fraction of the hits that are caused by Monte Carlo particles.
   // Typically 1 when the cluster is caused by a Monte Carlo event and
   // 0 when it is caused by real detector activity, presumed to be
@@ -615,11 +615,10 @@ struct{
   float pey;
 
   // Photoelectrons, corrected for attenuation, to get the number we
-  // would have gotten if the fibers were perfectly clear. At the
-  // moment, left as zero and filled in at a later stage of processing.
-  // This is because we don't match up prompt and delayed components
-  // of inverse-beta-decay events here and that may change your mind
-  // about where the event was.
+  // would have gotten if the fibers were perfectly clear. Only
+  // filled if the cluster has both x and y hits. (At a later stage
+  // of processing, can be filled for matched prompt/delayed pairs if
+  // between them, they have both x and y hits.)
   float unattpe;
 
   // Lowest ADC of any hit in this cluster.  This is a measure of how
@@ -1650,15 +1649,15 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   std::vector<mhit> mhits;
 
-  // Geometrically about correct, but perhaps should be scaled by density
-  // or radiation length or neutron cross section or something. Or not,
-  // since which of those is right depends on what you're looking at.
-  const double planes_per_cell = 76./39.;
-
   // Optimized for the FD, and at the ND, you can set this to any
   // positive value and it has the same result.
   const int planebuffer = 15;
-  const int cellbuffer = planebuffer * planes_per_cell;
+
+  // Slightly larger than the same geometry distance as planebuffer,
+  // but consider making even bigger because muons can sneak along
+  // many cells if they are moving in the xy plane, but they can't
+  // do that across planes.
+  const int cellbuffer = 30;
 
   #ifdef LOUD
     if(adc_cut){ // Only print once out of the 2 times this function is called
@@ -1793,16 +1792,16 @@ static std::vector<mhit> select_hits_for_mev_search(
       const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
       const double timeto_s = (sliceinfo[j].mintns - tns)*1e-9;
 
-      if(plane > sliceinfo[j].minplane - planebuffer &&
-         plane < sliceinfo[j].maxplane + planebuffer){
+      if(plane > (int)sliceinfo[j].minplane - planebuffer &&
+         plane < (int)sliceinfo[j].maxplane + planebuffer){
 
         if((hit->View() == geo::kX &&
-            (cell > sliceinfo[j].mincellx - cellbuffer &&
-             cell < sliceinfo[j].maxcellx + cellbuffer))
+            (cell > (int)sliceinfo[j].mincellx - cellbuffer &&
+             cell < (int)sliceinfo[j].maxcellx + cellbuffer))
            ||
            (hit->View() != geo::kX &&
-            (cell > sliceinfo[j].mincelly - cellbuffer &&
-             cell < sliceinfo[j].maxcelly + cellbuffer))){
+            (cell > (int)sliceinfo[j].mincelly - cellbuffer &&
+             cell < (int)sliceinfo[j].maxcelly + cellbuffer))){
 
           if(timesince_s > 0 && timesince_s < h.sinceslice_s)
             h.sinceslice_s = timesince_s;
@@ -2182,23 +2181,33 @@ static int max_cell(const sncluster & c, const bool x)
 
 static double to_slice(const sncluster & c)
 {
-  double sum = 0;
-  for(const auto h : c.hits) sum += h->toslice_s;
-  return sum/c.hits.size();
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->toslice_s < least)
+      least = h->toslice_s;
+  return least;
 }
 
 static double since_slice(const sncluster & c)
 {
-  double sum = 0;
-  for(const auto h : c.hits) sum += h->sinceslice_s;
-  return sum/c.hits.size();
+  // Previously used the mean instead of the smallest.
+  // That's dumb, because one of the hits could be right on top
+  // of a slice, but if the other one is too far away in space to
+  // see that slice, it will dilute away that information.
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->sinceslice_s < least)
+      least = h->sinceslice_s;
+  return least;
 }
 
 static double since_last_big_shower(const sncluster & c)
 {
-  double sum = 0;
-  for(const auto h : c.hits) sum += h->sincelastbigshower_s;
-  return sum/c.hits.size();
+  double least = 1e9;
+  for(const auto h : c.hits) 
+    if(h->sincelastbigshower_s < least)
+      least = h->sincelastbigshower_s;
+  return least;
 }
 
 static int16_t min_hit_adc(const sncluster & c)
@@ -2229,6 +2238,57 @@ static float time_ext_ns(const sncluster & c)
     if(deltat > maxtime) maxtime = deltat;
   }
   return maxtime - mintime;
+}
+
+// Should probably cache answers, since there are only 2*384 of them,
+// except this isn't a hotspot, so shouldn't.
+static double atten(const double w, const bool isx)
+{
+  // My light level tune from early 2020.  Good enough.
+  const double viewfactor = isx? 0.6374: 0.5546;
+  const double B = 0.4493, a1 = 203.6, a2 = 755.4;
+
+  // XXX FD only -- we may well want this for the ND as well
+  const double celllength = 1650;
+
+  const double att = viewfactor*(
+       B *exp(-(celllength-w)/a1) +
+    (1-B)*exp(-(celllength-w)/a2)
+
+    +  B *exp(-(2*celllength-(celllength-w))/a1) +
+    (1-B)*exp(-(2*celllength-(celllength-w))/a2)
+  );
+
+  return 1/att;
+}
+
+// If this event has XY position, calibrate it, i.e. write something useful
+// into 'unattpe'.  This uses a (fairly) simple attenuation curve to get
+// something proportional to energy.
+static void calibrate(sninfo_t & ev)
+{
+  if(ev.maxcellx == -1 || ev.maxcelly == -1){
+    ev.unattpe = -1;
+    return;
+  }
+
+  const int16_t cellx  = (ev.maxcellx + ev.mincellx)/2;
+  const int16_t celly  = (ev.maxcelly + ev.mincelly)/2;
+
+  // This is close enough for our purposes (deviations on order of
+  // a few mm because outer module walls are larger, etc.)
+  static const double extruwidth_cm = 63.455;
+  static const double two2onegluewidth_cm = 0.48;
+  static const unsigned int cellspermodule = 32;
+  static const double cellwidth = (2*extruwidth_cm + two2onegluewidth_cm)/
+                             cellspermodule;
+
+  // These are distances from the readout end, not the center
+  const double x = cellx * cellwidth;
+  const double y = celly * cellwidth;
+
+  ev.unattpe = ev.pex * atten(y, true)
+             + ev.pey * atten(x, false);
 }
 
 static void savecluster(const art::Event & evt, const sncluster & c)
@@ -2277,6 +2337,9 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.event = evt.event();
   sninfo.hitid = c.hits[0]->hitid;
   sninfo.noisefrac = noise_frac(c);
+
+  calibrate(sninfo); // set unattpe
+
   sntree->Fill();
 }
 
@@ -2722,8 +2785,8 @@ void ligoanalysis::produce(art::Event & evt)
       // art provides no way of knowing how much events we will process,
       // and its own progress indicator is of limited use.
       #if 1
-      printf("For progress indicator, assuming a 220 event long readout\n");
-      initprogressindicator(220, 3);
+      printf("For progress indicator, assuming a 2000 event long readout\n");
+      initprogressindicator(2000, 3);
       #else
       printf("For progress indicator, assuming a 1e6 event MC\n");
       initprogressindicator(1000000, 6);
