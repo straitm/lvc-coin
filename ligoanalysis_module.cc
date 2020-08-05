@@ -143,10 +143,20 @@ struct mhit{
   int16_t truecellx;
   int16_t truecelly;
 
+  // The minimum time to the next nearby track end
+  double totrkend_s;
+  // The time since the previous nearby track end
+  double sincetrkend_s;
+
   // The minimum time to the next slice overlapping this hit in space.
   double toslice_s;
   // The time since the previous slice overlapping this hit in space.
   double sinceslice_s;
+
+  // The minimum time to the next slice anywhere
+  double toanyslice_s;
+  // The time since the previous slice anywhere
+  double sinceanyslice_s;
 
   // The time since the previous big shower *anywhere*
   double sincelastbigshower_s;
@@ -203,6 +213,8 @@ struct mtrack{
   // True if the rb::Track end point doesn't seem to match the collection of
   // hits.
   bool endconfused;
+
+  float tns;
 
   uint32_t time_s;
   uint32_t time_ns;
@@ -663,12 +675,23 @@ struct sninfo_t{
   // See corresponding x variables.
   int cellygap, cellyextent;
 
-  // The time until and since the last slice that overlaps this hit
+  // The time in seconds until and since the last track end near this
+  // cluster.
+  double totrkend_s;
+  double sincetrkend_s;
+
+  // The time until and since the last slice that overlaps this cluster
   // in space, plus a buffer of several cells and planes.  If this
   // hit is during such a slice, both are zero.  If there is no such
   // slice for one or the other case, that one is set to 1e9.
   double toslice_s;
   double sinceslice_s;
+
+  // The time until and since the last slice anywhere. If this cluster is
+  // during such a slice, both are zero. If there is no such slice for
+  // one or the other case, that one is set to 1e9.
+  double toanyslice_s;
+  double sinceanyslice_s;
 
   // Time in seconds since the last "big" cosmic ray shower. This is
   // of interest because big showers can dump many (thousands) of
@@ -770,6 +793,8 @@ static void init_mev_stuff()
   BRN(time_ns,          i);
   BRN(toslice_s,        D);
   BRN(sinceslice_s,     D);
+  BRN(toanyslice_s,     D);
+  BRN(sinceanyslice_s,  D);
   BRN(sincebigshower_s, D);
   BRN(pex,              F);
   BRN(pey,              F);
@@ -1361,7 +1386,9 @@ static bool comparemtracktime(const mtrack & a, const mtrack & b)
   return a.time_s < b.time_s;
 }
 
-static void save_mtracks(const art::Event & evt)
+// Returns a useful list of (window)track information, with all tracks
+// going downward, and cell numbers for both x and y.
+static std::vector<mtrack> save_mtracks(const art::Event & evt)
 {
   art::ServiceHandle<geo::Geometry> geo;
 
@@ -1470,6 +1497,7 @@ static void save_mtracks(const art::Event & evt)
     thisone.endplane = endplane;
     thisone.lastisx = endisx;
 
+    thisone.tns = trk.MeanTNS();
     thisone.time_s =
       art_time_plus_some_ns(evt.time().value(), trk.MeanTNS()).first;
     thisone.time_ns =
@@ -1485,6 +1513,7 @@ static void save_mtracks(const art::Event & evt)
     tracktree->Fill();
   }
 
+  return mtracks;
 }
 
 // Builds list of distilled slice information
@@ -1640,43 +1669,22 @@ static void trueposition(int16_t & trueplane, int16_t & truecellx,
 // searching for unmodeled bursts.
 static std::vector<mhit> select_hits_for_mev_search(
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
+  const std::vector<mtrack> & trackinfo,
   const double livetime, const bool adc_cut, unsigned long long evttime)
 {
   art::ServiceHandle<geo::Geometry> geo;
 
-  // profiling indicates that it is helpful to save this.
-  const unsigned int nslice = sliceinfo.size();
+  // profiling indicates that it is helpful to save these.
+  const unsigned int nslice = sliceinfo.size(), ntrack = trackinfo.size();
 
   std::vector<mhit> mhits;
 
-  // Optimized for the FD, and at the ND, you can set this to any
-  // positive value and it has the same result.
-  const int planebuffer = 15;
+  // Not optimized.  Testing the change from 15 to 24 for the FD.
+  // In ND, probably just throw out whole detector.
+  const int planebuffer = 24;
 
-  // Slightly larger than the same geometry distance as planebuffer,
-  // but consider making even bigger because muons can sneak along
-  // many cells if they are moving in the xy plane, but they can't
-  // do that across planes.
-  const int cellbuffer = 30;
-
-  #ifdef LOUD
-    if(adc_cut){ // Only print once out of the 2 times this function is called
-      for(unsigned int j = 1; j < nslice; j++){
-        const unsigned int
-          nexplane = std::min(895, (int)sliceinfo[j].maxplane + planebuffer) -
-                     std::max(0,   (int)sliceinfo[j].minplane - planebuffer),
-          nexcellx = std::min(383, (int)sliceinfo[j].maxcellx + cellbuffer) -
-                     std::max(0,   (int)sliceinfo[j].mincellx - cellbuffer),
-          nexcelly = std::min(383, (int)sliceinfo[j].maxcelly + cellbuffer) -
-                     std::max(0,   (int)sliceinfo[j].mincelly - cellbuffer);
-        const float fracx = nexplane*nexcellx/(896*384.),
-                    fracy = nexplane*nexcelly/(896*384.);
-        const float frac = (fracx+fracy)/2;
-        printf("Excluding a rectangle of %u by %u %u in x y = %.5f of FD\n",
-               nexplane, nexcellx, nexcelly, frac);
-      }
-    }
-  #endif
+  // Testing if this is better
+  const int cellbuffer = 48;
 
   // Retain the last long slice time from the previous event
   static double prev_longslicetime = 0;
@@ -1772,6 +1780,8 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.sincelastbigshower_s = absolute_hit_time - prev_longslicetime;
     h.sinceslice_s = 1e9;
     h.toslice_s = 1e9;
+    h.sinceanyslice_s = 1e9;
+    h.toanyslice_s = 1e9;
 
     // Start at 1 to exclude the "noise" slice, where all the signal is.
     for(unsigned int j = 1; j < nslice; j++){
@@ -1792,10 +1802,21 @@ static std::vector<mhit> select_hits_for_mev_search(
       const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
       const double timeto_s = (sliceinfo[j].mintns - tns)*1e-9;
 
+      if(timesince_s > 0 && timesince_s < h.sinceanyslice_s)
+        h.sinceanyslice_s = timesince_s;
+
+      if(timeto_s > 0 && timeto_s < h.toanyslice_s)
+        h.toanyslice_s = timeto_s;
+
+      // It's in the middle of the time range of the slice
+      if(timesince_s <= 0 && timeto_s <= 0)
+        h.toanyslice_s = h.sinceanyslice_s = 0;
+
+      // Now with a spatial restriction
       if(plane > (int)sliceinfo[j].minplane - planebuffer &&
          plane < (int)sliceinfo[j].maxplane + planebuffer){
-
-        if((hit->View() == geo::kX &&
+        if(
+           (hit->View() == geo::kX &&
             (cell > (int)sliceinfo[j].mincellx - cellbuffer &&
              cell < (int)sliceinfo[j].maxcellx + cellbuffer))
            ||
@@ -1809,9 +1830,40 @@ static std::vector<mhit> select_hits_for_mev_search(
           if(timeto_s > 0 && timeto_s < h.toslice_s)
             h.toslice_s = timeto_s;
 
-          // It's in the middle of the time range of the slice
           if(timesince_s <= 0 && timeto_s <= 0)
             h.toslice_s = h.sinceslice_s = 0;
+        }
+      }
+    }
+
+    for(unsigned int j = 0; j < ntrack; j++){
+      const double since_s = (tns - trackinfo[j].tns)*1e-9;
+      const double to_s = (trackinfo[j].tns - tns)*1e-9;
+
+      // Generous box for regular Michel rejection. For stealth Michels,
+      // we'll rely on the huge slice box, so there's no need for this
+      // to 100% efficient (indeed, it's impossible for it to be).
+      const int trk_pln_buf = 5, trk_cel_buf = 9;
+
+      if(plane > (int)trackinfo[j].endplane - trk_pln_buf &&
+         plane < (int)trackinfo[j].endplane + trk_pln_buf){
+        if(
+           (hit->View() == geo::kX &&
+            (cell > (int)trackinfo[j].endcellx - trk_cel_buf &&
+             cell < (int)trackinfo[j].endcellx + trk_cel_buf))
+           ||
+           (hit->View() != geo::kX &&
+            (cell > (int)trackinfo[j].endcelly - trk_cel_buf &&
+             cell < (int)trackinfo[j].endcelly + trk_cel_buf))){
+
+          if(since_s > 0 && since_s < h.sincetrkend_s)
+            h.sincetrkend_s = since_s;
+
+          if(to_s > 0 && to_s < h.totrkend_s)
+            h.totrkend_s = to_s;
+
+          if(since_s <= 0 && to_s <= 0)
+            h.totrkend_s = h.sincetrkend_s = 0;
         }
       }
     }
@@ -2179,6 +2231,28 @@ static int max_cell(const sncluster & c, const bool x)
   return ans;
 }
 
+static double to_trkend(const sncluster & c)
+{
+  // Previously used the mean instead of the smallest. That's dumb,
+  // because one of the hits could be right on top of a trkend, but if
+  // the other one is too far away in space to see that trkend, it will
+  // dilute away that information.
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->totrkend_s < least)
+      least = h->totrkend_s;
+  return least;
+}
+
+static double since_trkend(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->sincetrkend_s < least)
+      least = h->sincetrkend_s;
+  return least;
+}
+
 static double to_slice(const sncluster & c)
 {
   double least = 1e9;
@@ -2190,10 +2264,6 @@ static double to_slice(const sncluster & c)
 
 static double since_slice(const sncluster & c)
 {
-  // Previously used the mean instead of the smallest.
-  // That's dumb, because one of the hits could be right on top
-  // of a slice, but if the other one is too far away in space to
-  // see that slice, it will dilute away that information.
   double least = 1e9;
   for(const auto h : c.hits)
     if(h->sinceslice_s < least)
@@ -2201,10 +2271,28 @@ static double since_slice(const sncluster & c)
   return least;
 }
 
+static double to_anyslice(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->toanyslice_s < least)
+      least = h->toanyslice_s;
+  return least;
+}
+
+static double since_anyslice(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->sinceanyslice_s < least)
+      least = h->sinceanyslice_s;
+  return least;
+}
+
 static double since_last_big_shower(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits) 
+  for(const auto h : c.hits)
     if(h->sincelastbigshower_s < least)
       least = h->sincelastbigshower_s;
   return least;
@@ -2329,9 +2417,18 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.cellygap = cell_gap(c, false);
   sninfo.cellyextent = sninfo.maxcelly == -1? -1:
                        sninfo.maxcelly - sninfo.mincelly + 1;
+
+  sninfo.sincetrkend_s = since_trkend(c);
+  sninfo.   totrkend_s =    to_trkend(c);
+
   sninfo.toslice_s = to_slice(c);
   sninfo.sinceslice_s = since_slice(c);
+
+  sninfo.toanyslice_s = to_anyslice(c);
+  sninfo.sinceanyslice_s = since_anyslice(c);
+
   sninfo.sincebigshower_s = since_last_big_shower(c);
+
   sninfo.run = evt.run();
   sninfo.subrun = evt.subRun();
   sninfo.event = evt.event();
@@ -2364,7 +2461,8 @@ static mhit hitwithplane(const unsigned int plane)
 // search for the sum of supernova like events and unpaired hits, once
 // with a PE cut and once without.
 static void count_mev(const art::Event & evt, const bool supernovalike,
-                      const std::vector<mslice> & sliceinfo)
+                      const std::vector<mslice> & sliceinfo,
+                      const std::vector<mtrack> & trackinfo)
 {
   art::Handle< std::vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -2379,7 +2477,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   // Find hits which we'll accept for possible membership in pairs.
   // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits =
-    select_hits_for_mev_search((*slice)[0], sliceinfo, livetime,
+    select_hits_for_mev_search((*slice)[0], sliceinfo, trackinfo, livetime,
       supernovalike, evt.time().value());
 
   std::sort(mhits.begin(), mhits.end(), compare_plane);
@@ -2751,10 +2849,11 @@ count_tracks_containedslices(const art::Event & evt,
 }
 
 static void count_all_mev(art::Event & evt,
-                          const std::vector<mslice> & sliceinfo)
+                          const std::vector<mslice> & sliceinfo,
+                          const std::vector<mtrack> & trackinfo)
 {
-  count_mev(evt, true, sliceinfo); // supernova-like
-  count_mev(evt, false, sliceinfo); // unmodeled low energy
+  count_mev(evt, true , sliceinfo, trackinfo); // supernova-like
+  count_mev(evt, false, sliceinfo, trackinfo); // unmodeled low energy
 }
 
 static void count_livetime(const art::Event & evt)
@@ -2781,18 +2880,23 @@ void ligoanalysis::produce(art::Event & evt)
 {
   {
     static unsigned int n = 0;
-    if(n == 0){
+    // Start at 1 because the first event takes forever as everything
+    // is initialized.
+    if(n == 1){
       // art provides no way of knowing how much events we will process,
       // and its own progress indicator is of limited use.
       #if 1
       printf("For progress indicator, assuming a 2000 event long readout\n");
-      initprogressindicator(2000, 3);
+      initprogressindicator(2000-1, 3);
       #else
       printf("For progress indicator, assuming a 1e6 event MC\n");
-      initprogressindicator(1000000, 6);
+      initprogressindicator(1000000-1, 6);
       #endif
     }
-    progressindicator(n++);
+    else if(n > 1){
+      progressindicator(n - 1);
+    }
+    n++;
   }
 
   // Must be called on every event to prevent SIGPIPE loops.
@@ -2866,8 +2970,9 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
+  std::vector<mtrack> trackinfo;
   if(fAnalysisClass == SNonlyFD || fAnalysisClass == MichelFD)
-    save_mtracks(evt);
+    trackinfo = save_mtracks(evt);
 
   // Make list of all times and locations of "physics" slices. For the
   // MeV search, we will exclude other hits near them in time to drop
@@ -2889,18 +2994,18 @@ void ligoanalysis::produce(art::Event & evt)
     case MinBiasFD:
       count_tracks_containedslices(evt, sliceinfo);
       count_upmu(evt);
-      count_all_mev(evt, sliceinfo);
+      count_all_mev(evt, sliceinfo, trackinfo);
       break;
     case SNonlyFD:
     case MichelFD:
-      count_mev(evt, true /* supernova-like */, sliceinfo);
+      count_mev(evt, true /* supernova-like */, sliceinfo, trackinfo);
       break;
     case MinBiasND:
       count_tracks_containedslices(evt, sliceinfo);
-      count_all_mev(evt, sliceinfo);
+      count_all_mev(evt, sliceinfo, trackinfo);
       break;
     case SNonlyND:
-      count_mev(evt, true /* supernova-like */, sliceinfo);
+      count_mev(evt, true /* supernova-like */, sliceinfo, trackinfo);
       break;
     case Blind:
       count_livetime(evt);

@@ -2,7 +2,7 @@
 #include "services.fcl"
 #include "BackTracker.fcl"
 
-process_name: ligosnonlyfd
+process_name: ligosnonlyfdanaonly
 
 services:
 {
