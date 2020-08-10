@@ -87,6 +87,7 @@ static const int US_PER_MICROSLICE = 50; // I hope this is always true
 // time from a histogram to the time gotten from the index. Does that
 // model the angular effect?
 static const float lightspeed = 17.; // cm/ns
+static const float invlightspeed = 1/lightspeed; // ns/cm
 
 // z extent of a plane (slightly wrong at block boundaries, but for
 // my purposes, it doesn't matter)
@@ -102,39 +103,47 @@ static long long window_size_s = 1000;
 //
 // At least for the FD, I want to apply the cuts later, so don't
 // cut here.
-static const int16_t fd_low_adc = 0, fd_high_adc =10000;
-static const int16_t nd_low_adc = 0, nd_high_adc = 2500;
+static const int16_t fd_high_adc =10000;
+static const int16_t nd_high_adc = 2500;
 
-// Smallest ADC to save a single hit as a cluster. Chosen so that the
-// number of single hits FD background events written out is roughly the
-// same as the number of multihit ones (instead of 30x as it would be
-// without a cut here).
+// Smallest ADC to save a single hit as a cluster. Without a cut here,
+//the output is extremely large.
 //
 // About 2/3 of the FD signal with any hits has only one hit. 70% of
 // that is above 65 ADC.
 //
-// I am relaxing this a bit for use with my IBD/betan selector.
-static const int16_t MINSINGLETONADC = 60;
+// Not clear what the best value is here
+static const int16_t MINSINGLETONADC = 130;
+
+// Generous box for regular Michel rejection. For stealth Michels,
+// we'll rely on the huge slice box, so there's no need for this
+// to 100% efficient (indeed, it's impossible for it to be).
+const int trk_pln_buf = 5, trk_cel_buf = 9;
+
+// Box to put around each slice for determining if we are near it.
+// Not optimized.  In ND, probably just throw out whole detector.
+const int slc_pln_buf = 24;
+const int slc_cel_buf = 48;
+
 
 static int gDet = caf::kUNKNOWN;
 
 // Types of analysis, dependent on which trigger we're looking at
 enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND,
                         MichelFD, SNonlyFD, SNonlyND,
-                        Blind, MAX_ANALYSIS_CLASS }
-  static analysis_class = MAX_ANALYSIS_CLASS;
+                        Blind, MAX_ANALYSIS_CLASS
+} static analysis_class = MAX_ANALYSIS_CLASS;
 
 // Hit information, distilled from CellHit, plus more info
 struct mhit{
   unsigned int hitid; // index into the noise slice hit array
   float tns; // fine timing, in nanoseconds
-  float tpos; // transverse position
+  float tposoverc; // transverse position divided by speed of light
   float pe; // photoelectrons
   int16_t adc;
-  uint16_t plane;
+  int16_t plane;
   bool isx;
   int cell;
-  bool supernovalike;
   bool used; // has this hit been used in a cluster yet?
   bool paired; // has this hit been used in a cluster of size 2+ yet?
   int truepdg; // For MC, what the truth is
@@ -174,8 +183,10 @@ struct sncluster{
 // Minimal slice information, distilled from rb::Cluster
 struct mslice{
   float mintns, maxtns;
-  uint16_t minplane, maxplane;
-  uint16_t mincellx, maxcellx, mincelly, maxcelly;
+
+  // Extents with buffers
+  int16_t bminplane, bmaxplane;
+  int16_t bmincellx, bmaxcellx, bmincelly, bmaxcelly;
 
   float sliceduration;
 
@@ -203,7 +214,7 @@ struct mtrack{
   // The plane the track ended. If this was an X plane, the X cell the
   // track ended, and the estimated nearest Y cell. If it was a Y plane,
   // vice versa.
-  uint16_t endplane, endcellx, endcelly;
+  int16_t endplane, endcellx, endcelly;
 
   // Whether the last plane is X.  This is redundant with 'endplane',
   // but I can never remember whether X planes are even or odd, and this
@@ -215,9 +226,6 @@ struct mtrack{
   bool endconfused;
 
   float tns;
-
-  uint32_t time_s;
-  uint32_t time_ns;
 } mtrackMCMLXXXI;
 
 class ligoanalysis : public art::EDProducer {
@@ -544,7 +552,7 @@ static ligohist lh_blind("blind", true);
 
 /***************************** Tree stuff ****************************/
 
-static TTree * sntree = NULL, * showertree = NULL, * tracktree = NULL;
+static TTree * sntree = NULL;
 
 // Structure of the output supernova analysis tree
 struct sninfo_t{
@@ -742,30 +750,6 @@ struct sninfo_t{
 
 } sninfo;
 
-// Anonymous struct to hold shower information.  We might be able to
-// connect large showers to subsequent SN-like events using this.
-//
-// (Why is this not just an mslice? Maybe there's a reason?)
-struct {
-  // Mean time of the hits in this cluster in seconds and nanoseconds
-  // since Jan 1, 1970.
-  uint32_t time_s;
-  uint32_t time_ns;
-
-  // From rb::Cluster::TotalADC()
-  double totaladc;
-
-  // Time in ns from the first hit to the last hit. Mostly a proxy
-  // for whether the shower walloped some FEBs enough that there were
-  // flashers, and enough activity that they were lumped into the same
-  // slice. Maybe useful beyond this.
-  float sliceduration;
-
-  // Mean position in cm as gotten from rb::Cluster::MeanX(), etc.
-  double meanx, meany, meanz;
-
-} shwinfo;
-
 /*********************************************************************/
 
 static void init_mev_stuff()
@@ -780,8 +764,6 @@ static void init_mev_stuff()
   // These reduce the nonsense of typos that goes with TTree:Branch()
   #define Q(x) #x
   #define BRN(x, t) sntree    ->Branch(Q(x), &sninfo.x, Q(x/t))
-  #define BRH(x, t) showertree->Branch(Q(x), &shwinfo.x, Q(x/t))
-  #define BRT(x, t) tracktree ->Branch(Q(x), &mtrackMCMLXXXI.x, Q(x/t))
   BRN(nhit,             I);
   BRN(truefrac,         F);
   BRN(truepdg,          I);
@@ -791,6 +773,8 @@ static void init_mev_stuff()
   BRN(truecelly,        S);
   BRN(time_s,           i);
   BRN(time_ns,          i);
+  BRN(totrkend_s,       D);
+  BRN(sincetrkend_s,    D);
   BRN(toslice_s,        D);
   BRN(sinceslice_s,     D);
   BRN(toanyslice_s,     D);
@@ -818,24 +802,6 @@ static void init_mev_stuff()
   BRN(event,            i);
   BRN(hitid,            i);
   BRN(noisefrac,        F);
-
-  showertree = t->make<TTree>("shw", "");
-  BRH(time_s,        i);
-  BRH(time_ns,       i);
-  BRH(totaladc,      D);
-  BRH(sliceduration, F);
-  BRH(meanx,         D);
-  BRH(meany,         D);
-  BRH(meanz,         D);
-
-  tracktree = t->make<TTree>("trk", "");
-  BRT(endplane,    s);
-  BRT(endcellx,    s);
-  BRT(endcelly,    s);
-  BRT(lastisx,     O);
-  BRT(endconfused, O);
-  BRT(time_s,      i);
-  BRT(time_ns,     i);
 }
 
 static void init_blind_hist()
@@ -1087,12 +1053,14 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       // Fall-through
     case SNonlyFD:
     case MichelFD:
+      init_lh(lh_rawtrigger);
       init_mev_stuff();
       break;
     case MinBiasND:
       init_track_and_contained_hists();
       // Fall-through
     case SNonlyND:
+      init_lh(lh_rawtrigger);
       init_mev_stuff();
       break;
     case Blind:
@@ -1177,9 +1145,13 @@ static double rawlivetime(const art::Event & evt, const bool veryraw = false)
 }
 
 // Add 'sig' to the signal and 'live' to the livetime in bin number 'bin'.
-static void THplusequals(ligohist & lh, const int bin, const double sig,
+static void THplusequals(ligohist & lh, int bin, const double sig,
                          const double live)
 {
+  // Ensure out-of-range falls into the overflow bins rather than being lost
+  if(bin < 0) bin = 0;
+  if(bin > lh.sig->GetNbinsX()+1) bin = lh.sig->GetNbinsX()+1;
+
   // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
   // the bin number twice.
   lh.sig->SetBinContent(bin, lh.sig->GetBinContent(bin) + sig);
@@ -1362,13 +1334,7 @@ static void count_ddenergy(const art::Event & evt)
   }
 }
 
-static bool compare_mslice_time(const mslice & a, const mslice & b)
-{
-  if(a.time_s == b.time_s) return a.time_ns < b.time_ns;
-  return a.time_s < b.time_s;
-}
-
-struct hit { uint16_t plane, cell; };
+struct hit { int16_t plane, cell; };
 
 static bool comparecell(const hit & a, const hit & b)
 {
@@ -1382,8 +1348,7 @@ static bool compareplane(const hit & a, const hit & b)
 
 static bool comparemtracktime(const mtrack & a, const mtrack & b)
 {
-  if(a.time_s == b.time_s) return a.time_ns < b.time_ns;
-  return a.time_s < b.time_s;
+  return a.tns < b.tns;
 }
 
 // Returns a useful list of (window)track information, with all tracks
@@ -1394,6 +1359,8 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
 
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("windowtrack", tracks);
+  if(tracks->empty())
+    fprintf(stderr, "Unexpected empty windowtrack vector\n");
 
   // Don't assume input tracks are stored in time order. Process them
   // all, sort, and write out in time order.
@@ -1429,8 +1396,8 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
     std::reverse(yhits.begin(), yhits.end());
 
     // Ok, this is the bottom of the track in the Y view
-    uint16_t minycell = yhits[yhits.size()-1].cell;
-    const uint16_t lastyplane = yhits[yhits.size()-1].plane;
+    int16_t minycell = yhits[yhits.size()-1].cell;
+    const int16_t lastyplane = yhits[yhits.size()-1].plane;
 
     // Figure out if the track end is in X or Y
 
@@ -1439,16 +1406,16 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
     const bool increasingz = yhits[0].plane < yhits[yhits.size()-1].plane;
     if(!increasingz) std::reverse(xhits.begin(), xhits.end());
 
-    const uint16_t lastxplane = xhits[xhits.size()-1].plane;
+    const int16_t lastxplane = xhits[xhits.size()-1].plane;
 
     // In time order, is X cell number increasing?
     const bool increasingx = xhits[0].cell < xhits[xhits.size()-1].cell;
 
-    uint16_t endxcell = (*(increasingx?
+    int16_t endxcell = (*(increasingx?
       std::max_element(xhits.begin(), xhits.end(), comparecell):
       std::min_element(xhits.begin(), xhits.end(), comparecell))).cell;
 
-    const uint16_t endplane = increasingz? std::max(lastyplane, lastxplane)
+    const int16_t endplane = increasingz? std::max(lastyplane, lastxplane)
                                          : std::min(lastyplane, lastxplane);
 
     const bool endisx = endplane == lastxplane;
@@ -1498,20 +1465,11 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
     thisone.lastisx = endisx;
 
     thisone.tns = trk.MeanTNS();
-    thisone.time_s =
-      art_time_plus_some_ns(evt.time().value(), trk.MeanTNS()).first;
-    thisone.time_ns =
-      art_time_plus_some_ns(evt.time().value(), trk.MeanTNS()).second;
 
     mtracks.push_back(thisone);
   }
 
   std::sort(mtracks.begin(), mtracks.end(), comparemtracktime);
-
-  for(mtrack & marshproofnorth : mtracks){
-    mtrackMCMLXXXI = marshproofnorth;
-    tracktree->Fill();
-  }
 
   return mtracks;
 }
@@ -1522,8 +1480,9 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 {
   std::vector<mslice> sliceinfo;
 
-  // Include slice zero, the "noise" slice, to preserve numbering
-  for(unsigned int i = 0; i < slice->size(); i++){
+  // Start at 1 to skip "noise" slice. Slice indicies will all be off by
+  // one, but makes it easier not to accidentally use the noise slice.
+  for(unsigned int i = 1; i < slice->size(); i++){
     mslice slc;
     memset(&slc, 0, sizeof(mslice));
 
@@ -1547,18 +1506,18 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.meany = (*slice)[i].MeanY();
     slc.meanz = (*slice)[i].MeanZ();
 
-    slc.minplane = (*slice)[i].MinPlane();
-    slc.maxplane = (*slice)[i].MaxPlane();
+    slc.bminplane = (*slice)[i].MinPlane() - slc_pln_buf;
+    slc.bmaxplane = (*slice)[i].MaxPlane() + slc_pln_buf;
     if((*slice)[i].NCell(geo::kX)){
-      slc.mincellx = (*slice)[i].MinCell(geo::kX);
-      slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
+      slc.bmincellx = (*slice)[i].MinCell(geo::kX) - slc_cel_buf;
+      slc.bmaxcellx = (*slice)[i].MaxCell(geo::kX) + slc_cel_buf;
     }
     if((*slice)[i].NCell(geo::kY)){
-      slc.mincelly = (*slice)[i].MinCell(geo::kY);
-      slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
+      slc.bmincelly = (*slice)[i].MinCell(geo::kY) - slc_cel_buf;
+      slc.bmaxcelly = (*slice)[i].MaxCell(geo::kY) + slc_cel_buf;
     }
 
-    if(i == 0 || i == 1)
+    if(i == 1 || i == 2)
       slc.mergeslice = i;
     else if(slc.mintns < sliceinfo[sliceinfo.size()-1].maxtns)
       slc.mergeslice = sliceinfo[sliceinfo.size()-1].mergeslice;
@@ -1569,31 +1528,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     // long trigger sub-triggers, because this is a list of things to
     // *exclude*.
     sliceinfo.push_back(slc);
-  }
-
-  std::vector<mslice> tosave;
-  for(unsigned int i = 1; i < sliceinfo.size(); i++){
-    const mslice & slc = sliceinfo[i];
-
-    // "Tuned" by plotting these against each other and cutting out the hot
-    // spot (presumed to be single muons) with rough symmetry between the two
-    // variables.
-    if(slc.sliceduration > 900 || slc.totaladc > 1.5e5)
-      tosave.push_back(slc);
-  }
-
-  std::sort(tosave.begin(), tosave.end(), compare_mslice_time);
-
-  for(const auto & s : tosave){
-    shwinfo.time_s = s.time_s;
-    shwinfo.time_ns = s.time_ns;
-    shwinfo.totaladc = s.totaladc;
-    shwinfo.sliceduration = s.sliceduration;
-    shwinfo.meanx = s.meanx;
-    shwinfo.meany = s.meany;
-    shwinfo.meanz = s.meanz;
-
-    showertree->Fill();
   }
 
   return sliceinfo;
@@ -1679,16 +1613,6 @@ static std::vector<mhit> select_hits_for_mev_search(
 
   std::vector<mhit> mhits;
 
-  // Not optimized.  Testing the change from 15 to 24 for the FD.
-  // In ND, probably just throw out whole detector.
-  const int planebuffer = 24;
-
-  // Testing if this is better
-  const int cellbuffer = 48;
-
-  // Retain the last long slice time from the previous event
-  static double prev_longslicetime = 0;
-
   // Units are hits/event: cold threshold, hot threshold.
   // A normal channel has about 120Hz.
   // Andrey's more sophisticated treatment in
@@ -1720,10 +1644,8 @@ static std::vector<mhit> select_hits_for_mev_search(
 
     if(!uniquedata_tdc(livetime, hit->TDC())) continue;
 
-    const int16_t low_adc  = gDet == caf::kNEARDET? nd_low_adc : fd_low_adc;
     const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
-    if(adc_cut && hit->ADC() <= low_adc) continue;
     if(hit->ADC() >= high_adc) continue;
 
     const int cell  = hit->Cell();
@@ -1772,35 +1694,33 @@ static std::vector<mhit> select_hits_for_mev_search(
     const float tns = hit->TNS()
       + (hit->IsMC()?randfortiming.Gaus()*23.:0);
 
-    // with 238ns precision
-    const double absolute_hit_time =
-      art_time_to_unix_double(evttime)+tns*1e-9;
-
     mhit h;
-    h.sincelastbigshower_s = absolute_hit_time - prev_longslicetime;
+    h.sincelastbigshower_s = 1e9;
+    h.sincetrkend_s = 1e9;
+    h.totrkend_s = 1e9;
     h.sinceslice_s = 1e9;
     h.toslice_s = 1e9;
     h.sinceanyslice_s = 1e9;
     h.toanyslice_s = 1e9;
 
-    // Start at 1 to exclude the "noise" slice, where all the signal is.
-    for(unsigned int j = 1; j < nslice; j++){
-      // Previously cut from 2e3 before to 13e3 after, and for 200e3
-      // after for long slices.  Now write out information and do
-      // the cut downstream.
-
-      if(sliceinfo[j].longslice){
-        const double slicetime = art_time_to_unix_double(evttime)
-                                 + sliceinfo[j].mintns*1e-9;
-
-        const double longslice2hit = absolute_hit_time - slicetime;
-
-        if(longslice2hit > 0 && longslice2hit < h.sincelastbigshower_s)
-          h.sincelastbigshower_s = longslice2hit;
-      }
+    // How long since the last "big shower" (a.k.a. long slice) anywhere.
+    // This looks back at least ~500us since we're looking at all slices
+    // from this trigger and the previous one.
+    //
+    // Construct measures of how close we are to slices. Start at 0 because
+    // we have not included the "noise" slice in sliceinfo.
+    for(unsigned int j = 0; j < nslice; j++){
+      if(!sliceinfo[j].longslice) continue;
 
       const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
-      const double timeto_s = (sliceinfo[j].mintns - tns)*1e-9;
+
+      if(timesince_s > 0 && timesince_s < h.sincelastbigshower_s)
+        h.sincelastbigshower_s = timesince_s;
+    }
+
+    for(unsigned int j = 0; j < nslice; j++){
+      const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
+      const double timeto_s    = (sliceinfo[j].mintns - tns)*1e-9;
 
       if(timesince_s > 0 && timesince_s < h.sinceanyslice_s)
         h.sinceanyslice_s = timesince_s;
@@ -1813,16 +1733,15 @@ static std::vector<mhit> select_hits_for_mev_search(
         h.toanyslice_s = h.sinceanyslice_s = 0;
 
       // Now with a spatial restriction
-      if(plane > (int)sliceinfo[j].minplane - planebuffer &&
-         plane < (int)sliceinfo[j].maxplane + planebuffer){
+      if(plane > sliceinfo[j].bminplane && plane < sliceinfo[j].bmaxplane){
         if(
            (hit->View() == geo::kX &&
-            (cell > (int)sliceinfo[j].mincellx - cellbuffer &&
-             cell < (int)sliceinfo[j].maxcellx + cellbuffer))
+            (cell > sliceinfo[j].bmincellx &&
+             cell < sliceinfo[j].bmaxcellx))
            ||
            (hit->View() != geo::kX &&
-            (cell > (int)sliceinfo[j].mincelly - cellbuffer &&
-             cell < (int)sliceinfo[j].maxcelly + cellbuffer))){
+            (cell > sliceinfo[j].bmincelly &&
+             cell < sliceinfo[j].bmaxcelly))){
 
           if(timesince_s > 0 && timesince_s < h.sinceslice_s)
             h.sinceslice_s = timesince_s;
@@ -1830,31 +1749,30 @@ static std::vector<mhit> select_hits_for_mev_search(
           if(timeto_s > 0 && timeto_s < h.toslice_s)
             h.toslice_s = timeto_s;
 
-          if(timesince_s <= 0 && timeto_s <= 0)
+          if(timesince_s <= 0 && timeto_s <= 0){
             h.toslice_s = h.sinceslice_s = 0;
+            // Safe to break because we've also set *anyslice above to 0.
+            break;
+          }
         }
       }
     }
 
+    // Construct measures of how close we are to track ends
     for(unsigned int j = 0; j < ntrack; j++){
       const double since_s = (tns - trackinfo[j].tns)*1e-9;
-      const double to_s = (trackinfo[j].tns - tns)*1e-9;
+      const double to_s    = (trackinfo[j].tns - tns)*1e-9;
 
-      // Generous box for regular Michel rejection. For stealth Michels,
-      // we'll rely on the huge slice box, so there's no need for this
-      // to 100% efficient (indeed, it's impossible for it to be).
-      const int trk_pln_buf = 5, trk_cel_buf = 9;
-
-      if(plane > (int)trackinfo[j].endplane - trk_pln_buf &&
-         plane < (int)trackinfo[j].endplane + trk_pln_buf){
+      if(plane > trackinfo[j].endplane - trk_pln_buf &&
+         plane < trackinfo[j].endplane + trk_pln_buf){
         if(
            (hit->View() == geo::kX &&
-            (cell > (int)trackinfo[j].endcellx - trk_cel_buf &&
-             cell < (int)trackinfo[j].endcellx + trk_cel_buf))
+            (cell > trackinfo[j].endcellx - trk_cel_buf &&
+             cell < trackinfo[j].endcellx + trk_cel_buf))
            ||
            (hit->View() != geo::kX &&
-            (cell > (int)trackinfo[j].endcelly - trk_cel_buf &&
-             cell < (int)trackinfo[j].endcelly + trk_cel_buf))){
+            (cell > trackinfo[j].endcelly - trk_cel_buf &&
+             cell < trackinfo[j].endcelly + trk_cel_buf))){
 
           if(since_s > 0 && since_s < h.sincetrkend_s)
             h.sincetrkend_s = since_s;
@@ -1862,8 +1780,10 @@ static std::vector<mhit> select_hits_for_mev_search(
           if(to_s > 0 && to_s < h.totrkend_s)
             h.totrkend_s = to_s;
 
-          if(since_s <= 0 && to_s <= 0)
+          if(since_s <= 0 && to_s <= 0){
             h.totrkend_s = h.sincetrkend_s = 0;
+            break;
+          }
         }
       }
     }
@@ -1876,10 +1796,9 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.plane = plane;
     h.isx   = hit->View() == geo::kX;
     h.cell  = cell;
-    h.tpos  = geo->CellTpos(plane, cell);
+    h.tposoverc = geo->CellTpos(plane, cell) * invlightspeed;
     h.pe    = hit->PE();
     h.adc   = hit->ADC();
-    h.supernovalike = h.adc > low_adc;
 
     if(hit->IsMC()){
       art::ServiceHandle<cheat::BackTracker> bt;
@@ -1911,20 +1830,28 @@ static std::vector<mhit> select_hits_for_mev_search(
     mhits.push_back(h);
   }
 
-  // Save long slice time for next event
-  for(unsigned int j = 1; j < nslice; j++){
-    if(!sliceinfo[j].longslice) continue;
-
-    const double longslicetime = art_time_to_unix_double(evttime)
-                                 + sliceinfo[j].mintns*1e-9;
-    if(longslicetime > prev_longslicetime) prev_longslicetime = longslicetime;
-  }
-
   return mhits;
 }
 
 // https://thedailywtf.com/articles/What_Is_Truth_0x3f_
 enum boOl { falSe, trUe, past_plane_of_interest };
+
+// Should we allow non-adjacent planes to get neutron hit clusters?
+// Yes, it seems so. It looks like 2.6% of neutrons do the golden
+// thing of having hits in adjacent planes, but another 3.8% have hits
+// in two (or more) non-adjacent planes. Unfortunately, they're spread
+// out over many planes, with 1.1% two planes separated, 0.4% three
+// planes, 0.7% four planes, 0.3% five planes, etc. (I think even is
+// favored over odd because then both are either on the bright side or
+// the dark side instead of being random.)
+//
+// What's the risk of accepting hits too far away from each other? (1)
+// Lots background making huge file sizes that will just have to be
+// cut later (2) Spoiling signal hits by attaching them to background
+// hits. Well, tests indicate that it about triples the file size. Since
+// it also doubles the potential signal, that seems tolerable.
+// We'll just have to see about (2).
+static const int MAXPLANESAWAY = 10;
 
 // Return trUe if this hit does cluster with the existing cluster,
 // falSe if it does not, but further hits should be checked,
@@ -1937,23 +1864,6 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // in the cluster. If not, fail it. If there's another hit between
   // which would bridge them, that's fine because we will come back and
   // check this hit again.
-  //
-  // Should we allow non-adjacent planes to get neutron hit clusters?
-  // Yes, it seems so. It looks like 2.6% of neutrons do the golden
-  // thing of having hits in adjacent planes, but another 3.8% have hits
-  // in two (or more) non-adjacent planes. Unfortunately, they're spread
-  // out over many planes, with 1.1% two planes separated, 0.4% three
-  // planes, 0.7% four planes, 0.3% five planes, etc. (I think even is
-  // favored over odd because then both are either on the bright side or
-  // the dark side instead of being random.)
-  //
-  // What's the risk of accepting hits too far away from each other? (1)
-  // Lots background making huge file sizes that will just have to be
-  // cut later (2) Spoiling signal hits by attaching them to background
-  // hits. Well, tests indicate that it about triples the file size. Since
-  // it also doubles the potential signal, that seems tolerable.
-  // We'll just have to see about (2).
-  const int MAXPLANESAWAY = 10;
   bool another_hit_few_enough_planes_away = false;
   int leastpast = 1000;
   for(unsigned int i = 0; i < clu.hits.size(); i++){
@@ -1986,8 +1896,8 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
     // These hits are in different views, so for each, use the other's
     // transverse position to correct the time;
     const float
-      time_1st_corr = clu.hits[0]->tns +            h.tpos / lightspeed,
-      time_new_corr =            h.tns + clu.hits[0]->tpos / lightspeed;
+      time_1st_corr = clu.hits[0]->tns +            h.tposoverc,
+      time_new_corr =            h.tns + clu.hits[0]->tposoverc;
 
     if(fabs(time_new_corr - time_1st_corr) > timewindow) return falSe;
   }
@@ -2317,8 +2227,8 @@ static float time_ext_ns(const sncluster & c)
       deltat = c.hits[0]->tns - h->tns;
     else{
       const float
-        time_1st_corr = c.hits[0]->tns +         h->tpos / lightspeed,
-        time_oth_corr =         h->tns + c.hits[0]->tpos / lightspeed;
+        time_1st_corr = c.hits[0]->tns +         h->tposoverc,
+        time_oth_corr =         h->tns + c.hits[0]->tposoverc;
       deltat = time_1st_corr - time_oth_corr;
     }
 
@@ -2489,46 +2399,43 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   // Starting with every eligible hit, form a cluster (possibly of size one)
   const unsigned int nmhits = mhits.size(); // really seems to help speed
   for(unsigned int i = 0; i < nmhits; i++){
-    // Even if not doing a search for supernova-like events, only allow
-    // supernova-like hits into pairs. It doesn't make physical sense
-    // to pair low energy hits (the hypothesis is that the particle
-    // wouldn't be able to cross two planes).
-    if(!mhits[i].supernovalike) continue;
     if(mhits[i].used) continue;
 
+    // We will use these hits, but not *start* clusters from them.
+    if(mhits[i].adc < MINSINGLETONADC) continue;
+
     sncluster clu;
-    clu.hits.push_back(&mhits[i]);
     mhits[i].used = true;
+    clu.hits.push_back(&mhits[i]);
 
     bool done = false;
     do{
       done = true;
 
-      // mhits is sorted by plane number. Find the first other hit
-      // that has a plane number at least as much as one less than the
-      // minimum plane number of this cluster so far. (Must find something,
-      // because this is satisfied by the first hit added to the cluster.)
+      // mhits is sorted by plane number. Find the first other hit that
+      // has a plane number close enough that we'd use it. (Must find
+      // something, because this is satisfied by the first hit added to
+      // the cluster.)
       const unsigned int startat =
         std::lower_bound(mhits.begin(), mhits.end(),
-                         hitwithplane(min_plane(clu) - 1), compare_plane)
+                         hitwithplane(min_plane(clu) - MAXPLANESAWAY),
+                         compare_plane)
         - mhits.begin();
 
       for(unsigned int j = startat; j < nmhits; j++){
-        if(!mhits[j].supernovalike) continue;
         if(mhits[j].used) continue;
 
         const boOl res = does_cluster(clu, mhits[j]);
         if(res == past_plane_of_interest) break;
         if(res == falSe) continue;
 
-        clu.hits.push_back(&mhits[j]);
         mhits[i].paired = mhits[j].paired = mhits[j].used = true;
+        clu.hits.push_back(&mhits[j]);
         done = false;
       }
     }while(!done);
 
-    if((clu.hits.size() >= 2 && clu.hits.size() <= 7) ||
-       (clu.hits.size() == 1 && clu.hits[0]->adc >= MINSINGLETONADC)){
+    if(clu.hits.size() <= 7){
       snclusters.push_back(clu);
       hitclusters++;
     }
@@ -2970,9 +2877,9 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
-  std::vector<mtrack> trackinfo;
-  if(fAnalysisClass == SNonlyFD || fAnalysisClass == MichelFD)
-    trackinfo = save_mtracks(evt);
+  const std::vector<mtrack> trackinfo = 
+  (fAnalysisClass == SNonlyFD || fAnalysisClass == MichelFD)?
+    save_mtracks(evt): std::vector<mtrack>();
 
   // Make list of all times and locations of "physics" slices. For the
   // MeV search, we will exclude other hits near them in time to drop
@@ -2982,6 +2889,22 @@ void ligoanalysis::produce(art::Event & evt)
   const std::vector<mslice> sliceinfo =
     (fAnalysisClass == Blind || fAnalysisClass == DDenergy)?
       std::vector<mslice>(): make_sliceinfo_list(evt, slice);
+
+  // For holding tracks and slices from the previous trigger so (in the
+  // rare case that triggers are 5 and not 5.05ms and therefore have no
+  // overlaps) we can flag Michels, etc at very beginning of the trigger.
+  static std::vector<mtrack> prev_trackinfo;
+  static std::vector<mslice> prev_sliceinfo;
+
+  // Will pass in the concatenation of both sets.  Duplicates
+  // are not a problem, because we always use the closest one.
+  std::vector<mtrack> trackinfo_wprev = prev_trackinfo;
+  trackinfo_wprev.insert(trackinfo_wprev.end(),
+                         trackinfo.begin(), trackinfo.end());
+
+  std::vector<mslice> sliceinfo_wprev = prev_sliceinfo;
+  sliceinfo_wprev.insert(sliceinfo_wprev.end(),
+                         sliceinfo.begin(), sliceinfo.end());
 
   switch(fAnalysisClass){
     case NDactivity:
@@ -2994,24 +2917,38 @@ void ligoanalysis::produce(art::Event & evt)
     case MinBiasFD:
       count_tracks_containedslices(evt, sliceinfo);
       count_upmu(evt);
-      count_all_mev(evt, sliceinfo, trackinfo);
+      count_all_mev(evt, sliceinfo_wprev, trackinfo_wprev);
       break;
     case SNonlyFD:
     case MichelFD:
-      count_mev(evt, true /* supernova-like */, sliceinfo, trackinfo);
+      count_triggers(evt);
+      count_mev(evt, true /* SN-like */, sliceinfo_wprev, trackinfo_wprev);
       break;
     case MinBiasND:
       count_tracks_containedslices(evt, sliceinfo);
-      count_all_mev(evt, sliceinfo, trackinfo);
+      count_all_mev(evt, sliceinfo_wprev, trackinfo_wprev);
       break;
     case SNonlyND:
-      count_mev(evt, true /* supernova-like */, sliceinfo, trackinfo);
+      count_triggers(evt);
+      count_mev(evt, true /* SN-like */, sliceinfo_wprev, trackinfo_wprev);
       break;
     case Blind:
       count_livetime(evt);
       break;
     default:
       printf("No case for type %d\n", fAnalysisClass);
+  }
+
+  prev_trackinfo = trackinfo;
+  prev_sliceinfo = sliceinfo;
+
+  // Translate times for the next event, 5ms later. This ONLY makes
+  // sense for long readouts, and is wrong if a trigger is dropped.
+  for(unsigned int i = 0; i < prev_trackinfo.size(); i++)
+    prev_trackinfo[i].tns -= 5e6; // 5 ms in ns
+  for(unsigned int i = 0; i < prev_sliceinfo.size(); i++){
+    prev_sliceinfo[i].mintns -= 5e6;
+    prev_sliceinfo[i].maxtns -= 5e6;
   }
 }
 
