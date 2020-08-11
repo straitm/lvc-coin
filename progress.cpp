@@ -186,7 +186,7 @@ static uint64_t iexp10(const int ep)
 /* Given the total number of events and the most digits to print in the
 reports, generate the events on which progress should be reported. */
 vector<uint64_t> generateprintpoints(const uint64_t total,
-                                         const int maxe)
+                                     const int maxe)
 {
   vector<uint64_t> ppoints;
   // makes 10% - 90% print

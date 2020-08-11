@@ -1639,12 +1639,12 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
   }
 
+  const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
+
   for(unsigned int i = 0; i < noiseslice.NCell(); i++){
     const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(i);
 
     if(!uniquedata_tdc(livetime, hit->TDC())) continue;
-
-    const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
     if(hit->ADC() >= high_adc) continue;
 
@@ -2401,9 +2401,6 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   for(unsigned int i = 0; i < nmhits; i++){
     if(mhits[i].used) continue;
 
-    // We will use these hits, but not *start* clusters from them.
-    if(mhits[i].adc < MINSINGLETONADC) continue;
-
     sncluster clu;
     mhits[i].used = true;
     clu.hits.push_back(&mhits[i]);
@@ -2435,7 +2432,8 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
       }
     }while(!done);
 
-    if(clu.hits.size() <= 7){
+    if((clu.hits.size() >= 2 && clu.hits.size() <= 7) ||
+       (clu.hits.size() == 1 && clu.hits[0]->adc >= MINSINGLETONADC)){
       snclusters.push_back(clu);
       hitclusters++;
     }
@@ -2780,9 +2778,6 @@ static bool more_than_one_physics_slice(art::Event & evt)
   return slice->size() > 2;
 }
 
-// XXX Deal with generic overlapping triggers (i.e. other than long readouts),
-// notably ddactivity1.  Ideally, I'd drop all the hits that were seen before
-// and only reconstruct the new ones, but that is non-trivial.
 void ligoanalysis::produce(art::Event & evt)
 {
   {
