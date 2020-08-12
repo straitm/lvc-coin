@@ -654,6 +654,8 @@ struct sninfo_t{
   // Lowest ADC of any hit in this cluster.  This is a measure of how
   // likely part of the cluster is to be APD noise.
   int16_t minhitadc;
+  // And the highest ADC
+  int16_t maxhitadc;
 
   // Number of nanoseconds from the first hit to the last hit. Large
   // times may indicate background. WARNING: We've seen that the Monte
@@ -800,6 +802,7 @@ static void init_mev_stuff()
   BRN(pey,              F);
   BRN(unattpe,          F);
   BRN(minhitadc,        S);
+  BRN(maxhitadc,        S);
   BRN(timeext_ns,       F);
   BRN(minplane,         I);
   BRN(maxplane,         I);
@@ -2276,6 +2279,13 @@ static int16_t min_hit_adc(const sncluster & c)
   return ans;
 }
 
+static int16_t max_hit_adc(const sncluster & c)
+{
+  int16_t ans = 0;
+  for(const auto h : c.hits) if(h->adc > ans) ans = h->adc;
+  return ans;
+}
+
 static float time_ext_ns(const sncluster & c)
 {
   double mintime = FLT_MAX, maxtime = FLT_MIN;
@@ -2373,6 +2383,7 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.pex = sum_pe(c).first;
   sninfo.pey = sum_pe(c).second;
   sninfo.minhitadc  = min_hit_adc(c);
+  sninfo.maxhitadc  = max_hit_adc(c);
   sninfo.timeext_ns = time_ext_ns(c);
   sninfo.minplane = min_plane(c);
   sninfo.maxplane = max_plane(c);
