@@ -122,8 +122,12 @@ const int trk_pln_buf = 5, trk_cel_buf = 9;
 
 // Box to put around each slice for determining if we are near it.
 // Not optimized.  In ND, probably just throw out whole detector.
-const int slc_pln_buf = 24;
-const int slc_cel_buf = 48;
+const int near_slc_pln_buf = 24;
+const int near_slc_cel_buf = 48;
+
+// Same, for "far slices".
+const int far_slc_pln_buf = 48;
+const int far_slc_cel_buf = 96;
 
 
 static int gDet = caf::kUNKNOWN;
@@ -158,9 +162,13 @@ struct mhit{
   double sincetrkend_s;
 
   // The minimum time to the next slice overlapping this hit in space.
-  double toslice_s;
+  double tonearslc_s;
   // The time since the previous slice overlapping this hit in space.
-  double sinceslice_s;
+  double sincenearslc_s;
+
+  // Same, but for a bigger box around slices
+  double tofarslc_s;
+  double sincefarslc_s;
 
   // The minimum time to the next slice anywhere
   double toanyslice_s;
@@ -185,8 +193,10 @@ struct mslice{
   float mintns, maxtns;
 
   // Extents with buffers
-  int16_t bminplane, bmaxplane;
-  int16_t bmincellx, bmaxcellx, bmincelly, bmaxcelly;
+  int16_t bminplane_near, bmaxplane_near;
+  int16_t bmincellx_near, bmaxcellx_near, bmincelly_near, bmaxcelly_near;
+  int16_t bminplane_far, bmaxplane_far;
+  int16_t bmincellx_far, bmaxcellx_far, bmincelly_far, bmaxcelly_far;
 
   float sliceduration;
 
@@ -692,8 +702,12 @@ struct sninfo_t{
   // in space, plus a buffer of several cells and planes.  If this
   // hit is during such a slice, both are zero.  If there is no such
   // slice for one or the other case, that one is set to 1e9.
-  double toslice_s;
-  double sinceslice_s;
+  double tonearslc_s;
+  double sincenearslc_s;
+
+  // Same, larger buffer.
+  double tofarslc_s;
+  double sincefarslc_s;
 
   // The time until and since the last slice anywhere. If this cluster is
   // during such a slice, both are zero. If there is no such slice for
@@ -775,8 +789,10 @@ static void init_mev_stuff()
   BRN(time_ns,          i);
   BRN(totrkend_s,       D);
   BRN(sincetrkend_s,    D);
-  BRN(toslice_s,        D);
-  BRN(sinceslice_s,     D);
+  BRN(tonearslc_s,      D);
+  BRN(sincenearslc_s,   D);
+  BRN(tofarslc_s,       D);
+  BRN(sincefarslc_s,    D);
   BRN(toanyslice_s,     D);
   BRN(sinceanyslice_s,  D);
   BRN(sincebigshower_s, D);
@@ -1501,15 +1517,21 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.meany = (*slice)[i].MeanY();
     slc.meanz = (*slice)[i].MeanZ();
 
-    slc.bminplane = (*slice)[i].MinPlane() - slc_pln_buf;
-    slc.bmaxplane = (*slice)[i].MaxPlane() + slc_pln_buf;
+    slc.bminplane_near = (*slice)[i].MinPlane() - near_slc_pln_buf;
+    slc.bmaxplane_near = (*slice)[i].MaxPlane() + near_slc_pln_buf;
+    slc.bminplane_far = (*slice)[i].MinPlane() - far_slc_pln_buf;
+    slc.bmaxplane_far = (*slice)[i].MaxPlane() + far_slc_pln_buf;
     if((*slice)[i].NCell(geo::kX)){
-      slc.bmincellx = (*slice)[i].MinCell(geo::kX) - slc_cel_buf;
-      slc.bmaxcellx = (*slice)[i].MaxCell(geo::kX) + slc_cel_buf;
+      slc.bmincellx_near = (*slice)[i].MinCell(geo::kX) - near_slc_cel_buf;
+      slc.bmaxcellx_near = (*slice)[i].MaxCell(geo::kX) + near_slc_cel_buf;
+      slc.bmincellx_far = (*slice)[i].MinCell(geo::kX) - far_slc_cel_buf;
+      slc.bmaxcellx_far = (*slice)[i].MaxCell(geo::kX) + far_slc_cel_buf;
     }
     if((*slice)[i].NCell(geo::kY)){
-      slc.bmincelly = (*slice)[i].MinCell(geo::kY) - slc_cel_buf;
-      slc.bmaxcelly = (*slice)[i].MaxCell(geo::kY) + slc_cel_buf;
+      slc.bmincelly_near = (*slice)[i].MinCell(geo::kY) - near_slc_cel_buf;
+      slc.bmaxcelly_near = (*slice)[i].MaxCell(geo::kY) + near_slc_cel_buf;
+      slc.bmincelly_far = (*slice)[i].MinCell(geo::kY) - far_slc_cel_buf;
+      slc.bmaxcelly_far = (*slice)[i].MaxCell(geo::kY) + far_slc_cel_buf;
     }
 
     if(i == 1 || i == 2)
@@ -1693,8 +1715,10 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.sincelastbigshower_s = 1e9;
     h.sincetrkend_s = 1e9;
     h.totrkend_s = 1e9;
-    h.sinceslice_s = 1e9;
-    h.toslice_s = 1e9;
+    h.sincenearslc_s = 1e9;
+    h.tonearslc_s = 1e9;
+    h.sincefarslc_s = 1e9;
+    h.tofarslc_s = 1e9;
     h.sinceanyslice_s = 1e9;
     h.toanyslice_s = 1e9;
 
@@ -1727,26 +1751,50 @@ static std::vector<mhit> select_hits_for_mev_search(
       if(timesince_s <= 0 && timeto_s <= 0)
         h.toanyslice_s = h.sinceanyslice_s = 0;
 
-      // Now with a spatial restriction
-      if(plane > sliceinfo[j].bminplane && plane < sliceinfo[j].bmaxplane){
+      // Now with "far" spatial restriction
+      if(plane > sliceinfo[j].bminplane_far &&
+         plane < sliceinfo[j].bmaxplane_far){
         if(
            (hit->View() == geo::kX &&
-            (cell > sliceinfo[j].bmincellx &&
-             cell < sliceinfo[j].bmaxcellx))
+            (cell > sliceinfo[j].bmincellx_far &&
+             cell < sliceinfo[j].bmaxcellx_far))
            ||
            (hit->View() != geo::kX &&
-            (cell > sliceinfo[j].bmincelly &&
-             cell < sliceinfo[j].bmaxcelly))){
+            (cell > sliceinfo[j].bmincelly_far &&
+             cell < sliceinfo[j].bmaxcelly_far))){
 
-          if(timesince_s > 0 && timesince_s < h.sinceslice_s)
-            h.sinceslice_s = timesince_s;
+          if(timesince_s > 0 && timesince_s < h.sincefarslc_s)
+            h.sincefarslc_s = timesince_s;
 
-          if(timeto_s > 0 && timeto_s < h.toslice_s)
-            h.toslice_s = timeto_s;
+          if(timeto_s > 0 && timeto_s < h.tofarslc_s)
+            h.tofarslc_s = timeto_s;
+
+          if(timesince_s <= 0 && timeto_s <= 0)
+            h.tofarslc_s = h.sincefarslc_s = 0;
+        }
+      }
+
+      // Now with "near" spatial restriction
+      if(plane > sliceinfo[j].bminplane_near &&
+         plane < sliceinfo[j].bmaxplane_near){
+        if(
+           (hit->View() == geo::kX &&
+            (cell > sliceinfo[j].bmincellx_near &&
+             cell < sliceinfo[j].bmaxcellx_near))
+           ||
+           (hit->View() != geo::kX &&
+            (cell > sliceinfo[j].bmincelly_near &&
+             cell < sliceinfo[j].bmaxcelly_near))){
+
+          if(timesince_s > 0 && timesince_s < h.sincenearslc_s)
+            h.sincenearslc_s = timesince_s;
+
+          if(timeto_s > 0 && timeto_s < h.tonearslc_s)
+            h.tonearslc_s = timeto_s;
 
           if(timesince_s <= 0 && timeto_s <= 0){
-            h.toslice_s = h.sinceslice_s = 0;
-            // Safe to break because we've also set *anyslice above to 0.
+            h.tonearslc_s = h.sincenearslc_s = 0;
+            // Safe because we've also set everything else above to 0.
             break;
           }
         }
@@ -2158,21 +2206,39 @@ static double since_trkend(const sncluster & c)
   return least;
 }
 
-static double to_slice(const sncluster & c)
+static double to_nearslc(const sncluster & c)
 {
   double least = 1e9;
   for(const auto h : c.hits)
-    if(h->toslice_s < least)
-      least = h->toslice_s;
+    if(h->tonearslc_s < least)
+      least = h->tonearslc_s;
   return least;
 }
 
-static double since_slice(const sncluster & c)
+static double since_nearslc(const sncluster & c)
 {
   double least = 1e9;
   for(const auto h : c.hits)
-    if(h->sinceslice_s < least)
-      least = h->sinceslice_s;
+    if(h->sincenearslc_s < least)
+      least = h->sincenearslc_s;
+  return least;
+}
+
+static double to_farslc(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->tofarslc_s < least)
+      least = h->tofarslc_s;
+  return least;
+}
+
+static double since_farslc(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c.hits)
+    if(h->sincefarslc_s < least)
+      least = h->sincefarslc_s;
   return least;
 }
 
@@ -2326,8 +2392,11 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.sincetrkend_s = since_trkend(c);
   sninfo.   totrkend_s =    to_trkend(c);
 
-  sninfo.toslice_s = to_slice(c);
-  sninfo.sinceslice_s = since_slice(c);
+  sninfo.tonearslc_s = to_nearslc(c);
+  sninfo.sincenearslc_s = since_nearslc(c);
+
+  sninfo.tofarslc_s = to_farslc(c);
+  sninfo.sincefarslc_s = since_farslc(c);
 
   sninfo.toanyslice_s = to_anyslice(c);
   sninfo.sinceanyslice_s = since_anyslice(c);
