@@ -1437,24 +1437,19 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
     int recoplane = 0, recocell = 0;
     try{
       geo->getPlaneAndCellID(endx, endy, endz-plnz, recoplane, recocell);
+
+      recoplane++; // because I shifted by one to find the orthogonal cell
+
+      if(recoplane == endplane){
+        if(endisx) minycell = recocell;
+        else       endxcell = recocell;
+      }
+
     }
     catch(...){
-      // Assume this means the end is outside of the detector,
-      // so we don't want it
-      continue;
+      // Failed to get a better cell.  Just use the previous best estimate
+      // in this rare case.  (Don't throw out the track, we need it.)
     }
-
-    recoplane++; // because I shifted by one to find the orthogonal cell
-
-    if(recoplane == endplane){
-      if(endisx) minycell = recocell;
-      else       endxcell = recocell;
-    }
-
-    // exiters
-    if(endplane == 0 || endplane == 895) continue;
-    if(minycell < 10) continue;
-    if(endxcell < 5 || endxcell > 378) continue;
 
     struct mtrack thisone;
 
