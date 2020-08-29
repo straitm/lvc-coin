@@ -1524,13 +1524,16 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.bmaxplane_near = (*slice)[i].MaxPlane() + near_slc_pln_buf;
     slc.bminplane_far = (*slice)[i].MinPlane() - far_slc_pln_buf;
     slc.bmaxplane_far = (*slice)[i].MaxPlane() + far_slc_pln_buf;
-    if((*slice)[i].NCell(geo::kX)){
+
+    // If the slice has no hits in a view, we will exclude only plane 0,
+    // cell 0 in that view
+    if((*slice)[i].NCell(geo::kX) > 0){
       slc.bmincellx_near = (*slice)[i].MinCell(geo::kX) - near_slc_cel_buf;
       slc.bmaxcellx_near = (*slice)[i].MaxCell(geo::kX) + near_slc_cel_buf;
       slc.bmincellx_far = (*slice)[i].MinCell(geo::kX) - far_slc_cel_buf;
       slc.bmaxcellx_far = (*slice)[i].MaxCell(geo::kX) + far_slc_cel_buf;
     }
-    if((*slice)[i].NCell(geo::kY)){
+    if((*slice)[i].NCell(geo::kY) > 0){
       slc.bmincelly_near = (*slice)[i].MinCell(geo::kY) - near_slc_cel_buf;
       slc.bmaxcelly_near = (*slice)[i].MaxCell(geo::kY) + near_slc_cel_buf;
       slc.bmincelly_far = (*slice)[i].MinCell(geo::kY) - far_slc_cel_buf;
