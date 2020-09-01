@@ -90,8 +90,12 @@ static const float lightspeed = 17.; // cm/ns
 static const float invlightspeed = 1/lightspeed; // ns/cm
 
 // z extent of a plane (slightly wrong at block boundaries, but for
-// my purposes, it doesn't matter)
+// my purposes, it doesn't matter).  In cm.
 static const double plnz = 6.6479;
+
+// w extent of a cell (on average). It's the extrusion width plus the
+// glue width (tiny), divided by the number of cells in an extrusion. cm.
+static const double cellw = (63.455+0.048)/16.;
 
 // Set from the FCL parameters
 static double gwevent_unix_double_time = 0;
@@ -100,10 +104,7 @@ static long long window_size_s = 1000;
 
 // Relaxed for the supernova analysis
 // Were: 85, 600, 107, 2500
-//
-// At least for the FD, I want to apply the cuts later, so don't
-// cut here.
-static const int16_t fd_high_adc =10000;
+static const int16_t fd_high_adc = 1500;
 static const int16_t nd_high_adc = 2500;
 
 // Smallest ADC to save a single hit as a cluster. Without a cut here,
@@ -119,6 +120,16 @@ static const int16_t MINSINGLETONADC = 130;
 // we'll rely on the huge slice box, so there's no need for this
 // to 100% efficient (indeed, it's impossible for it to be).
 const int trk_pln_buf = 5, trk_cel_buf = 9;
+
+// Size of cone (really, triangle) forward of a track in which we'll
+// look for stealth Michels. The first number is the distance in
+// "planes", where a "plane" is just cm times the plane extent, so not
+// really planes. The second number is the half-angle of the cone in
+// degrees. It's really a triangle because it is done in 2D. The number
+// of planes is deliberately quite large, because I keep finding cases
+// of stealth Michels inplausibly far away in real data (I've seen one
+// 30 planes and some cells away).
+const double trkproj_pln_buf = 60, trkproj_ang_buf = 15;
 
 // Box to put around each slice for determining if we are near it.
 // Not optimized.  In ND, probably just throw out whole detector.
@@ -141,6 +152,7 @@ enum analysis_class_t { NDactivity, DDenergy, MinBiasFD, MinBiasND,
 // Hit information, distilled from CellHit, plus more info
 struct mhit{
   unsigned int hitid; // index into the noise slice hit array
+  int32_t tdc; // coarse timing, in tdc ticks (1/64 us)
   float tns; // fine timing, in nanoseconds
   float tposoverc; // transverse position divided by speed of light
   float pe; // photoelectrons
@@ -160,6 +172,11 @@ struct mhit{
   double totrkend_s;
   // The time since the previous nearby track end
   double sincetrkend_s;
+
+  // The minimum time to the next projected-forward track cone
+  double totrkproj_s;
+  // The time since the previous projected-forward track cone
+  double sincetrkproj_s;
 
   // The minimum time to the next slice overlapping this hit in space.
   double tonearslc_s;
@@ -182,17 +199,15 @@ struct mhit{
   bool noisy;
 };
 
-struct sncluster{
-  std::vector<mhit *> hits;
-  // I thought I'd store more in here, but maybe not and it should be a
-  // typedef?
-};
+typedef std::vector<mhit *> sncluster;
 
 // Minimal slice information, distilled from rb::Cluster
 struct mslice{
   float mintns, maxtns;
 
-  // Extents with buffers
+  // Extents with buffers. These "nears" and "fars" aren't the two
+  // detectors, but the size of the box around the slice.  (Maybe they
+  // should have been "close" and "distant"?)
   int16_t bminplane_near, bmaxplane_near;
   int16_t bmincellx_near, bmaxcellx_near, bmincelly_near, bmaxcelly_near;
   int16_t bminplane_far, bmaxplane_far;
@@ -205,9 +220,6 @@ struct mslice{
 
   // From rb::Cluster::TotalADC()
   double totaladc;
-
-  // From rb::Cluster::MeanX(), etc.
-  double meanx, meany, meanz;
 
   // Time in integer seconds and nanoseconds since Jan 1, 1970
   uint32_t time_s;
@@ -225,6 +237,10 @@ struct mtrack{
   // track ended, and the estimated nearest Y cell. If it was a Y plane,
   // vice versa.
   int16_t endplane, endcellx, endcelly;
+
+  // The direction unit vectors in each view.
+  float yview_dirz, yview_diry;
+  float xview_dirz, xview_dirx;
 
   // Whether the last plane is X.  This is redundant with 'endplane',
   // but I can never remember whether X planes are even or odd, and this
@@ -632,6 +648,12 @@ struct sninfo_t{
   // be zero, in which case all hits are accepted.
   int nhit;
 
+  // The TDC (64ths of microseconds since the trigger time) of the
+  // earliest hit in the cluster. This is mainly useful for finding the
+  // cluster in an event display where the TDC is available, but not the
+  // absolute time.
+  int32_t tdc;
+
   // Mean time of the hits in this cluster in seconds and nanoseconds
   // since Jan 1, 1970.
   uint32_t time_s;
@@ -699,6 +721,11 @@ struct sninfo_t{
   // cluster.
   double totrkend_s;
   double sincetrkend_s;
+
+  // The time in seconds until and since the last time a cone projected
+  // a long way forward from a track end included this cluster.
+  double totrkproj_s;
+  double sincetrkproj_s;
 
   // The time until and since the last slice that overlaps this cluster
   // in space, plus a buffer of several cells and planes.  If this
@@ -791,6 +818,8 @@ static void init_mev_stuff()
   BRN(time_ns,          i);
   BRN(totrkend_s,       D);
   BRN(sincetrkend_s,    D);
+  BRN(totrkproj_s,      D);
+  BRN(sincetrkproj_s,   D);
   BRN(tonearslc_s,      D);
   BRN(sincenearslc_s,   D);
   BRN(tofarslc_s,       D);
@@ -1478,6 +1507,27 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
     thisone.endplane = endplane;
     thisone.lastisx = endisx;
 
+    if(forwardstrack){
+      // Convert the unit vector in 3D to one in 2D since I want to work
+      // in 2D for projecting tracks forward to look for stealth Michels.
+      const double normxview = 1/hypot(trk.StopDir().X(), trk.StopDir().Z());
+      thisone.xview_dirz = trk.StopDir().Z()*normxview;
+      thisone.xview_dirx = trk.StopDir().X()*normxview;
+
+      const double normyview = 1/hypot(trk.StopDir().Y(), trk.StopDir().Z());
+      thisone.yview_dirz = trk.StopDir().Z()*normyview;
+      thisone.yview_diry = trk.StopDir().Y()*normyview;
+    }
+    else{
+      const double normxview = 1/hypot(trk.Dir().X(), trk.Dir().Z());
+      thisone.xview_dirz = -trk.Dir().Z()*normxview;
+      thisone.xview_dirx = -trk.Dir().X()*normxview;
+
+      const double normyview = 1/hypot(trk.Dir().Y(), trk.Dir().Z());
+      thisone.yview_dirz = -trk.Dir().Z()*normyview;
+      thisone.yview_diry = -trk.Dir().Y()*normyview;
+    }
+
     thisone.tns = trk.MeanTNS();
 
     mtracks.push_back(thisone);
@@ -1516,10 +1566,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.time_ns = art_time_plus_some_ns(evt.time().value(),
                       (*slice)[i].MeanTNS()).second;
 
-    slc.meanx = (*slice)[i].MeanX();
-    slc.meany = (*slice)[i].MeanY();
-    slc.meanz = (*slice)[i].MeanZ();
-
     slc.bminplane_near = (*slice)[i].MinPlane() - near_slc_pln_buf;
     slc.bmaxplane_near = (*slice)[i].MaxPlane() + near_slc_pln_buf;
     slc.bminplane_far = (*slice)[i].MinPlane() - far_slc_pln_buf;
@@ -1552,6 +1598,59 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     // *exclude*.
     sliceinfo.push_back(slc);
   }
+
+  // Make pseudo-slices for all unsliced hits over xd_high_adc.  These, near
+  // signal-like clusters, are hints that they are background.
+  const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
+  const double livetime = rawlivetime(evt);
+  for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
+    const art::Ptr<rb::CellHit> & hit = (*slice)[0].Cell(i);
+
+    if(!uniquedata_tdc(livetime, hit->TDC())) continue;
+
+    if(hit->ADC() < high_adc) continue;
+
+    const int cell  = hit->Cell();
+    const int plane = hit->Plane();
+
+    mslice slc;
+    memset(&slc, 0, sizeof(mslice));
+    slc.mintns = slc.maxtns = hit->TNS();
+    slc.sliceduration = 0;
+    slc.longslice = false;
+    slc.totaladc = hit->ADC();
+
+    // Not sure if I care anymore, but this probably messes up the count
+    // of something other than supernova-like events. By "this", I mean
+    // both this careless use of "mergeslice" and just the existence of
+    // these pseudo-slices. Although maybe not if they are mostly legit
+    // physics events.
+    slc.mergeslice = -i;
+
+    slc.time_s  = art_time_plus_some_ns(evt.time().value(), slc.mintns).first;
+    slc.time_ns = art_time_plus_some_ns(evt.time().value(), slc.mintns).second;
+
+    slc.bminplane_near = plane - near_slc_pln_buf;
+    slc.bmaxplane_near = plane + near_slc_pln_buf;
+    slc.bminplane_far = plane - far_slc_pln_buf;
+    slc.bmaxplane_far = plane + far_slc_pln_buf;
+
+    // In the view the slice isn't in, we will only exclude plane 0, cell 0.
+    if(hit->View() == geo::kX){
+      slc.bmincellx_near = cell - near_slc_cel_buf;
+      slc.bmaxcellx_near = cell + near_slc_cel_buf;
+      slc.bmincellx_far = cell - far_slc_cel_buf;
+      slc.bmaxcellx_far = cell + far_slc_cel_buf;
+    }
+    else{ // Y-view
+      slc.bmincelly_near = cell - near_slc_cel_buf;
+      slc.bmaxcelly_near = cell + near_slc_cel_buf;
+      slc.bmincelly_far = cell - far_slc_cel_buf;
+      slc.bmaxcelly_far = cell + far_slc_cel_buf;
+    }
+
+  }
+
 
   return sliceinfo;
 }
@@ -1721,6 +1820,8 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.sincelastbigshower_s = 1e9;
     h.sincetrkend_s = 1e9;
     h.totrkend_s = 1e9;
+    h.sincetrkproj_s = 1e9;
+    h.totrkproj_s = 1e9;
     h.sincenearslc_s = 1e9;
     h.tonearslc_s = 1e9;
     h.sincefarslc_s = 1e9;
@@ -1812,6 +1913,7 @@ static std::vector<mhit> select_hits_for_mev_search(
       const double since_s = (tns - trackinfo[j].tns)*1e-9;
       const double to_s    = (trackinfo[j].tns - tns)*1e-9;
 
+      // Simple box around the track end
       if(plane > trackinfo[j].endplane - trk_pln_buf &&
          plane < trackinfo[j].endplane + trk_pln_buf){
         if(
@@ -1829,11 +1931,37 @@ static std::vector<mhit> select_hits_for_mev_search(
           if(to_s > 0 && to_s < h.totrkend_s)
             h.totrkend_s = to_s;
 
-          if(since_s <= 0 && to_s <= 0){
+          if(since_s <= 0 && to_s <= 0)
             h.totrkend_s = h.sincetrkend_s = 0;
-            break;
-          }
         }
+      }
+
+      // forward cone (well, really just a triangle)
+      double dotprod = 0, trkend2hit_w = 0;
+      const double trkend2hit_z = (trackinfo[j].endplane - plane)*plnz;
+      if(hit->View() == geo::kX){
+        trkend2hit_w = (trackinfo[j].endcellx - cell)*cellw;
+        dotprod = trackinfo[j].xview_dirz*trkend2hit_z +
+                               trackinfo[j].xview_dirx*trkend2hit_w;
+      }
+      else{
+        trkend2hit_w = (trackinfo[j].endcelly - cell)*cellw;
+        dotprod = trackinfo[j].yview_dirz*trkend2hit_z +
+                               trackinfo[j].yview_diry*trkend2hit_w;
+      }
+      const double dist_cm = hypot(trkend2hit_w, trkend2hit_z);
+      const double dist_pln = dist_cm/plnz;
+      const double dtheta = acos(dotprod/dist_cm) * 180/M_PI;
+
+      if(dist_pln < trkproj_pln_buf && fabs(dtheta) < trkproj_ang_buf){
+        if(since_s > 0 && since_s < h.sincetrkproj_s)
+          h.sincetrkproj_s = since_s;
+
+        if(to_s > 0 && to_s < h.totrkproj_s)
+          h.totrkproj_s = to_s;
+
+        if(since_s <= 0 && to_s <= 0)
+          h.totrkproj_s = h.sincetrkproj_s = 0;
       }
     }
 
@@ -1842,6 +1970,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.used  = false;
     h.paired= false;
     h.tns   = tns;
+    h.tdc   = hit->TDC();
     h.plane = plane;
     h.isx   = hit->View() == geo::kX;
     h.cell  = cell;
@@ -1915,10 +2044,10 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // check this hit again.
   bool another_hit_few_enough_planes_away = false;
   int leastpast = 1000;
-  for(unsigned int i = 0; i < clu.hits.size(); i++){
-    if(abs(h.plane - clu.hits[i]->plane) <= MAXPLANESAWAY)
+  for(unsigned int i = 0; i < clu.size(); i++){
+    if(abs(h.plane - clu[i]->plane) <= MAXPLANESAWAY)
       another_hit_few_enough_planes_away = true;
-    const int pastby = h.plane - clu.hits[i]->plane;
+    const int pastby = h.plane - clu[i]->plane;
     if(pastby < leastpast) leastpast = pastby;
   }
 
@@ -1937,16 +2066,16 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // (see, e.g., doc-19053).
   const float timewindow = 250; // ns
 
-  if(clu.hits[0]->plane%2 == h.plane%2){
+  if(clu[0]->plane%2 == h.plane%2){
     // These hits are in the same view, so the times can be compared directly
-    if(fabs(clu.hits[0]->tns - h.tns) > timewindow) return falSe;
+    if(fabs(clu[0]->tns - h.tns) > timewindow) return falSe;
   }
   else{
     // These hits are in different views, so for each, use the other's
     // transverse position to correct the time;
     const float
-      time_1st_corr = clu.hits[0]->tns +            h.tposoverc,
-      time_new_corr =            h.tns + clu.hits[0]->tposoverc;
+      time_1st_corr = clu[0]->tns +       h.tposoverc,
+      time_new_corr =       h.tns + clu[0]->tposoverc;
 
     if(fabs(time_new_corr - time_1st_corr) > timewindow) return falSe;
   }
@@ -1966,13 +2095,13 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   bool in_same_view_as_another_hit = false;
   bool close_to_another_hit_in_w = false;
 
-  for(unsigned int i = 0; i < clu.hits.size(); i++)
-    if(h.plane%2 == clu.hits[i]->plane%2)
+  for(unsigned int i = 0; i < clu.size(); i++)
+    if(h.plane%2 == clu[i]->plane%2)
       in_same_view_as_another_hit = true;
 
-  for(unsigned int i = 0; i < clu.hits.size(); i++)
-    if(h.plane%2 == clu.hits[i]->plane%2 &&
-       abs(h.cell - clu.hits[i]->cell) <= MAXCELLDIST)
+  for(unsigned int i = 0; i < clu.size(); i++)
+    if(h.plane%2 == clu[i]->plane%2 &&
+       abs(h.cell - clu[i]->cell) <= MAXCELLDIST)
       close_to_another_hit_in_w = true;
 
   if(in_same_view_as_another_hit && !close_to_another_hit_in_w) return falSe;
@@ -1985,10 +2114,10 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
 // information.
 static float plurality_of_E(const sncluster & c)
 {
-  if(c.hits.empty()) return 0;
+  if(c.empty()) return 0;
 
   std::map<float, float> m;
-  for(const mhit * h : c.hits) if(h->trueE != 0) m[h->trueE] += h->pe;
+  for(const mhit * h : c) if(h->trueE != 0) m[h->trueE] += h->pe;
 
   float most = 0;
   float best = 0;
@@ -2006,10 +2135,10 @@ static float plurality_of_E(const sncluster & c)
 // that contributed the most pe-weighted hits.
 static int16_t plurality_of_trueplane(const sncluster & c)
 {
-  if(c.hits.empty()) return -1;
+  if(c.empty()) return -1;
 
   std::map<int16_t, float> m;
-  for(const mhit * h : c.hits)
+  for(const mhit * h : c)
     if(h->trueplane != -1)
       m[h->trueplane] += h->pe;
 
@@ -2029,10 +2158,10 @@ static int16_t plurality_of_trueplane(const sncluster & c)
 // that contributed the most pe-weighted hits.
 static int16_t plurality_of_truecellx(const sncluster & c)
 {
-  if(c.hits.empty()) return -1;
+  if(c.empty()) return -1;
 
   std::map<int16_t, float> m;
-  for(const mhit * h : c.hits)
+  for(const mhit * h : c)
     if(h->truecellx != -1)
       m[h->truecellx] += h->pe;
 
@@ -2052,10 +2181,10 @@ static int16_t plurality_of_truecellx(const sncluster & c)
 // that contributed the most pe-weighted hits.
 static int16_t plurality_of_truecelly(const sncluster & c)
 {
-  if(c.hits.empty()) return -1;
+  if(c.empty()) return -1;
 
   std::map<int16_t, float> m;
-  for(const mhit * h : c.hits)
+  for(const mhit * h : c)
     if(h->truecelly != -1)
       m[h->truecelly] += h->pe;
 
@@ -2074,18 +2203,18 @@ static int16_t plurality_of_truecelly(const sncluster & c)
 static float noise_frac(const sncluster & c)
 {
   unsigned int nn = 0;
-  for(const mhit * h : c.hits) nn += h->noisy;
-  return float(nn)/c.hits.size();
+  for(const mhit * h : c) nn += h->noisy;
+  return float(nn)/c.size();
 }
 
 // For the given supernova cluster, return the true PDG id that contributed
 // the most pe-weighted hits.  Ignore hits with no truth information.
 static int plurality_of_truth(const sncluster & c)
 {
-  if(c.hits.empty()) return 0;
+  if(c.empty()) return 0;
 
   std::map<int, float> m;
-  for(const mhit * h : c.hits) if(h->truepdg != 0) m[h->truepdg] += h->pe;
+  for(const mhit * h : c) if(h->truepdg != 0) m[h->truepdg] += h->pe;
 
   float most = 0;
   int best = 0;
@@ -2103,43 +2232,43 @@ static int plurality_of_truth(const sncluster & c)
 static float fractrue(const sncluster & c)
 {
   unsigned int ntrue = 0;
-  for(const mhit * h : c.hits) if(h->truepdg != 0) ntrue++;
-  return (float)ntrue/c.hits.size();
+  for(const mhit * h : c) if(h->truepdg != 0) ntrue++;
+  return (float)ntrue/c.size();
 }
 
 static double mean_tns(const sncluster & c)
 {
   double sum = 0;
-  for(const mhit * h : c.hits) sum += h->tns;
-  return sum / c.hits.size();
+  for(const mhit * h : c) sum += h->tns;
+  return sum / c.size();
 }
 
 // Return <pe in x cells, pe in y cells>
 static std::pair<float, float> sum_pe(const sncluster & c)
 {
   std::pair<float, float> sum(0, 0);
-  for(const mhit * h : c.hits) (h->isx?sum.first:sum.second) += h->pe;
+  for(const mhit * h : c) (h->isx?sum.first:sum.second) += h->pe;
   return sum;
 }
 
 static int min_plane(const sncluster & c)
 {
   int ans = 9999; // There's always a plane, so result will never be 9999
-  for(const mhit * h : c.hits) if(h->plane < ans) ans = h->plane;
+  for(const mhit * h : c) if(h->plane < ans) ans = h->plane;
   return ans;
 }
 
 static int max_plane(const sncluster & c)
 {
   int ans = -1; // There's always a plane, so result will never be -1
-  for(const mhit * h : c.hits) if(h->plane > ans) ans = h->plane;
+  for(const mhit * h : c) if(h->plane > ans) ans = h->plane;
   return ans;
 }
 
 static int plane_gap(const sncluster & c)
 {
   std::vector<int> planes;
-  for(const auto h : c.hits) planes.push_back(h->plane);
+  for(const auto h : c) planes.push_back(h->plane);
 
   if(planes.size() == 1) return 0;
 
@@ -2157,7 +2286,7 @@ static int plane_gap(const sncluster & c)
 static int cell_gap(const sncluster & c, const bool x)
 {
   std::vector<int> cells;
-  for(const auto h : c.hits) if((h->isx ^ !x)) cells.push_back(h->cell);
+  for(const auto h : c) if((h->isx ^ !x)) cells.push_back(h->cell);
 
   if(cells.size() == 0) return -1;
   if(cells.size() == 1) return 0;
@@ -2176,7 +2305,7 @@ static int cell_gap(const sncluster & c, const bool x)
 static int min_cell(const sncluster & c, const bool x)
 {
   int ans = 9999;
-  for(const auto h : c.hits) if((h->isx ^ !x) && h->cell < ans) ans = h->cell;
+  for(const auto h : c) if((h->isx ^ !x) && h->cell < ans) ans = h->cell;
 
   // It's more convenient if the invalid value is always -1
   if(ans == 9999) ans = -1;
@@ -2186,7 +2315,7 @@ static int min_cell(const sncluster & c, const bool x)
 static int max_cell(const sncluster & c, const bool x)
 {
   int ans = -1;
-  for(const auto h : c.hits) if((h->isx ^ !x) && h->cell > ans) ans = h->cell;
+  for(const auto h : c) if((h->isx ^ !x) && h->cell > ans) ans = h->cell;
   return ans;
 }
 
@@ -2197,7 +2326,7 @@ static double to_trkend(const sncluster & c)
   // the other one is too far away in space to see that trkend, it will
   // dilute away that information.
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->totrkend_s < least)
       least = h->totrkend_s;
   return least;
@@ -2206,16 +2335,34 @@ static double to_trkend(const sncluster & c)
 static double since_trkend(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->sincetrkend_s < least)
       least = h->sincetrkend_s;
+  return least;
+}
+
+static double to_trkproj(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->totrkproj_s < least)
+      least = h->totrkproj_s;
+  return least;
+}
+
+static double since_trkproj(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->sincetrkproj_s < least)
+      least = h->sincetrkproj_s;
   return least;
 }
 
 static double to_nearslc(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->tonearslc_s < least)
       least = h->tonearslc_s;
   return least;
@@ -2224,7 +2371,7 @@ static double to_nearslc(const sncluster & c)
 static double since_nearslc(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->sincenearslc_s < least)
       least = h->sincenearslc_s;
   return least;
@@ -2233,7 +2380,7 @@ static double since_nearslc(const sncluster & c)
 static double to_farslc(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->tofarslc_s < least)
       least = h->tofarslc_s;
   return least;
@@ -2242,7 +2389,7 @@ static double to_farslc(const sncluster & c)
 static double since_farslc(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->sincefarslc_s < least)
       least = h->sincefarslc_s;
   return least;
@@ -2251,7 +2398,7 @@ static double since_farslc(const sncluster & c)
 static double to_anyslice(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->toanyslice_s < least)
       least = h->toanyslice_s;
   return least;
@@ -2260,7 +2407,7 @@ static double to_anyslice(const sncluster & c)
 static double since_anyslice(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->sinceanyslice_s < least)
       least = h->sinceanyslice_s;
   return least;
@@ -2269,40 +2416,47 @@ static double since_anyslice(const sncluster & c)
 static double since_last_big_shower(const sncluster & c)
 {
   double least = 1e9;
-  for(const auto h : c.hits)
+  for(const auto h : c)
     if(h->sincelastbigshower_s < least)
       least = h->sincelastbigshower_s;
   return least;
 }
 
+static int32_t first_tdc(const sncluster & c)
+{
+  int32_t ans = INT_MAX;
+  for(const auto h : c) if(h->tdc < ans) ans = h->tdc;
+  return ans;
+}
+
 static int16_t min_hit_adc(const sncluster & c)
 {
   int16_t ans = SHRT_MAX;
-  for(const auto h : c.hits) if(h->adc < ans) ans = h->adc;
+  for(const auto h : c) if(h->adc < ans) ans = h->adc;
   return ans;
 }
 
 static int16_t max_hit_adc(const sncluster & c)
 {
   int16_t ans = 0;
-  for(const auto h : c.hits) if(h->adc > ans) ans = h->adc;
+  for(const auto h : c) if(h->adc > ans) ans = h->adc;
   return ans;
 }
 
 static float time_ext_ns(const sncluster & c)
 {
   double mintime = FLT_MAX, maxtime = FLT_MIN;
-  if(c.hits.size() <= 1) return 0;
-  for(const auto & h : c.hits){
+  if(c.size() <= 1) return 0;
+  for(const auto & h : c){
     // Calculate all times as relative to the first hit.  Absolute time and
     // overall sign don't matter because we're finding the extent.
     float deltat = 0;
-    if(c.hits[0]->plane%2 == h->plane%2)
-      deltat = c.hits[0]->tns - h->tns;
+    if(c[0]->plane%2 == h->plane%2)
+      deltat = c[0]->tns - h->tns;
     else{
       const float
-        time_1st_corr = c.hits[0]->tns +         h->tposoverc,
-        time_oth_corr =         h->tns + c.hits[0]->tposoverc;
+        time_1st_corr = c[0]->tns +    h->tposoverc,
+        time_oth_corr =    h->tns + c[0]->tposoverc;
       deltat = time_1st_corr - time_oth_corr;
     }
 
@@ -2367,18 +2521,19 @@ static void savecluster(const art::Event & evt, const sncluster & c)
 {
   memset(&sninfo, 0, sizeof(sninfo));
 
-  if(c.hits.empty()){
+  if(c.empty()){
     fprintf(stderr, "savecluster: got empty cluster, skipping\n");
     return;
   }
 
-  sninfo.nhit = c.hits.size();
+  sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
   sninfo.trueE = plurality_of_E(c);
   sninfo.trueplane = plurality_of_trueplane(c);
   sninfo.truecellx = plurality_of_truecellx(c);
   sninfo.truecelly = plurality_of_truecelly(c);
+  sninfo.tdc = first_tdc(c);
   sninfo.time_s = art_time_plus_some_ns(evt.time().value(),
                     mean_tns(c)).first;
   sninfo.time_ns = art_time_plus_some_ns(evt.time().value(),
@@ -2406,6 +2561,9 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.sincetrkend_s = since_trkend(c);
   sninfo.   totrkend_s =    to_trkend(c);
 
+  sninfo.sincetrkproj_s = since_trkproj(c);
+  sninfo.   totrkproj_s =    to_trkproj(c);
+
   sninfo.tonearslc_s = to_nearslc(c);
   sninfo.sincenearslc_s = since_nearslc(c);
 
@@ -2420,7 +2578,7 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.run = evt.run();
   sninfo.subrun = evt.subRun();
   sninfo.event = evt.event();
-  sninfo.hitid = c.hits[0]->hitid;
+  sninfo.hitid = c[0]->hitid;
   sninfo.noisefrac = noise_frac(c);
 
   calibrate(sninfo); // set unattpe
@@ -2481,7 +2639,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
 
     sncluster clu;
     mhits[i].used = true;
-    clu.hits.push_back(&mhits[i]);
+    clu.push_back(&mhits[i]);
 
     bool done = false;
     do{
@@ -2505,13 +2663,13 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
         if(res == falSe) continue;
 
         mhits[i].paired = mhits[j].paired = mhits[j].used = true;
-        clu.hits.push_back(&mhits[j]);
+        clu.push_back(&mhits[j]);
         done = false;
       }
     }while(!done);
 
-    if((clu.hits.size() >= 2 && clu.hits.size() <= 7) ||
-       (clu.hits.size() == 1 && clu.hits[0]->adc >= MINSINGLETONADC)){
+    if((clu.size() >= 2 && clu.size() <= 7) ||
+       (clu.size() == 1 && clu[0]->adc >= MINSINGLETONADC)){
       snclusters.push_back(clu);
       hitclusters++;
     }
