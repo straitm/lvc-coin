@@ -814,6 +814,7 @@ static void init_mev_stuff()
   BRN(trueplane,        S);
   BRN(truecellx,        S);
   BRN(truecelly,        S);
+  BRN(tdc,              I);
   BRN(time_s,           i);
   BRN(time_ns,          i);
   BRN(totrkend_s,       D);
@@ -1599,14 +1600,11 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     sliceinfo.push_back(slc);
   }
 
-  // Make pseudo-slices for all unsliced hits over xd_high_adc.  These, near
+  // Make pseudo-slices for all unsliced hits >= high_adc.  These, near
   // signal-like clusters, are hints that they are background.
   const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
-  const double livetime = rawlivetime(evt);
   for(unsigned int i = 0; i < (*slice)[0].NCell(); i++){
     const art::Ptr<rb::CellHit> & hit = (*slice)[0].Cell(i);
-
-    if(!uniquedata_tdc(livetime, hit->TDC())) continue;
 
     if(hit->ADC() < high_adc) continue;
 
@@ -1649,8 +1647,8 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
       slc.bmaxcelly_far = cell + far_slc_cel_buf;
     }
 
+    sliceinfo.push_back(slc);
   }
-
 
   return sliceinfo;
 }
@@ -1712,7 +1710,7 @@ static void trueposition(int16_t & trueplane, int16_t & truecellx,
   }
 
   // I don't know why, but I get truecelly = 32690 in a small fraction
-  // of cases. Protect agains this. No apparent trouble with truecellx,
+  // of cases. Protect against this. No apparent trouble with truecellx,
   // but protect it too.
   if(truecellx > 384) truecellx = -1;
   if(truecelly > 384) truecelly = -1;
@@ -1938,14 +1936,14 @@ static std::vector<mhit> select_hits_for_mev_search(
 
       // forward cone (well, really just a triangle)
       double dotprod = 0, trkend2hit_w = 0;
-      const double trkend2hit_z = (trackinfo[j].endplane - plane)*plnz;
+      const double trkend2hit_z = (plane - trackinfo[j].endplane)*plnz;
       if(hit->View() == geo::kX){
-        trkend2hit_w = (trackinfo[j].endcellx - cell)*cellw;
+        trkend2hit_w = (cell - trackinfo[j].endcellx)*cellw;
         dotprod = trackinfo[j].xview_dirz*trkend2hit_z +
                                trackinfo[j].xview_dirx*trkend2hit_w;
       }
       else{
-        trkend2hit_w = (trackinfo[j].endcelly - cell)*cellw;
+        trkend2hit_w = (cell - trackinfo[j].endcelly)*cellw;
         dotprod = trackinfo[j].yview_dirz*trkend2hit_z +
                                trackinfo[j].yview_diry*trkend2hit_w;
       }
