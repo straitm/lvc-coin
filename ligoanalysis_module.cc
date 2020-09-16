@@ -116,10 +116,12 @@ static const int16_t nd_high_adc = 2500;
 // Not clear what the best value is here
 static const int16_t MINSINGLETONADC = 130;
 
-// Generous box for regular Michel rejection. For stealth Michels,
-// we'll rely on the huge slice box, so there's no need for this
-// to 100% efficient (indeed, it's impossible for it to be).
+// Generous box for regular Michel rejection. The first is mostly useful
+// for doing a simple cut to reject most of the background. The second
+// is for tricky cases that end up being important when all the easy stuff
+// has already been rejected.
 const int trk_pln_buf = 5, trk_cel_buf = 9;
+const int big_trk_pln_buf = 40, big_trk_cel_buf = 67;
 
 // Size of cone (really, triangle) forward of a track in which we'll
 // look for stealth Michels. The first number is the distance in
@@ -130,15 +132,11 @@ const int trk_pln_buf = 5, trk_cel_buf = 9;
 // of stealth Michels inplausibly far away in real data (I've seen one
 // 30 planes and some cells away).
 const double trkproj_pln_buf = 60, trkproj_ang_buf = 15;
+const double cos_trkproj_ang_buf = cos(trkproj_ang_buf*M_PI/180);
 
-// Box to put around each slice for determining if we are near it.
-// Not optimized.  In ND, probably just throw out whole detector.
-const int near_slc_pln_buf = 24;
-const int near_slc_cel_buf = 48;
-
-// Same, for "far slices".
-const int far_slc_pln_buf = 48;
-const int far_slc_cel_buf = 96;
+// Boxes to put around each slice for determining if we are near it.
+const int near_slc_pln_buf = 24, near_slc_cel_buf = 48;
+const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
 
 
 static int gDet = caf::kUNKNOWN;
@@ -173,6 +171,11 @@ struct mhit{
   // The time since the previous nearby track end
   double sincetrkend_s;
 
+  // The minimum time to the next not-so-nearby track end
+  double tofartrkend_s;
+  // The time since the previous not-so-nearby track end
+  double sincefartrkend_s;
+
   // The minimum time to the next projected-forward track cone
   double totrkproj_s;
   // The time since the previous projected-forward track cone
@@ -186,6 +189,10 @@ struct mhit{
   // Same, but for a bigger box around slices
   double tofarslc_s;
   double sincefarslc_s;
+
+  // Same, but special for trackless slices
+  double totlslc_s;
+  double sincetlslc_s;
 
   // The minimum time to the next slice anywhere
   double toanyslice_s;
@@ -203,11 +210,20 @@ typedef std::vector<mhit *> sncluster;
 
 // Minimal slice information, distilled from rb::Cluster
 struct mslice{
+  // Number of tracks in this slice.  I only plan to use this to check
+  // if it is zero, in which case the slice is going to be treated with
+  // extra suspicion, but may as well store the number.
+  int ntrack;
+
   float mintns, maxtns;
 
-  // Extents with buffers. These "nears" and "fars" aren't the two
-  // detectors, but the size of the box around the slice.  (Maybe they
-  // should have been "close" and "distant"?)
+  // Extents
+  int16_t minplane, maxplane;
+  int16_t mincellx, maxcellx, mincelly, maxcelly;
+
+  // Extents with buffers, which might save time. These "nears" and
+  // "fars" aren't the two detectors, but the size of the box around the
+  // slice. (Maybe they should have been "close" and "distant"?)
   int16_t bminplane_near, bmaxplane_near;
   int16_t bmincellx_near, bmaxcellx_near, bmincelly_near, bmaxcelly_near;
   int16_t bminplane_far, bmaxplane_far;
@@ -233,6 +249,9 @@ struct mslice{
 // Minimal track information, distilled from rb::Track, for use
 // in correlating later activity to track ends
 struct mtrack{
+  // The index of the slice that this track is in.
+  int slice;
+
   // The plane the track ended. If this was an X plane, the X cell the
   // track ended, and the estimated nearest Y cell. If it was a Y plane,
   // vice versa.
@@ -722,6 +741,11 @@ struct sninfo_t{
   double totrkend_s;
   double sincetrkend_s;
 
+  // The time in seconds until and since the last track end not-so-near this
+  // cluster.
+  double tofartrkend_s;
+  double sincefartrkend_s;
+
   // The time in seconds until and since the last time a cone projected
   // a long way forward from a track end included this cluster.
   double totrkproj_s;
@@ -733,6 +757,12 @@ struct sninfo_t{
   // slice for one or the other case, that one is set to 1e9.
   double tonearslc_s;
   double sincenearslc_s;
+
+  // Same, but only for slices with no tracks in them, which probably
+  // actually do contain muons that are nearly aligned with the planes.
+  // This uses a smaller spatial buffer.
+  double totlslc_s;
+  double sincetlslc_s;
 
   // Same, larger buffer.
   double tofarslc_s;
@@ -819,10 +849,14 @@ static void init_mev_stuff()
   BRN(time_ns,          i);
   BRN(totrkend_s,       D);
   BRN(sincetrkend_s,    D);
+  BRN(tofartrkend_s,    D);
+  BRN(sincefartrkend_s, D);
   BRN(totrkproj_s,      D);
   BRN(sincetrkproj_s,   D);
   BRN(tonearslc_s,      D);
   BRN(sincenearslc_s,   D);
+  BRN(totlslc_s,        D);
+  BRN(sincetlslc_s,     D);
   BRN(tofarslc_s,       D);
   BRN(sincefarslc_s,    D);
   BRN(toanyslice_s,     D);
@@ -1312,7 +1346,7 @@ static bool half_contained_track(const rb::Track & t)
 
 // return the index in the slice array that the given track is in.  But use
 // my merged slice index if slices overlap.
-static int which_slice_is_this_track_in(
+static int which_mergeslice_is_this_track_in(
   const rb::Track & t,
   const art::Handle< std::vector<rb::Cluster> > & slice,
   const std::vector<mslice> & sliceinfo)
@@ -1330,6 +1364,26 @@ static int which_slice_is_this_track_in(
     for(unsigned int j = 0; j < slc.NCell(); j++){
       const art::Ptr<rb::CellHit> shit = slc.Cell(j);
       if(*ahit == *shit) return sliceinfo[i].mergeslice;
+    }
+  }
+  return -1;
+}
+
+// return the index in the regular slice array that the given track is in.
+static int which_slice_is_this_track_in(
+  const rb::Track & t,
+  const art::Handle< std::vector<rb::Cluster> > & slice)
+{
+  if(t.NCell() == 0) return -1;
+  const art::Ptr<rb::CellHit> ahit =
+    t.Cell(0); // some random hit on the track
+
+  // Skip slice 0 since it is the noise slice
+  for(unsigned int i = 1; i < slice->size(); i++){
+    const rb::Cluster & slc = (*slice)[i];
+    for(unsigned int j = 0; j < slc.NCell(); j++){
+      const art::Ptr<rb::CellHit> shit = slc.Cell(j);
+      if(*ahit == *shit) return i;
     }
   }
   return -1;
@@ -1402,7 +1456,8 @@ static bool comparemtracktime(const mtrack & a, const mtrack & b)
 
 // Returns a useful list of (window)track information, with all tracks
 // going downward, and cell numbers for both x and y.
-static std::vector<mtrack> save_mtracks(const art::Event & evt)
+static std::vector<mtrack> make_trackinfo_list(const art::Event & evt,
+  const art::Handle< std::vector<rb::Cluster> > & slice)
 {
   art::ServiceHandle<geo::Geometry> geo;
 
@@ -1502,6 +1557,8 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
 
     struct mtrack thisone;
 
+    thisone.slice = which_slice_is_this_track_in(trk, slice);
+
     thisone.endconfused = recoplane != endplane;
     thisone.endcelly = minycell;
     thisone.endcellx = endxcell;
@@ -1512,21 +1569,45 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
       // Convert the unit vector in 3D to one in 2D since I want to work
       // in 2D for projecting tracks forward to look for stealth Michels.
       const double normxview = 1/hypot(trk.StopDir().X(), trk.StopDir().Z());
-      thisone.xview_dirz = trk.StopDir().Z()*normxview;
-      thisone.xview_dirx = trk.StopDir().X()*normxview;
+      if(isnan(normxview)){
+        thisone.xview_dirz = 0;
+        thisone.xview_dirx = 0;
+      }
+      else{
+        thisone.xview_dirz = trk.StopDir().Z()*normxview;
+        thisone.xview_dirx = trk.StopDir().X()*normxview;
+      }
 
       const double normyview = 1/hypot(trk.StopDir().Y(), trk.StopDir().Z());
-      thisone.yview_dirz = trk.StopDir().Z()*normyview;
-      thisone.yview_diry = trk.StopDir().Y()*normyview;
+      if(isnan(normyview)){
+        thisone.yview_dirz = 0;
+        thisone.yview_diry = 0;
+      }
+      else{
+        thisone.yview_dirz = trk.StopDir().Z()*normyview;
+        thisone.yview_diry = trk.StopDir().Y()*normyview;
+      }
     }
     else{
       const double normxview = 1/hypot(trk.Dir().X(), trk.Dir().Z());
-      thisone.xview_dirz = -trk.Dir().Z()*normxview;
-      thisone.xview_dirx = -trk.Dir().X()*normxview;
+      if(isnan(normxview)){
+        thisone.xview_dirz = 0;
+        thisone.xview_dirx = 0;
+      }
+      else{
+        thisone.xview_dirz = -trk.Dir().Z()*normxview;
+        thisone.xview_dirx = -trk.Dir().X()*normxview;
+      }
 
       const double normyview = 1/hypot(trk.Dir().Y(), trk.Dir().Z());
-      thisone.yview_dirz = -trk.Dir().Z()*normyview;
-      thisone.yview_diry = -trk.Dir().Y()*normyview;
+      if(isnan(normyview)){
+        thisone.yview_dirz = 0;
+        thisone.yview_diry = 0;
+      }
+      else{
+        thisone.yview_dirz = -trk.Dir().Z()*normyview;
+        thisone.yview_diry = -trk.Dir().Y()*normyview;
+      }
     }
 
     thisone.tns = trk.MeanTNS();
@@ -1541,7 +1622,8 @@ static std::vector<mtrack> save_mtracks(const art::Event & evt)
 
 // Builds list of distilled slice information
 static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
-  const art::Handle< std::vector<rb::Cluster> > & slice)
+  const art::Handle< std::vector<rb::Cluster> > & slice,
+  const vector<mtrack> & trkinfo)
 {
   std::vector<mslice> sliceinfo;
 
@@ -1552,6 +1634,8 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     memset(&slc, 0, sizeof(mslice));
 
     if((*slice)[i].NCell() == 0) continue;
+
+    for(const mtrack & t : trkinfo) if(t.slice == (int)i) slc.ntrack++;
 
     slc.mintns = (*slice)[i].MinTNS();
     slc.maxtns = (*slice)[i].MaxTNS();
@@ -1567,6 +1651,11 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.time_ns = art_time_plus_some_ns(evt.time().value(),
                       (*slice)[i].MeanTNS()).second;
 
+    slc.minplane = (*slice)[i].MinPlane();
+    slc.maxplane = (*slice)[i].MaxPlane();
+    slc.minplane = (*slice)[i].MinPlane();
+    slc.maxplane = (*slice)[i].MaxPlane();
+
     slc.bminplane_near = (*slice)[i].MinPlane() - near_slc_pln_buf;
     slc.bmaxplane_near = (*slice)[i].MaxPlane() + near_slc_pln_buf;
     slc.bminplane_far = (*slice)[i].MinPlane() - far_slc_pln_buf;
@@ -1575,12 +1664,16 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     // If the slice has no hits in a view, we will exclude only plane 0,
     // cell 0 in that view
     if((*slice)[i].NCell(geo::kX) > 0){
+      slc.mincellx = (*slice)[i].MinCell(geo::kX);
+      slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
       slc.bmincellx_near = (*slice)[i].MinCell(geo::kX) - near_slc_cel_buf;
       slc.bmaxcellx_near = (*slice)[i].MaxCell(geo::kX) + near_slc_cel_buf;
       slc.bmincellx_far = (*slice)[i].MinCell(geo::kX) - far_slc_cel_buf;
       slc.bmaxcellx_far = (*slice)[i].MaxCell(geo::kX) + far_slc_cel_buf;
     }
     if((*slice)[i].NCell(geo::kY) > 0){
+      slc.mincelly = (*slice)[i].MinCell(geo::kY);
+      slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
       slc.bmincelly_near = (*slice)[i].MinCell(geo::kY) - near_slc_cel_buf;
       slc.bmaxcelly_near = (*slice)[i].MaxCell(geo::kY) + near_slc_cel_buf;
       slc.bmincelly_far = (*slice)[i].MinCell(geo::kY) - far_slc_cel_buf;
@@ -1716,6 +1809,32 @@ static void trueposition(int16_t & trueplane, int16_t & truecellx,
   if(truecelly > 384) truecelly = -1;
 }
 
+static void tosince(double & oldsince, double & oldto,
+                    const double since, const double to)
+{
+  if(since <= 0 && to <= 0){ oldto = oldsince = 0; return; }
+  if(since > 0 && since < oldsince) oldsince = since;
+  if(to > 0 && to < oldto) oldto = to;
+}
+
+static bool inside(const int low, const int high, const int x)
+{
+  return x > low && x < high;
+}
+
+static bool hitinbox(const int lowplane, const int highplane,
+                     const int lowcellx, const int highcellx,
+                     const int lowcelly, const int highcelly,
+                     const int plane, const int cell,
+                     const int view)
+{
+  if(!inside(lowplane, highplane, plane)) return false;
+
+  if(view == geo::kX) return inside(lowcellx, highcellx, cell);
+  else                return inside(lowcelly, highcelly, cell);
+}
+
+
 // Helper function for count_mev(). Selects hits that
 // are candidates to be put into hit pairs. Apply a low ADC cut if
 // 'adc_cut'. Always apply a high ADC cut. This is intended to be true
@@ -1770,6 +1889,7 @@ static std::vector<mhit> select_hits_for_mev_search(
 
     const int cell  = hit->Cell();
     const int plane = hit->Plane();
+    const int view  = hit->View();
 
     // Cut only hit location, but don't do that for the supernova analysis,
     // because we'll figure out the best such cuts downstream.
@@ -1786,12 +1906,12 @@ static std::vector<mhit> select_hits_for_mev_search(
         if(plane >= 192-ndnplaneedge) continue;
 
         // At top of detector, stricter cut based on observed backgrounds
-        if(hit->View() == geo::kY && cell >= 96 - 20) continue;
+        if(view == geo::kY && cell >= 96 - 20) continue;
 
         // Drop outermost cells. This excludes most muon tracks that
         // just barely enter the detector, but don't get reconstructed.
         const int ndncelledge_x = 4;
-        if(hit->View() == geo::kX &&
+        if(view == geo::kX &&
            (cell <= ndncelledge_x || cell >= 96 - ndncelledge_x)) continue;
       }
       else{ // far
@@ -1799,11 +1919,11 @@ static std::vector<mhit> select_hits_for_mev_search(
         if(plane <= fdnplaneedge) continue;
         if(plane >= 895-fdnplaneedge) continue;
 
-        if(hit->View() == geo::kY && cell >= 383 - 50)
+        if(view == geo::kY && cell >= 383 - 50)
           continue;
 
         const int fdncelledge_x = 10;
-        if(hit->View() == geo::kX &&
+        if(view == geo::kX &&
            (cell <= fdncelledge_x || cell >= 383 - fdncelledge_x)) continue;
       }
     }
@@ -1818,10 +1938,14 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.sincelastbigshower_s = 1e9;
     h.sincetrkend_s = 1e9;
     h.totrkend_s = 1e9;
+    h.sincefartrkend_s = 1e9;
+    h.tofartrkend_s = 1e9;
     h.sincetrkproj_s = 1e9;
     h.totrkproj_s = 1e9;
     h.sincenearslc_s = 1e9;
     h.tonearslc_s = 1e9;
+    h.sincetlslc_s = 1e9;
+    h.totlslc_s = 1e9;
     h.sincefarslc_s = 1e9;
     h.tofarslc_s = 1e9;
     h.sinceanyslice_s = 1e9;
@@ -1835,9 +1959,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     // we have not included the "noise" slice in sliceinfo.
     for(unsigned int j = 0; j < nslice; j++){
       if(!sliceinfo[j].longslice) continue;
-
       const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
-
       if(timesince_s > 0 && timesince_s < h.sincelastbigshower_s)
         h.sincelastbigshower_s = timesince_s;
     }
@@ -1846,64 +1968,33 @@ static std::vector<mhit> select_hits_for_mev_search(
       const double timesince_s = (tns - sliceinfo[j].maxtns)*1e-9;
       const double timeto_s    = (sliceinfo[j].mintns - tns)*1e-9;
 
-      if(timesince_s > 0 && timesince_s < h.sinceanyslice_s)
-        h.sinceanyslice_s = timesince_s;
-
-      if(timeto_s > 0 && timeto_s < h.toanyslice_s)
-        h.toanyslice_s = timeto_s;
-
-      // It's in the middle of the time range of the slice
-      if(timesince_s <= 0 && timeto_s <= 0)
-        h.toanyslice_s = h.sinceanyslice_s = 0;
+      tosince(h.sinceanyslice_s, h.toanyslice_s, timesince_s, timeto_s);
 
       // Now with "far" spatial restriction
-      if(plane > sliceinfo[j].bminplane_far &&
-         plane < sliceinfo[j].bmaxplane_far){
-        if(
-           (hit->View() == geo::kX &&
-            (cell > sliceinfo[j].bmincellx_far &&
-             cell < sliceinfo[j].bmaxcellx_far))
-           ||
-           (hit->View() != geo::kX &&
-            (cell > sliceinfo[j].bmincelly_far &&
-             cell < sliceinfo[j].bmaxcelly_far))){
-
-          if(timesince_s > 0 && timesince_s < h.sincefarslc_s)
-            h.sincefarslc_s = timesince_s;
-
-          if(timeto_s > 0 && timeto_s < h.tofarslc_s)
-            h.tofarslc_s = timeto_s;
-
-          if(timesince_s <= 0 && timeto_s <= 0)
-            h.tofarslc_s = h.sincefarslc_s = 0;
-        }
-      }
+      if(hitinbox(sliceinfo[j].bminplane_far, sliceinfo[j].bmaxplane_far,
+                  sliceinfo[j].bmincellx_far, sliceinfo[j].bmaxcellx_far,
+                  sliceinfo[j].bmincelly_far, sliceinfo[j].bmaxcelly_far,
+                  plane, cell, view))
+        tosince(h.sincefarslc_s, h.tofarslc_s, timesince_s, timeto_s);
 
       // Now with "near" spatial restriction
-      if(plane > sliceinfo[j].bminplane_near &&
-         plane < sliceinfo[j].bmaxplane_near){
-        if(
-           (hit->View() == geo::kX &&
-            (cell > sliceinfo[j].bmincellx_near &&
-             cell < sliceinfo[j].bmaxcellx_near))
-           ||
-           (hit->View() != geo::kX &&
-            (cell > sliceinfo[j].bmincelly_near &&
-             cell < sliceinfo[j].bmaxcelly_near))){
+      if(hitinbox(sliceinfo[j].bminplane_near, sliceinfo[j].bmaxplane_near,
+                  sliceinfo[j].bmincellx_near, sliceinfo[j].bmaxcellx_near,
+                  sliceinfo[j].bmincelly_near, sliceinfo[j].bmaxcelly_near,
+                  plane, cell, view))
+        tosince(h.sincenearslc_s, h.tonearslc_s, timesince_s, timeto_s);
 
-          if(timesince_s > 0 && timesince_s < h.sincenearslc_s)
-            h.sincenearslc_s = timesince_s;
-
-          if(timeto_s > 0 && timeto_s < h.tonearslc_s)
-            h.tonearslc_s = timeto_s;
-
-          if(timesince_s <= 0 && timeto_s <= 0){
-            h.tonearslc_s = h.sincenearslc_s = 0;
-            // Safe because we've also set everything else above to 0.
-            break;
-          }
-        }
-      }
+      // Now cast special suspicion on trackless slices.  Treat them as though
+      // they are made entirely of track ends.
+      if(sliceinfo[j].ntrack == 0 &&
+         hitinbox(sliceinfo[j].minplane - trk_pln_buf,
+                  sliceinfo[j].maxplane + trk_pln_buf,
+                  sliceinfo[j].mincellx - trk_cel_buf,
+                  sliceinfo[j].maxcellx + trk_cel_buf,
+                  sliceinfo[j].mincelly - trk_cel_buf,
+                  sliceinfo[j].maxcelly + trk_cel_buf,
+                  plane, cell, view))
+        tosince(h.sincetlslc_s, h.totlslc_s, timesince_s, timeto_s);
     }
 
     // Construct measures of how close we are to track ends
@@ -1911,56 +2002,45 @@ static std::vector<mhit> select_hits_for_mev_search(
       const double since_s = (tns - trackinfo[j].tns)*1e-9;
       const double to_s    = (trackinfo[j].tns - tns)*1e-9;
 
-      // Simple box around the track end
-      if(plane > trackinfo[j].endplane - trk_pln_buf &&
-         plane < trackinfo[j].endplane + trk_pln_buf){
-        if(
-           (hit->View() == geo::kX &&
-            (cell > trackinfo[j].endcellx - trk_cel_buf &&
-             cell < trackinfo[j].endcellx + trk_cel_buf))
-           ||
-           (hit->View() != geo::kX &&
-            (cell > trackinfo[j].endcelly - trk_cel_buf &&
-             cell < trackinfo[j].endcelly + trk_cel_buf))){
+      // Simple boxes around the track end
+      if(hitinbox(trackinfo[j].endplane - trk_pln_buf,
+                  trackinfo[j].endplane + trk_pln_buf,
+                  trackinfo[j].endcellx - trk_cel_buf,
+                  trackinfo[j].endcellx + trk_cel_buf,
+                  trackinfo[j].endcelly - trk_cel_buf,
+                  trackinfo[j].endcelly + trk_cel_buf,
+                  plane, cell, view))
+        tosince(h.sincetrkend_s, h.totrkend_s, since_s, to_s);
+      if(hitinbox(trackinfo[j].endplane - big_trk_pln_buf,
+                  trackinfo[j].endplane + big_trk_pln_buf,
+                  trackinfo[j].endcellx - big_trk_cel_buf,
+                  trackinfo[j].endcellx + big_trk_cel_buf,
+                  trackinfo[j].endcelly - big_trk_cel_buf,
+                  trackinfo[j].endcelly + big_trk_cel_buf,
+                  plane, cell, view))
+        tosince(h.sincefartrkend_s, h.tofartrkend_s, since_s, to_s);
 
-          if(since_s > 0 && since_s < h.sincetrkend_s)
-            h.sincetrkend_s = since_s;
-
-          if(to_s > 0 && to_s < h.totrkend_s)
-            h.totrkend_s = to_s;
-
-          if(since_s <= 0 && to_s <= 0)
-            h.totrkend_s = h.sincetrkend_s = 0;
-        }
-      }
-
-      // forward cone (well, really just a triangle)
+      // forward cone (well, really just a wedge (not a biggs))
       double dotprod = 0, trkend2hit_w = 0;
       const double trkend2hit_z = (plane - trackinfo[j].endplane)*plnz;
-      if(hit->View() == geo::kX){
+      if(view == geo::kX){
         trkend2hit_w = (cell - trackinfo[j].endcellx)*cellw;
         dotprod = trackinfo[j].xview_dirz*trkend2hit_z +
-                               trackinfo[j].xview_dirx*trkend2hit_w;
+                  trackinfo[j].xview_dirx*trkend2hit_w;
       }
       else{
         trkend2hit_w = (cell - trackinfo[j].endcelly)*cellw;
         dotprod = trackinfo[j].yview_dirz*trkend2hit_z +
-                               trackinfo[j].yview_diry*trkend2hit_w;
+                  trackinfo[j].yview_diry*trkend2hit_w;
       }
       const double dist_cm = hypot(trkend2hit_w, trkend2hit_z);
       const double dist_pln = dist_cm/plnz;
-      const double dtheta = acos(dotprod/dist_cm) * 180/M_PI;
 
-      if(dist_pln < trkproj_pln_buf && fabs(dtheta) < trkproj_ang_buf){
-        if(since_s > 0 && since_s < h.sincetrkproj_s)
-          h.sincetrkproj_s = since_s;
+      // save lots of time by comparing cosines and not running acos()
+      const double cosdtheta = dotprod/dist_cm;
 
-        if(to_s > 0 && to_s < h.totrkproj_s)
-          h.totrkproj_s = to_s;
-
-        if(since_s <= 0 && to_s <= 0)
-          h.totrkproj_s = h.sincetrkproj_s = 0;
-      }
+      if(dist_pln < trkproj_pln_buf && cosdtheta > cos_trkproj_ang_buf)
+        tosince(h.sincetrkproj_s, h.totrkproj_s, since_s, to_s);
     }
 
     h.hitid = i; // Because CellHit::ID() seems to always be zero
@@ -1970,7 +2050,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     h.tns   = tns;
     h.tdc   = hit->TDC();
     h.plane = plane;
-    h.isx   = hit->View() == geo::kX;
+    h.isx   = view == geo::kX;
     h.cell  = cell;
     h.tposoverc = geo->CellTpos(plane, cell) * invlightspeed;
     h.pe    = hit->PE();
@@ -2058,10 +2138,9 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // cluster so far or something. I think checking against the first hit
   // is good enough.
 
-  // Intentionally bigger than optimum value suggested by MC (150ns FD,
-  // 10ns(!) ND) because we know that the data has a bigger time spread
-  // from, for instance, the very well known slice duration discrepancy
-  // (see, e.g., doc-19053).
+  // This probably should be 100, since it turns out that I never
+  // want to accept any clusters with a total spread greater than that,
+  // at least not with my selection as of 2020-09-16.
   const float timewindow = 250; // ns
 
   if(clu[0]->plane%2 == h.plane%2){
@@ -2339,6 +2418,24 @@ static double since_trkend(const sncluster & c)
   return least;
 }
 
+static double to_fartrkend(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->tofartrkend_s < least)
+      least = h->tofartrkend_s;
+  return least;
+}
+
+static double since_fartrkend(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->sincefartrkend_s < least)
+      least = h->sincefartrkend_s;
+  return least;
+}
+
 static double to_trkproj(const sncluster & c)
 {
   double least = 1e9;
@@ -2372,6 +2469,24 @@ static double since_nearslc(const sncluster & c)
   for(const auto h : c)
     if(h->sincenearslc_s < least)
       least = h->sincenearslc_s;
+  return least;
+}
+
+static double to_tlslc(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->totlslc_s < least)
+      least = h->totlslc_s;
+  return least;
+}
+
+static double since_tlslc(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->sincetlslc_s < least)
+      least = h->sincetlslc_s;
   return least;
 }
 
@@ -2559,11 +2674,17 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.sincetrkend_s = since_trkend(c);
   sninfo.   totrkend_s =    to_trkend(c);
 
+  sninfo.sincefartrkend_s = since_fartrkend(c);
+  sninfo.   tofartrkend_s =    to_fartrkend(c);
+
   sninfo.sincetrkproj_s = since_trkproj(c);
   sninfo.   totrkproj_s =    to_trkproj(c);
 
   sninfo.tonearslc_s = to_nearslc(c);
   sninfo.sincenearslc_s = since_nearslc(c);
+
+  sninfo.totlslc_s = to_tlslc(c);
+  sninfo.sincetlslc_s = since_tlslc(c);
 
   sninfo.tofarslc_s = to_farslc(c);
   sninfo.sincefarslc_s = since_farslc(c);
@@ -2875,7 +2996,7 @@ count_tracks_containedslices(const art::Event & evt,
     }
 
     trk_slices[i] =
-      which_slice_is_this_track_in((*tracks)[i], slice, sliceinfo);
+      which_mergeslice_is_this_track_in((*tracks)[i], slice, sliceinfo);
 
     if(un_contained_track((*tracks)[i]))
       slices_with_uc_tracks.insert(trk_slices[i]);
@@ -3108,7 +3229,7 @@ void ligoanalysis::produce(art::Event & evt)
 
   const std::vector<mtrack> trackinfo = 
   (fAnalysisClass == SNonlyFD || fAnalysisClass == MichelFD)?
-    save_mtracks(evt): std::vector<mtrack>();
+    make_trackinfo_list(evt, slice): std::vector<mtrack>();
 
   // Make list of all times and locations of "physics" slices. For the
   // MeV search, we will exclude other hits near them in time to drop
@@ -3117,7 +3238,7 @@ void ligoanalysis::produce(art::Event & evt)
   // more Poissonian.
   const std::vector<mslice> sliceinfo =
     (fAnalysisClass == Blind || fAnalysisClass == DDenergy)?
-      std::vector<mslice>(): make_sliceinfo_list(evt, slice);
+      std::vector<mslice>(): make_sliceinfo_list(evt, slice, trackinfo);
 
   // For holding tracks and slices from the previous trigger so (in the
   // rare case that triggers are 5 and not 5.05ms and therefore have no
