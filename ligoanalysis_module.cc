@@ -705,6 +705,16 @@ struct sninfo_t{
   // data, but it probably isn't super reliable.
   float timeext_ns;
 
+  // Largest gap in time between two hits in the cluster.  Same as
+  // timeext_ns if there are 2 hits.
+  float maxtimegap_ns;
+
+  // Smallest gap in time between two hits.  Same as timeext_ns
+  // if there are 2 hits.  If there are more than 2 hits, may
+  // tell you that 2 of the hits are related, and a third is
+  // background.
+  float mintimegap_ns;
+
   // First and last planes in the cluster
   int minplane;
   int maxplane;
@@ -868,6 +878,8 @@ static void init_mev_stuff()
   BRN(minhitadc,        S);
   BRN(maxhitadc,        S);
   BRN(timeext_ns,       F);
+  BRN(maxtimegap_ns,    F);
+  BRN(mintimegap_ns,    F);
   BRN(minplane,         I);
   BRN(maxplane,         I);
   BRN(planegap,         I);
@@ -2138,10 +2150,9 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // cluster so far or something. I think checking against the first hit
   // is good enough.
 
-  // This probably should be 100, since it turns out that I never
-  // want to accept any clusters with a total spread greater than that,
-  // at least not with my selection as of 2020-09-16.
-  const float timewindow = 250; // ns
+  // Used to be 250, but then I discovered that I never wanted clusters
+  // with a greater total extent than 100ns.
+  const float timewindow = 100; // ns
 
   if(clu[0]->plane%2 == h.plane%2){
     // These hits are in the same view, so the times can be compared directly
@@ -2556,10 +2567,12 @@ static int16_t max_hit_adc(const sncluster & c)
   return ans;
 }
 
-static float time_ext_ns(const sncluster & c)
+static float time_ext_ns(float &mingap, float & maxgap,
+                         const sncluster & c)
 {
   double mintime = FLT_MAX, maxtime = FLT_MIN;
   if(c.size() <= 1) return 0;
+  std::vector<float> reltimes;
   for(const auto & h : c){
     // Calculate all times as relative to the first hit.  Absolute time and
     // overall sign don't matter because we're finding the extent.
@@ -2575,7 +2588,17 @@ static float time_ext_ns(const sncluster & c)
 
     if(deltat < mintime) mintime = deltat;
     if(deltat > maxtime) maxtime = deltat;
+    reltimes.push_back(deltat);
   }
+
+  std::sort(reltimes.begin(), reltimes.end());
+  maxgap = 0, mingap = FLT_MAX;
+  for(unsigned int i = 0; i < reltimes.size()-1; i++){
+    const float gap = reltimes[i+1] - reltimes[i];
+    if(gap > maxgap) maxgap = gap;
+    if(gap < mingap) mingap = gap;
+  }
+
   return maxtime - mintime;
 }
 
@@ -2655,7 +2678,8 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.pey = sum_pe(c).second;
   sninfo.minhitadc  = min_hit_adc(c);
   sninfo.maxhitadc  = max_hit_adc(c);
-  sninfo.timeext_ns = time_ext_ns(c);
+  sninfo.timeext_ns = time_ext_ns(sninfo.mintimegap_ns,
+                                  sninfo.maxtimegap_ns, c);
   sninfo.minplane = min_plane(c);
   sninfo.maxplane = max_plane(c);
   sninfo.planegap = plane_gap(c);
