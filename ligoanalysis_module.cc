@@ -1146,6 +1146,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
         init_lh_name_live(lh_upmu_tracks_point[q],
                           Form("upmu_tracks_point_%d",q), false);
       // Fall-through
+    case SNonlyND:
     case SNonlyFD:
     case MichelFD:
       init_lh(lh_rawtrigger);
@@ -1153,8 +1154,6 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
       break;
     case MinBiasND:
       init_track_and_contained_hists();
-      // Fall-through
-    case SNonlyND:
       init_lh(lh_rawtrigger);
       init_mev_stuff();
       break;
@@ -1475,7 +1474,7 @@ static std::vector<mtrack> make_trackinfo_list(const art::Event & evt,
 
   art::Handle< std::vector<rb::Track> > tracks;
   evt.getByLabel("windowtrack", tracks);
-  if(tracks->empty())
+  if(tracks->empty() && gDet == caf::kFARDET)
     fprintf(stderr, "Unexpected empty windowtrack vector\n");
 
   // Don't assume input tracks are stored in time order. Process them
@@ -2610,8 +2609,7 @@ static double atten(const double w, const bool isx)
   const double viewfactor = isx? 0.6374: 0.5546;
   const double B = 0.4493, a1 = 203.6, a2 = 755.4;
 
-  // XXX FD only -- we may well want this for the ND as well
-  const double celllength = 1650;
+  const double celllength = gDet == caf::kFARDET?1650:399.28;
 
   const double att = viewfactor*(
        B *exp(-(celllength-w)/a1) +
@@ -3203,7 +3201,7 @@ void ligoanalysis::produce(art::Event & evt)
         art::Handle< std::vector< rawdata::RawDigit > > rd;
         getrawdigits(rd, evt);
         if(rd->empty()){
-          printf("Rejecting LIGO_TRIGGER 50us event with zero hits\n");
+          printf("Rejecting trigger: 50us event with zero hits\n");
           return;
         }
       }
@@ -3214,7 +3212,7 @@ void ligoanalysis::produce(art::Event & evt)
       // these cases, and the complexity doesn't seem worth it.
       const int len = event_length_tdc/TDC_PER_US;
       if(len != 5050 && len != 5000){
-        printf("Rejecting LIGO_TRIGGER length %dus != 5050 or 5000\n", len);
+        printf("Rejecting trigger of length %dus != 5050 or 5000\n", len);
         return;
       }
     }
@@ -3252,7 +3250,8 @@ void ligoanalysis::produce(art::Event & evt)
   }
 
   const std::vector<mtrack> trackinfo = 
-  (fAnalysisClass == SNonlyFD || fAnalysisClass == MichelFD)?
+  (fAnalysisClass == SNonlyFD || fAnalysisClass == SNonlyND ||
+   fAnalysisClass == MichelFD)?
     make_trackinfo_list(evt, slice): std::vector<mtrack>();
 
   // Make list of all times and locations of "physics" slices. For the
@@ -3293,6 +3292,7 @@ void ligoanalysis::produce(art::Event & evt)
       count_upmu(evt);
       count_all_mev(evt, sliceinfo_wprev, trackinfo_wprev);
       break;
+    case SNonlyND:
     case SNonlyFD:
     case MichelFD:
       count_triggers(evt);
@@ -3301,10 +3301,6 @@ void ligoanalysis::produce(art::Event & evt)
     case MinBiasND:
       count_tracks_containedslices(evt, sliceinfo);
       count_all_mev(evt, sliceinfo_wprev, trackinfo_wprev);
-      break;
-    case SNonlyND:
-      count_triggers(evt);
-      count_mev(evt, true /* SN-like */, sliceinfo_wprev, trackinfo_wprev);
       break;
     case Blind:
       count_livetime(evt);
