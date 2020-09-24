@@ -5,6 +5,7 @@
 #include "BackTracker.fcl"
 #include "CelestialLocator.fcl"
 #include "CosmicTrack.fcl"
+#include "EliminateBeamSpills.fcl"
 
 process_name: ligosnonlyfd
 
@@ -23,6 +24,9 @@ services:
 
 services.BackTracker: @local::standard_backtracker
 
+eliminatebeam: @local::standard_eliminatebeamspills
+eliminatebeam.spillfile: "dummy.txt"
+
 source:
 {
   module_type: RootInput
@@ -35,6 +39,11 @@ this_here_ligoanalysis.AnalysisClass: SNonlyFD
 
 physics:
 {
+  #filters:
+  #{
+    #ebeam: @local::eliminatebeam
+  #}
+
   producers:
   {
     calhit: @local::standard_calhit
@@ -43,7 +52,8 @@ physics:
     snanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ calhit, slicer, windowtrack, snanalysis ]
+  reco: [ #ebeam,
+          calhit, slicer, windowtrack, snanalysis ]
 }
 
 # Never want CAFs, so avoid prod4/prod5 CAF structure change problem
