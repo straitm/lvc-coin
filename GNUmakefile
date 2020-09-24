@@ -32,4 +32,4 @@ override LIBLIBS += $(LOADLIBES) \
  -lart_Framework_Services_Optional_TFileService_service \
  -lCelestialLocator_service \
  -L$(HOME)/lib \
- -lhealpix_cxx -lcxxsupport -lsharp -lfftpack -lc_utils -lcfitsio -lcurl -fopenmp
+ -lhealpix_cxx -lcxxsupport -lsharp -lfftpack -lc_utils -lcfitsio -lcurl -fopenmp -lChannelInfo

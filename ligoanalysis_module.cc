@@ -35,6 +35,8 @@
 #include "NovaTimingUtilities/TimingUtilities.h"
 
 #include "TH1.h"
+#include "TH2.h"
+#include "TFile.h"
 #include "TTree.h"
 #include "TRandom3.h"
 
@@ -48,7 +50,6 @@
 #include "progress.cpp"
 
 #include "func/timeutil.h"
-#include "func/DaqChannelMask.h"
 
 
 // "`-._,-'"`-._,-'"`-._,-' BEGIN sky map stuff "`-._,-'"`-._,-'"`-._,-'
@@ -114,7 +115,8 @@ static const int16_t nd_high_adc = 2500;
 // that is above 65 ADC.
 //
 // Not clear what the best value is here
-static const int16_t MINSINGLETONADC = 130;
+static const int16_t FD_MINSINGLETONADC = 130;
+static const int16_t ND_MINSINGLETONADC = 0;
 
 // Generous box for regular Michel rejection. The first is mostly useful
 // for doing a simple cut to reject most of the background. The second
@@ -138,6 +140,7 @@ const double cos_trkproj_ang_buf = cos(trkproj_ang_buf*M_PI/180);
 const int near_slc_pln_buf = 24, near_slc_cel_buf = 48;
 const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
 
+static TH2C * chmask = NULL;
 
 static int gDet = caf::kUNKNOWN;
 
@@ -202,7 +205,7 @@ struct mhit{
   // The time since the previous big shower *anywhere*
   double sincelastbigshower_s;
 
-  // Whether DaqChannelMask has marked this channel as noisy
+  // Whether this channel is noisy
   bool noisy;
 };
 
@@ -282,6 +285,7 @@ class ligoanalysis : public art::EDProducer {
   void beginJob();
 
   void beginRun(art::Run& run);
+  void beginSubRun(art::SubRun& subrun);
 
   /// \brief User-supplied type of trigger being examined.
   ///
@@ -1065,6 +1069,41 @@ void ligoanalysis::beginJob()
 {
 }
 
+void ligoanalysis::beginSubRun(art::SubRun& subrun)
+{
+  if(fAnalysisClass != SNonlyFD && fAnalysisClass != SNonlyND &&
+     fAnalysisClass != MinBiasFD && fAnalysisClass != MinBiasND &&
+     fAnalysisClass != MichelFD) return;
+
+  const int run = subrun.run(), sr = subrun.subRun();
+
+  TFile * noisy = NULL;
+
+  // Since when does TFile::TFile() throw an exception when it fails?
+  // How obnoxious.  Catch its stupid exception, throw it away, and
+  // handle errors the same way as always worked before.
+  try{
+    noisy = new TFile(
+      Form("noisychannels_r%08d_s%02d.root", run, sr), "read");
+  }catch(...){}
+
+  if(noisy == NULL || noisy->IsZombie()){
+    fprintf(stderr, "Could not open noisychannels_r%08d_s%02d.root\n"
+                    "Need this for low-energy analysis.\n"
+                    "Try nova -c noisychannelsjob.fcl inputfile.root -T "
+                    "noisychannels_r%08d_s%02d.root\n",
+                    run, sr, run, sr);
+    _exit(1);
+  }
+
+  chmask = dynamic_cast<TH2C*>(noisy->Get("noisychannels/chmask"));
+  if(chmask == NULL){
+    fprintf(stderr, "Could not get noisychannels histogram from "
+            "noisychannels_r%08d_s%02d.root", run, sr);
+    _exit(1);
+  }
+}
+
 void ligoanalysis::beginRun(art::Run& run)
 {
   if(fAnalysisClass == DDenergy || fAnalysisClass == Blind ||
@@ -1712,6 +1751,9 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
     if(hit->ADC() < high_adc) continue;
 
+    // Don't treat noisy channels as slices
+    if(chmask->GetBinContent(hit->Plane(), hit->Cell())) continue;
+
     const int cell  = hit->Cell();
     const int plane = hit->Plane();
 
@@ -1862,32 +1904,6 @@ static std::vector<mhit> select_hits_for_mev_search(
   const unsigned int nslice = sliceinfo.size(), ntrack = trackinfo.size();
 
   std::vector<mhit> mhits;
-
-  // Units are hits/event: cold threshold, hot threshold.
-  // A normal channel has about 120Hz.
-  // Andrey's more sophisticated treatment in
-  // novaddt/OnlineCalibration/HotMapMaker_module.cc uses thresholds
-  // of 1kHz sustained over 50ms (hot) and >90% of 50ms windows with
-  // no hits (cold). We aren't looking at enough data to find cold
-  // channels, so disable that. We're going to sample for 50ms,
-  // so to avoid masking off channels that are up to 10x the mean
-  // noisiness (~50Hz) 99% of the time, we need to set the threshold
-  // at 1200Hz -- a 1200Hz channel has a mean of 60 hits in 50ms.  Assuming
-  // Poisson, it has a 99% chance of < 80 hits in 50ms, so that's 8
-  // hits per event.
-  static sn::DaqChannelMask chmask(-1, 8.0);
-  {
-    static unsigned int evcollected = 0;
-    if(evcollected < 10){
-      for(unsigned int i = 0; i < noiseslice.NCell(); i++)
-        chmask.AddHit(*(noiseslice.Cell(i)));
-      evcollected++;
-    }
-    if(evcollected == 10){
-      chmask.IncrementDuration(10 * 0.005);
-      chmask.CalculateRates();
-    }
-  }
 
   const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
@@ -2055,7 +2071,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
 
     h.hitid = i; // Because CellHit::ID() seems to always be zero
-    h.noisy = chmask.RatesCalculated() && chmask.ChannelIsMasked(*hit);
+    h.noisy = chmask->GetBinContent(plane, cell);
     h.used  = false;
     h.paired= false;
     h.tns   = tns;
@@ -2084,6 +2100,12 @@ static std::vector<mhit> select_hits_for_mev_search(
 
         trueposition(h.trueplane, h.truecellx, h.truecelly,
                      particle->Position());
+      }else{
+        h.truepdg = 81; // reserved for MC internal use, says PDG
+        h.trueE = 0;
+        h.trueplane = -1;
+        h.truecellx = -1;
+        h.truecelly = -1;
       }
     }
     else{
@@ -2810,7 +2832,9 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
     }while(!done);
 
     if((clu.size() >= 2 && clu.size() <= 7) ||
-       (clu.size() == 1 && clu[0]->adc >= MINSINGLETONADC)){
+       (clu.size() == 1 &&
+        clu[0]->adc >= (gDet == caf::kFARDET? FD_MINSINGLETONADC
+                                            : ND_MINSINGLETONADC))){
       snclusters.push_back(clu);
       hitclusters++;
     }
