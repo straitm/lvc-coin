@@ -31,9 +31,8 @@
 #include "TH2.h"
 #include "TTree.h"
 
-#include <string>
 #include <vector>
-#include <set>
+#include <algorithm>
 
 #include <signal.h>
 
@@ -56,7 +55,8 @@
 // Always make it FD size and sometimes don't use the whole thing
 static const unsigned int nplane = 32*28, ncell = 12*32;
 
-static uint64_t counts[nplane][ncell];
+static uint64_t counts[nplane][ncell] = { 0 };
+static uint64_t hicounts[nplane][ncell] = { 0 };
 static TH2C * result = NULL;
 
 class noisychannels : public art::EDAnalyzer {
@@ -78,7 +78,7 @@ void noisychannels::beginJob()
 {
   art::ServiceHandle<art::TFileService> t;
 
-  result = t->make<TH2C>("noisychannels", "",
+  result = t->make<TH2C>("chmask", "",
     nplane, 0, nplane, ncell, 0, ncell);
 }
 
@@ -86,12 +86,18 @@ void noisychannels::endJob()
 {
   // Count active channels so this works regardless of detector,
   // and even works for partial detectors. 
-  uint64_t total = 0, activechannels = 0;
+  uint64_t activechannels = 0;
+
+  vector<uint64_t> countssort, hicountssort;
   
   for(unsigned int i = 0; i < nplane; i++){
     for(unsigned int j = 0; j < ncell; j++){
-      total += counts[i][j];
-      if(counts[i][j] > 0) activechannels++;
+      if(counts[i][j] > 0){
+        activechannels++;
+        countssort.push_back(counts[i][j]);
+      }
+      if(hicounts[i][j] > 0)
+        hicountssort.push_back(hicounts[i][j]);
     }
   }
 
@@ -99,12 +105,26 @@ void noisychannels::endJob()
          activechannels == 1?"":"s",
          activechannels == 1?"s":"");
 
-  const double mean = activechannels?total/activechannels:0;
-  const double threshold = 10*mean;
+  if(activechannels == 0) return;
 
-  for(unsigned int i = 0; i < nplane; i++)
-    for(unsigned int j = 0; j < ncell; j++)
-      if(counts[i][j] > threshold) result->SetBinContent(i+1, j+1, 1);
+  std::sort(countssort.begin(), countssort.end());
+  std::sort(hicountssort.begin(), hicountssort.end());
+
+  const double median = countssort[countssort.size()/2];
+  const double himedian = hicountssort.size()?
+    hicountssort[hicountssort.size()/2]:0;
+
+  const double threshold = 10*median,
+             hithreshold = 10*himedian;
+
+  for(unsigned int i = 0; i < nplane; i++){
+    for(unsigned int j = 0; j < ncell; j++){
+      if(i == 122 && j == 47)
+        printf("%3d %3d %lu %f\n", i, j, counts[i][j], threshold);
+      if(counts[i][j] > threshold) result->SetBinContent(i, j, 1);
+      if(hicounts[i][j] > hithreshold) result->SetBinContent(i, j, 1);
+    }
+  }
 }
 
 void noisychannels::analyze(const art::Event & evt)
@@ -133,8 +153,12 @@ void noisychannels::analyze(const art::Event & evt)
 
   art::ServiceHandle<cmap::CMap> map;
 
-  for(const auto & hit : *hits)
-    counts[map->GetPlane(&hit)][map->GetCell(&hit)]++;
+  for(const auto & hit : *hits){
+    const int p = map->GetPlane(&hit),
+              c = map->GetCell(&hit);
+    counts[p][c]++;
+    if(hit.ADC() > 100) hicounts[p][c]++;
+  }
 }
 
 DEFINE_ART_MODULE(noisychannels)
