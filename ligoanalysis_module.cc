@@ -41,6 +41,10 @@
 #include "TTree.h"
 #include "TRandom3.h"
 
+// For getting the event count when the file is opened
+#include "art/Framework/Core/FileBlock.h"
+#include "art/Framework/IO/Root/RootFileBlock.h"
+
 #include <string>
 #include <vector>
 #include <set>
@@ -1071,7 +1075,7 @@ static double find_critical_value(const int q)
 
 static int64_t eventsinfile = 0;
 
-void noe::respondToOpenInputFile(art::FileBlock const &fb)
+void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
 {
   // Get the number of events as soon as the file opens. This looks
   // really fragile. It gets the number of entries in *some* tree, which
@@ -2173,6 +2177,10 @@ enum boOl { falSe, trUe, past_plane_of_interest };
 // We'll just have to see about (2).
 static const int MAXPLANESAWAY = 10;
 
+// Should be fairly large to admit neutron clusters, which are made
+// out of gammas with mean free path ~25cm
+static const int MAXCELLDIST = 16;
+
 // Return trUe if this hit does cluster with the existing cluster,
 // falSe if it does not, but further hits should be checked,
 // and past_plane_of_interest if it does not and no more hits
@@ -2227,10 +2235,6 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // take hits tentatively waiting for a better one to come along.  But
   // let's indefinitely shelve that idea for the day when the simple
   // approach doesn't seem sufficient, which it probably is.
-
-  // Should be fairly large to admit neutron clusters, which are made
-  // out of gammas with mean free path ~25cm
-  const int MAXCELLDIST = 16;
 
   bool in_same_view_as_another_hit = false;
   bool close_to_another_hit_in_w = false;
