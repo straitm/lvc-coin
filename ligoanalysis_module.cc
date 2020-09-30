@@ -5,7 +5,8 @@
 /// searches for a set of interesting event types so that you can see
 /// if there is a spike coincident with a gravitational wave event, or,
 /// more broadly, any sort of external event you might think of. The
-/// output is a set of histograms.
+/// output is a set of histograms and an ntuple of supernova-like
+/// clusters.
 ///
 /// \author M. Strait
 ////////////////////////////////////////////////////////////////////////
@@ -125,10 +126,10 @@ static const int16_t ND_MINSINGLETONADC = 0;
 const int trk_pln_buf = 5, trk_cel_buf = 9;
 const int big_trk_pln_buf = 40, big_trk_cel_buf = 67;
 
-// Size of cone (really, triangle) forward of a track in which we'll
+// Size of wedge forward of a track in which we'll
 // look for stealth Michels. The first number is the distance in
 // "planes", where a "plane" is just cm times the plane extent, so not
-// really planes. The second number is the half-angle of the cone in
+// really planes. The second number is the half-angle of the wedge in
 // degrees. It's really a triangle because it is done in 2D. The number
 // of planes is deliberately quite large, because I keep finding cases
 // of stealth Michels inplausibly far away in real data (I've seen one
@@ -179,9 +180,9 @@ struct mhit{
   // The time since the previous not-so-nearby track end
   double sincefartrkend_s;
 
-  // The minimum time to the next projected-forward track cone
+  // The minimum time to the next projected-forward track wedge
   double totrkproj_s;
-  // The time since the previous projected-forward track cone
+  // The time since the previous projected-forward track wedge
   double sincetrkproj_s;
 
   // The minimum time to the next slice overlapping this hit in space.
@@ -286,6 +287,9 @@ class ligoanalysis : public art::EDProducer {
 
   void beginRun(art::Run& run);
   void beginSubRun(art::SubRun& subrun);
+
+  // Used to get the number of events in the file
+  void respondToOpenInputFile(art::FileBlock const &fb);
 
   /// \brief User-supplied type of trigger being examined.
   ///
@@ -760,7 +764,7 @@ struct sninfo_t{
   double tofartrkend_s;
   double sincefartrkend_s;
 
-  // The time in seconds until and since the last time a cone projected
+  // The time in seconds until and since the last time a wedge projected
   // a long way forward from a track end included this cluster.
   double totrkproj_s;
   double sincetrkproj_s;
@@ -1063,6 +1067,33 @@ static double find_critical_value(const int q)
   }
 
   return crit;
+}
+
+static int64_t eventsinfile = 0;
+
+void noe::respondToOpenInputFile(art::FileBlock const &fb)
+{
+  // Get the number of events as soon as the file opens. This looks
+  // really fragile. It gets the number of entries in *some* tree, which
+  // at the moment that I'm testing this turns out to be the right one,
+  // but EDProducer::respondToOpenInputFile is totally undocumented as
+  // far as I can see.
+  //
+  // Anyway, if this is the wrong number, it just means that the
+  // progress indicator will be wrong. If the job has more than one
+  // file, we don't know that until the second one triggers this
+  // function. This will also just make the progress indicator wrong.
+  //
+  // If the user gave -n on the command line to limit the number of
+  // events, we don't pick that up either, so the status bar will just
+  // stop increasing when we stop reading without reaching 100%. Chris
+  // Backhouse says "you can introspect what the fcl configuration
+  // was for other modules in the path (see CAFMaker for an example
+  // of trying to dig out genie settings) so maybe you can get at the
+  // InputSource config (which is where that value goes)". So TODO.
+  auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
+
+  eventsinfile = rfb->tree()->GetEntries();
 }
 
 void ligoanalysis::beginJob()
@@ -2831,6 +2862,12 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
       }
     }while(!done);
 
+    // Consider not writing out single hit clusters since it doesn't
+    // seem like I'll use them at either detector. I will use 2D
+    // multihit clusters at the ND, though. And there is some power in
+    // single hits, but only if I'm willing to complicate the analysis
+    // with several separate categories, and it's not seeming like it's
+    // worth it.
     if((clu.size() >= 2 && clu.size() <= 7) ||
        (clu.size() == 1 &&
         clu[0]->adc >= (gDet == caf::kFARDET? FD_MINSINGLETONADC
@@ -3185,20 +3222,8 @@ void ligoanalysis::produce(art::Event & evt)
     static unsigned int n = 0;
     // Start at 1 because the first event takes forever as everything
     // is initialized.
-    if(n == 1){
-      // art provides no way of knowing how much events we will process,
-      // and its own progress indicator is of limited use.
-      #if 1
-      printf("For progress indicator, assuming a 2000 event long readout\n");
-      initprogressindicator(2000-1, 3);
-      #else
-      printf("For progress indicator, assuming a 1e6 event MC\n");
-      initprogressindicator(1000000-1, 6);
-      #endif
-    }
-    else if(n > 1){
-      progressindicator(n - 1);
-    }
+    if(n == 1) initprogressindicator(eventsinfile-1, 3);
+    else if(n > 1) progressindicator(n - 1);
     n++;
   }
 

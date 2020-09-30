@@ -27,7 +27,8 @@ elif [ $trigger == fardet-ddsnews ]; then
 elif [ $trigger == neardet-ligo ]; then
   filepattern='neardet.*_ligo_.*data.artdaq'
 elif [ $trigger == fardet-ligo ]; then
-  filepattern='fardet.*_ligo.*raw'
+  #filepattern='fardet.*_ligo.*raw'
+  filepattern='fardet.*_ligo_'
 elif [ $trigger == fardet-t02 ]; then
   filepattern='fardet.*_t02_.*data.artdaq'
 elif [ $trigger == neardet-t00 ]; then
@@ -246,6 +247,7 @@ makerawdef()
   fi
 }
 
+echo Running setup_fnal_security.  Will hang if it needs a password.
 setup_fnal_security &> /dev/null
 
 # Sleep a little so we can launch a bunch of processes at once without having

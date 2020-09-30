@@ -92,8 +92,8 @@ static char * eta(const double ince, const double tote,
 
 // Returns a string describing the estimated total running time. Returns
 // a pointer to a string representing the time to be printed. Caller
-// must free the string when done with it. If the total time improves by
-// 10% or more, sets status to 1. If it gets worse by 10% or more, sets
+// must free the string when done with it. If the total time has improved by
+// 10% or more, sets status to 1. If it has gotten worse by 10% or more, sets
 // status to -1. Otherwise, sets it to 0.
 static char * etotal(int & status, const double tottime, 
                      const double ince, const double tote, 
@@ -111,7 +111,10 @@ static char * etotal(int & status, const double tottime,
   else if(previous < current) status = -1;
   else status = 1;
 
-  previous = current;
+  // Only update previous once we report a change.  Otherwise, the time
+  // can get slowly worse (or better) and we never point it out.
+  if(status != 0) previous = current;
+
   firsttime = false;
 
   return answer;
@@ -201,6 +204,12 @@ vector<uint64_t> generateprintpoints(const uint64_t total,
       ppoints.push_back(total - i * (total/iexp10(ep)));
     }
   }
+
+  // And let's toss in 75% and 85%.  This is helpful for long running programs
+  // where the estimate for 80% otherwise sits there saying, e.g. 3h all the way
+  // up to when there's really only half of that (e.g. 1h30) left.
+  ppoints.push_back(0.75 * total);
+  ppoints.push_back(0.85 * total);
 
   // cat ppoints | sort | uniq
   sort(ppoints.begin(), ppoints.end());
