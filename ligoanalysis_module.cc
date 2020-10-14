@@ -1133,7 +1133,13 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
   // InputSource config (which is where that value goes)". So TODO.
   auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
 
-  eventsinfile = rfb->tree()->GetEntries();
+  if(rfb == NULL){
+    printf("Can't get event count. Probably raw input. Assuming 200.\n");
+    eventsinfile = 200;
+  }
+  else{
+    eventsinfile = rfb->tree()->GetEntries();
+  }
 }
 
 void ligoanalysis::beginJob()
