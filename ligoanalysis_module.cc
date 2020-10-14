@@ -601,10 +601,6 @@ static       double bighit_threshold    =  0; // set when we know det
 // Number of unsliced hits that are over the above PE threshold
 static ligohist lh_unsliced_big_hits("unslicedbighits", true);
 
-// Number of unsliced hits that are over some PE threshold and are paired
-// with a hit in an adjacent plane.  (Not an adjacent cell, because then
-// we select lots of pairs from noisy modules.  We could build a noise map
-// to fix that, but it would require two passes through the data.)
 static ligohist lh_supernovalike("supernovalike", true);
 
 // Count of slices with nothing around the edges, regardless of what sorts of
@@ -1382,7 +1378,9 @@ static int timebin(const art::Event & evt, const bool verbose = false)
   const double evt_time = art_time_to_unix_double(evt.time().value());
   const double delta = evt_time - gwevent_unix_double_time;
 
+#if 0
   if(verbose) printf("Accepted delta = %f seconds\n", delta);
+#endif
 
   return floor(delta) + window_size_s/2
          + 1; // stupid ROOT 1-based numbering!
@@ -1994,9 +1992,13 @@ static std::vector<mhit> select_hits_for_mev_search(
 
     if(hit->ADC() >= high_adc) continue;
 
+
     const int cell  = hit->Cell();
     const int plane = hit->Plane();
     const int view  = hit->View();
+
+    // Don't use noisy channels
+    if(chmask->GetBinContent(plane, cell)) continue;
 
     // Cut only hit location, but don't do that for the supernova analysis,
     // because we'll figure out the best such cuts downstream.
@@ -2151,7 +2153,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
 
     h.hitid = i; // Because CellHit::ID() seems to always be zero
-    h.noisy = chmask->GetBinContent(plane, cell);
+    h.noisy = false; // previously would keep noisy channels, now don't
     h.used  = false;
     h.paired= false;
     h.tns   = tns;
@@ -2741,6 +2743,11 @@ static void savecluster(const art::Event & evt, const sncluster & c)
     return;
   }
 
+  sninfo.noisefrac = noise_frac(c);
+
+  // At the moment, I don't anticipate using such events
+  if(sninfo.noisefrac > 0) return;
+
   sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
@@ -2801,7 +2808,6 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.subrun = evt.subRun();
   sninfo.event = evt.event();
   sninfo.hitid = c[0]->hitid;
-  sninfo.noisefrac = noise_frac(c);
 
   calibrate(sninfo); // set unattpe
 
@@ -2890,12 +2896,6 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
       }
     }while(!done);
 
-    // Consider not writing out single hit clusters since it doesn't
-    // seem like I'll use them at either detector. I will use 2D
-    // multihit clusters at the ND, though. And there is some power in
-    // single hits, but only if I'm willing to complicate the analysis
-    // with several separate categories, and it's not seeming like it's
-    // worth it.
     if((clu.size() >= 2 && clu.size() <= 7) ||
        (clu.size() == 1 &&
         clu[0]->adc >= (gDet == caf::kFARDET? FD_MINSINGLETONADC
@@ -3230,8 +3230,15 @@ static void count_all_mev(art::Event & evt,
 static void count_livetime(const art::Event & evt)
 {
   const double livetime = rawlivetime(evt);
+#if 1
   const double veryrawlivetime = rawlivetime(evt, true);
-  printf("Livetime %g seconds, %g used\n", veryrawlivetime, livetime);
+
+  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  getrawtrigger(rawtrigger, evt);
+
+  printf("Trigger type %d: %g seconds, %g accepted\n",
+         trigger(rawtrigger), veryrawlivetime, livetime);
+#endif
   THplusequals(lh_blind, timebin(evt, true), 0, livetime);
 }
 
@@ -3248,10 +3255,11 @@ void ligoanalysis::produce(art::Event & evt)
 {
   {
     static unsigned int n = 0;
+    if(n == 0) printf("Processing first event\n");
     // Start at 1 because the first event takes forever as everything
     // is initialized.
     if(n == 1) initprogressindicator(eventsinfile-1, 3);
-    else if(n > 1) progressindicator(n - 1);
+    if(n > 0) progressindicator(n - 1);
     n++;
   }
 
@@ -3295,8 +3303,10 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
-  art::ServiceHandle<geo::Geometry> geo;
-  gDet = geo->DetId();
+  if(fAnalysisClass != Blind){
+    art::ServiceHandle<geo::Geometry> geo;
+    gDet = geo->DetId();
+  }
 
   bighit_threshold = gDet == caf::kNEARDET?
     bighit_threshold_nd : bighit_threshold_fd;
@@ -3326,7 +3336,7 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
-  const std::vector<mtrack> trackinfo = 
+  const std::vector<mtrack> trackinfo =
   (fAnalysisClass == SNonlyFD || fAnalysisClass == SNonlyND ||
    fAnalysisClass == MichelFD)?
     make_trackinfo_list(evt, slice): std::vector<mtrack>();
