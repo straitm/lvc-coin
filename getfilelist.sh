@@ -25,10 +25,14 @@ if [ $trigger == neardet-ddsnews ]; then
 elif [ $trigger == fardet-ddsnews ]; then
   filepattern='fardet.*_DDsnews.raw'
 elif [ $trigger == neardet-ligo ]; then
-  filepattern='neardet.*_ligo_.*data.artdaq'
+  filepattern='neardet.*ligo'
 elif [ $trigger == fardet-ligo ]; then
   #filepattern='fardet.*_ligo.*raw'
-  filepattern='fardet.*_ligo_'
+  filepattern='fardet.*ligo'
+elif [ $trigger == fardet-ddsn ]; then
+  filepattern='fardet.*ddsn'
+elif [ $trigger == neardet-ddsn ]; then
+  filepattern='neardet.*ddsn'
 elif [ $trigger == fardet-t02 ]; then
   filepattern='fardet.*_t02_.*data.artdaq'
 elif [ $trigger == neardet-t00 ]; then
@@ -211,7 +215,7 @@ makerawdef()
 
   echo SAM selected these files:
 
-  cat $metadir/allfiles.$unixtime.$trigger | grep -E "$filepattern" | sort | \
+  cat $metadir/allfiles.$unixtime.$trigger | grep -Ei "$filepattern" | sort | \
     tee $metadir/selectedfiles.$unixtime.$trigger
 
   if ! [ "$(cat $metadir/selectedfiles.$unixtime.$trigger)" ]; then
@@ -223,11 +227,12 @@ makerawdef()
     exit 2
   fi
 
-  if cat $metadir/selectedfiles.$unixtime.$trigger | grep -q "$filepattern"; then
-    # Even during the SNEWS trigger, we only get about 40 subruns at the
-    # FD in a half hour.  Finding more than that in 1100 seconds (0.3h)
-    # means that something is broken.
-    if [ $(cat $metadir/selectedfiles.$unixtime.$trigger|grep "$filepattern"|wc -l) -gt 99 ]; then
+  if cat $metadir/selectedfiles.$unixtime.$trigger | grep -qi "$filepattern"; then
+    # Even during the SNEWS trigger, we only get about 40 subruns at
+    # the FD in a half hour. Finding much more than about three times
+    # that number (raw + artdaq + pid) in 1100 seconds (0.3h) means that
+    # something is broken.
+    if [ $(cat $metadir/selectedfiles.$unixtime.$trigger|grep -i "$filepattern"|wc -l) -gt 200 ]; then
       echo Unreasonable number of files for $trigger.
       exit 1
     fi
@@ -235,7 +240,7 @@ makerawdef()
     # Just in case another script made the definition in the meanwhile?!
     if ! samweb describe-definition $def &> /dev/null; then
       timeout 5m samweb create-definition $def \
-        "$(for f in $(grep "$filepattern" $metadir/selectedfiles.$unixtime.$trigger); do
+        "$(for f in $(grep -i "$filepattern" $metadir/selectedfiles.$unixtime.$trigger); do
              printf "file_name %s or " $(basename $f);
            done | sed 's/ or $//')"
 
