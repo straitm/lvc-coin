@@ -10,7 +10,6 @@ services:
   scheduler:    { wantTracer: false wantSummary: true }
   TimeTracker:  { printSummary: true }
   message:      @local::standard_out
-  @table::standard_services
 }
 
 source:
@@ -25,6 +24,9 @@ this_here_ligofilter: @local::standard_ligofilter
 this_here_ligoanalysis: @local::standard_ligoanalysis
 this_here_ligoanalysis.AnalysisClass: Blind
 
+# Should be the same
+this_here_ligofilter.GWEventTime:   "2020-01-01T00:00:00.000000Z"
+this_here_ligoanalysis.GWEventTime: "2020-01-01T00:00:00.000000Z"
 
 physics:
 {
@@ -38,19 +40,5 @@ physics:
     ligoanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ ligofilter,
-          ligoanalysis ]
-
- stream1: [ out1 ]
-
- end_paths: [ stream1 ]
-}
-
-outputs:
-{
- out1:
-  {
-   module_type: RootOutput
-   fileName:    "ligo.root"
-  }
+  reco: [ ligofilter, ligoanalysis ]
 }
