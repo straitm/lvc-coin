@@ -119,9 +119,36 @@ static const int16_t nd_high_adc = 2500;
 // About 2/3 of the FD signal with any hits has only one hit. 70% of
 // that is above 65 ADC.
 //
-// Not clear what the best value is here
-static const int16_t FD_MINSINGLETONADC = 130;
-static const int16_t ND_MINSINGLETONADC = 0;
+// Not clear what the best value is here.  At the moment, I'm not
+// using single hits at all, so effectively disable it.
+static const int16_t FD_MINSINGLETONADC = SHRT_MAX; // 130;
+static const int16_t ND_MINSINGLETONADC = SHRT_MAX; // 0;
+
+
+// Should we allow non-adjacent planes to get neutron hit clusters?
+// Yes, it seems so. It looks like 2.6% of neutrons do the golden
+// thing of having hits in adjacent planes, but another 3.8% have hits
+// in two (or more) non-adjacent planes. Unfortunately, they're spread
+// out over many planes, with 1.1% two planes separated, 0.4% three
+// planes, 0.7% four planes, 0.3% five planes, etc. (I think even is
+// favored over odd because then both are either on the bright side or
+// the dark side instead of being random.)
+//
+// What's the risk of accepting hits too far away from each other? (1)
+// Lots background making huge file sizes that will just have to be
+// cut later (2) Spoiling signal hits by attaching them to background
+// hits. Well, tests indicate that it about triples the file size. Since
+// it also doubles the potential signal, that seems tolerable.
+// We'll just have to see about (2).
+//
+// Value overwritten by fcl parameter.
+static int MaxPlaneDist = 10;
+
+// Should be fairly large to admit neutron clusters, which are made
+// out of gammas with mean free path ~25cm
+//
+// Value overwritten by fcl parameter.
+static int MaxCellDist = 16;
 
 // Generous box for regular Michel rejection. The first is mostly useful
 // for doing a simple cut to reject most of the background. The second
@@ -326,6 +353,19 @@ class ligoanalysis : public art::EDProducer {
   ///
   /// This is an effort to remove NuMI events that sneak past other filters.
   bool fCutNDmultislices;
+
+  /// \brief Largest number of planes away a hit can be to be clustered
+  /// for the supernova-like selection.
+  ///
+  /// If set to 1, planes must be contiguous.
+  int fMaxPlaneDist;
+
+  /// \brief Largest number of cells away a hit can be to be clustered
+  /// for the supernova-like selection.
+  ///
+  /// If set to 1, cells must be contiguous.  Note that this applies across
+  /// planes, and cells are staggered, so the definition is a little odd.
+  int fMaxCellDist;
 };
 
 /**********************************************************************/
@@ -1174,8 +1214,13 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fNeedBGEventTime(pset.get<std::string>("NeedBGEventTime")),
   fSkyMap(pset.get<std::string>("SkyMap")),
   fWindowSize(pset.get<unsigned long long>("WindowSize")),
-  fCutNDmultislices(pset.get<bool>("CutNDmultislices"))
+  fCutNDmultislices(pset.get<bool>("CutNDmultislices")),
+  fMaxPlaneDist(pset.get<int>("MaxPlaneDist")),
+  fMaxCellDist(pset.get<int>("MaxCellDist"))
 {
+  MaxPlaneDist = fMaxPlaneDist;
+  MaxCellDist = fMaxCellDist;
+
   const std::string analysis_class_string(
     pset.get<std::string>("AnalysisClass"));
 
@@ -2160,27 +2205,6 @@ static std::vector<mhit> select_hits_for_mev_search(
 // https://thedailywtf.com/articles/What_Is_Truth_0x3f_
 enum boOl { falSe, trUe, past_plane_of_interest };
 
-// Should we allow non-adjacent planes to get neutron hit clusters?
-// Yes, it seems so. It looks like 2.6% of neutrons do the golden
-// thing of having hits in adjacent planes, but another 3.8% have hits
-// in two (or more) non-adjacent planes. Unfortunately, they're spread
-// out over many planes, with 1.1% two planes separated, 0.4% three
-// planes, 0.7% four planes, 0.3% five planes, etc. (I think even is
-// favored over odd because then both are either on the bright side or
-// the dark side instead of being random.)
-//
-// What's the risk of accepting hits too far away from each other? (1)
-// Lots background making huge file sizes that will just have to be
-// cut later (2) Spoiling signal hits by attaching them to background
-// hits. Well, tests indicate that it about triples the file size. Since
-// it also doubles the potential signal, that seems tolerable.
-// We'll just have to see about (2).
-static const int MAXPLANESAWAY = 10;
-
-// Should be fairly large to admit neutron clusters, which are made
-// out of gammas with mean free path ~25cm
-static const int MAXCELLDIST = 16;
-
 // Return trUe if this hit does cluster with the existing cluster,
 // falSe if it does not, but further hits should be checked,
 // and past_plane_of_interest if it does not and no more hits
@@ -2195,13 +2219,13 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   bool another_hit_few_enough_planes_away = false;
   int leastpast = 1000;
   for(unsigned int i = 0; i < clu.size(); i++){
-    if(abs(h.plane - clu[i]->plane) <= MAXPLANESAWAY)
+    if(abs(h.plane - clu[i]->plane) <= MaxPlaneDist)
       another_hit_few_enough_planes_away = true;
     const int pastby = h.plane - clu[i]->plane;
     if(pastby < leastpast) leastpast = pastby;
   }
 
-  if(leastpast > MAXPLANESAWAY) return past_plane_of_interest;
+  if(leastpast > MaxPlaneDist) return past_plane_of_interest;
 
   if(!another_hit_few_enough_planes_away) return falSe;
 
@@ -2245,7 +2269,7 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
 
   for(unsigned int i = 0; i < clu.size(); i++)
     if(h.plane%2 == clu[i]->plane%2 &&
-       abs(h.cell - clu[i]->cell) <= MAXCELLDIST)
+       abs(h.cell - clu[i]->cell) <= MaxCellDist)
       close_to_another_hit_in_w = true;
 
   if(in_same_view_as_another_hit && !close_to_another_hit_in_w) return falSe;
@@ -2849,7 +2873,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
       // the cluster.)
       const unsigned int startat =
         std::lower_bound(mhits.begin(), mhits.end(),
-                         hitwithplane(min_plane(clu) - MAXPLANESAWAY),
+                         hitwithplane(min_plane(clu) - MaxPlaneDist),
                          compare_plane)
         - mhits.begin();
 

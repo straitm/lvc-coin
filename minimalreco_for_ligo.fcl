@@ -1,0 +1,57 @@
+#include "CalHit.fcl"
+#include "Slicer4D.fcl"
+#include "MultiHoughT.fcl"
+#include "services.fcl"
+#include "CelestialLocator.fcl"
+
+# For up-mu
+#include "CosmicTrack.fcl"
+#include "MattUpMuAnalysis.fcl"
+
+process_name: recoforligominbiasfd
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantTracer: false wantSummary: true }
+  TimeTracker:  { printSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+  CelestialLocator:    @local::standard_celestial
+}
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+physics:
+{
+  producers:
+  {
+    calhit: @local::standard_calhit
+    slicer: @local::standard_slicer4d
+    windowtrack: @local::window_cosmictrack
+    upmuanalysis: @local::standard_matt_upmuanalysis
+  }
+
+  reco: [ calhit,
+          slicer,
+          windowtrack, # for upmu
+          upmuanalysis
+          ]
+
+ stream1: [ out1 ]
+
+ end_paths: [ stream1 ]
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fileName:    "recoligo.root"
+  }
+}

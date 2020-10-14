@@ -1,0 +1,47 @@
+#include "services.fcl"
+#include "RemoveBeamSpills.fcl"
+
+process_name: ligondactivityrbeam
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantTracer: false wantSummary: true }
+  TimeTracker:  { printSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+}
+
+# Cargo-culting this line.  Ok, not entirely cargo-culting, because I
+# tested that if it isn't here, it doesn't work.  But I don't know what
+# it does.
+services.IFBeam: {}
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+physics:
+{
+  filters:
+  {
+    removebeamspills: @local::standard_removebeamspills
+  }
+
+  reco: [ removebeamspills ]
+
+ stream1: [ out1 ]
+
+ end_paths: [ stream1 ]
+}
+
+outputs:
+{
+ out1:
+  {
+   module_type: RootOutput
+   fileName:    "rbs.root"
+  }
+}

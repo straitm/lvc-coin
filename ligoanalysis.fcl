@@ -33,6 +33,18 @@ standard_ligoanalysis:
 
   # If true, cut ND events with multiple slices to remove NuMI events
   CutNDmultislices: true
+
+  # Largest number of planes away a hit can be to be clustered for the
+  # supernova-like selection. This default appears ok for the ND, but
+  # too big for the FD (so I set it in the job fcl)
+  MaxPlaneDist: 10
+
+  # Largest number of cells away a hit can be to be clustered for the
+  # supernova-like selection. If set to 1, cells must be contiguous.
+  # Note that this applies across planes, and cells are staggered, so
+  # the definition is a little odd. This default appears to be ok for
+  # the ND, but too big for the FD (so I set it in the job fcl).
+  MaxCellDist: 16
 }
 
 END_PROLOG
