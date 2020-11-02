@@ -1,11 +1,5 @@
 ////////////////////////////////////////////////////////////////////////
-/// \brief The noisychannels module looks at GW coincidences.
-///
-/// Given a time window, specified as an absolute time and a delta, it
-/// searches for a set of interesting event types so that you can see
-/// if there is a spike coincident with a gravitational wave event, or,
-/// more broadly, any sort of external event you might think of. The
-/// output is a set of histograms.
+/// \brief The noisychannels module looks for noisy channels
 ///
 /// \author M. Strait
 ////////////////////////////////////////////////////////////////////////
@@ -119,8 +113,8 @@ void noisychannels::endJob()
 
   for(unsigned int i = 0; i < nplane; i++){
     for(unsigned int j = 0; j < ncell; j++){
-      if(i == 122 && j == 47)
-        printf("%3d %3d %lu %f\n", i, j, counts[i][j], threshold);
+      // We're operating entirely with bin numbers and not bin ranges,
+      // so this is not an off-by-one error.
       if(counts[i][j] > threshold) result->SetBinContent(i, j, 1);
       if(hicounts[i][j] > hithreshold) result->SetBinContent(i, j, 1);
     }

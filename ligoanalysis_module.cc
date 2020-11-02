@@ -1270,6 +1270,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
     case SNonlyND:
     case SNonlyFD:
     case MichelFD:
+      init_blind_hist();
       init_lh(lh_rawtrigger);
       init_mev_stuff();
       break;
@@ -1533,8 +1534,7 @@ static void count_triggers(const art::Event & evt)
   const double rawtime = rawlivetime(evt);
 
   // rawtime doesn't make sense for counting, e.g. DDEnergy triggers,
-  // but it is a useful diagonistic for seeing if we're within a long
-  // SNEWS/LIGO trigger.
+  // but it is needed for minbias triggers -- 10Hz, SNEWS, LIGO
   THplusequals(lh_rawtrigger, timebin(evt), 1, rawtime);
 }
 
@@ -1835,7 +1835,9 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
     if(hit->ADC() < high_adc) continue;
 
-    // Don't treat noisy channels as slices
+    // Don't treat noisy channels as slices.
+    // We're operating entirely with bin numbers and not bin ranges,
+    // so this is not an off-by-one error.
     if(chmask->GetBinContent(hit->Plane(), hit->Cell())) continue;
 
     const int cell  = hit->Cell();
@@ -2004,6 +2006,8 @@ static std::vector<mhit> select_hits_for_mev_search(
     const int view  = hit->View();
 
     // Don't use noisy channels
+    // We're operating entirely with bin numbers and not bin ranges,
+    // so this is not an off-by-one error.
     if(chmask->GetBinContent(plane, cell)) continue;
 
     // Cut only hit location, but don't do that for the supernova analysis,
@@ -3236,7 +3240,7 @@ static void count_all_mev(art::Event & evt,
 static void count_livetime(const art::Event & evt)
 {
   const double livetime = rawlivetime(evt);
-#if 1
+#if 0
   const double veryrawlivetime = rawlivetime(evt, true);
 
   art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
@@ -3388,6 +3392,7 @@ void ligoanalysis::produce(art::Event & evt)
     case SNonlyND:
     case SNonlyFD:
     case MichelFD:
+      count_livetime(evt);
       count_triggers(evt);
       count_mev(evt, true /* SN-like */, sliceinfo_wprev, trackinfo_wprev);
       break;
