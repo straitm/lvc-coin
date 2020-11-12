@@ -105,6 +105,58 @@ else
   elif [ $gwbase == S200311bg ]; then realgweventtime="2020-03-11T11:58:53.397788Z"
   elif [ $gwbase == S200316bj ]; then realgweventtime="2020-03-16T21:57:56.157221Z"
 
+  # SNEWS test trigger 8:30 Fermilab time = 13:29:01.35 during daylight savings time
+  #                                         14:29:01.35 during standard time
+  # That is, recently, since we changed the offset, whenver that was.
+
+  elif [ $gwbase == snews20191201 ]; then realgweventtime="2019-12-01T14:29:01.350000Z"
+
+  elif [ $gwbase == snews20200101 ]; then realgweventtime="2020-01-01T14:29:01.350000Z"
+  elif [ $gwbase == snews20200115 ]; then realgweventtime="2020-01-15T14:29:01.350000Z"
+  elif [ $gwbase == snews20200201 ]; then realgweventtime="2020-02-01T14:29:01.350000Z"
+  elif [ $gwbase == snews20200215 ]; then realgweventtime="2020-02-15T14:29:01.350000Z"
+  elif [ $gwbase == snews20200301 ]; then realgweventtime="2020-03-01T14:29:01.350000Z"
+
+  # DST began on March 8, 2020
+  elif [ $gwbase == snews20200315 ]; then realgweventtime="2020-03-15T14:29:01.350000Z"
+
+  elif [ $gwbase == snews20200401 ]; then realgweventtime="2020-04-01T13:29:01.350000Z"
+  elif [ $gwbase == snews20200415 ]; then realgweventtime="2020-04-15T13:29:01.350000Z"
+  elif [ $gwbase == snews20200501 ]; then realgweventtime="2020-05-01T13:29:01.350000Z"
+  elif [ $gwbase == snews20200515 ]; then realgweventtime="2020-05-15T13:29:01.350000Z"
+  elif [ $gwbase == snews20200601 ]; then realgweventtime="2020-06-01T13:29:01.350000Z"
+  elif [ $gwbase == snews20200615 ]; then realgweventtime="2020-06-15T13:29:01.350000Z"
+
+  # SNEWS test trigger used for my training test
+  elif [ $gwbase == snews20200623 ]; then realgweventtime="2020-06-23T13:29:01.350000Z"
+
+  elif [ $gwbase == snews20200701 ]; then realgweventtime="2020-07-01T13:29:01.350000Z"
+
+  # SNEWS test triggers used for my training test
+  elif [ $gwbase == snews20200707 ]; then realgweventtime="2020-07-07T13:29:01.350000Z"
+  elif [ $gwbase == snews20200709 ]; then realgweventtime="2020-07-09T13:29:01.350000Z"
+  elif [ $gwbase == snews20200710 ]; then realgweventtime="2020-07-10T13:29:01.350000Z"
+
+  elif [ $gwbase == snews20200715 ]; then realgweventtime="2020-07-15T13:29:01.350000Z"
+
+  elif [ $gwbase == snews20200801 ]; then realgweventtime="2020-08-01T13:29:01.350000Z"
+  elif [ $gwbase == snews20200815 ]; then realgweventtime="2020-08-15T13:29:01.350000Z"
+  elif [ $gwbase == snews20200901 ]; then realgweventtime="2020-09-01T13:29:01.350000Z"
+  elif [ $gwbase == snews20200915 ]; then realgweventtime="2020-09-15T13:29:01.350000Z"
+  elif [ $gwbase == snews20201001 ]; then realgweventtime="2020-10-01T13:29:01.350000Z"
+
+  # A recent run when I took it
+  elif [ $gwbase == snews20201012 ]; then realgweventtime="2020-10-12T13:29:01.350000Z"
+
+  elif [ $gwbase == snews20201015 ]; then realgweventtime="2020-10-15T13:29:01.350000Z"
+
+  # DST ended on Nov 1, 2020
+
+  elif [ $gwbase == snews20201101 ]; then realgweventtime="2020-11-01T14:29:01.350000Z"
+  elif [ $gwbase == snews20201102 ]; then realgweventtime="2020-11-02T14:29:01.350000Z"
+  elif [ $gwbase == snews20201103 ]; then realgweventtime="2020-11-03T14:29:01.350000Z"
+
+
   else
     echo I do not know when $gwbase was.  Edit env.sh
     if ! [ "$PS1" ]; then
