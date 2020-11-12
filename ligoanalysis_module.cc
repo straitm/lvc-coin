@@ -1794,8 +1794,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
     slc.minplane = (*slice)[i].MinPlane();
     slc.maxplane = (*slice)[i].MaxPlane();
-    slc.minplane = (*slice)[i].MinPlane();
-    slc.maxplane = (*slice)[i].MaxPlane();
 
     slc.bminplane_near = (*slice)[i].MinPlane() - near_slc_pln_buf;
     slc.bmaxplane_near = (*slice)[i].MaxPlane() + near_slc_pln_buf;
