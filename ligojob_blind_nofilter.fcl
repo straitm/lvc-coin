@@ -1,0 +1,33 @@
+#include "ligoanalysis.fcl"
+#include "services.fcl"
+
+process_name: ligoblind
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  message:      @local::standard_out
+}
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: Blind
+
+# Only matters if you need the histogram to show the time distribution
+this_here_ligoanalysis.GWEventTime: "2020-01-01T00:00:00.000000Z"
+
+
+physics:
+{
+  producers:
+  {
+    ligoanalysis: @local::this_here_ligoanalysis
+  }
+
+  reco: [ ligoanalysis ]
+}

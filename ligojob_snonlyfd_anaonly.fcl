@@ -40,10 +40,9 @@ source:
 this_here_ligoanalysis: @local::standard_ligoanalysis
 this_here_ligoanalysis.AnalysisClass: SNonlyFD
 
-# This is a trial, but right now only positrons seem to matter and
-# essentially none of the accepted ones have cell or plane gaps, so the
-# only effect of allowing big gaps is to ruin good events by tacking
-# background hits onto them.
+# Only positrons seem to matter and essentially none of the accepted ones have
+# cell or plane gaps, so the only effect of allowing big gaps is to ruin good
+# events by tacking background hits onto them.
 this_here_ligoanalysis.MaxPlaneDist: 1
 this_here_ligoanalysis.MaxCellDist: 1
 

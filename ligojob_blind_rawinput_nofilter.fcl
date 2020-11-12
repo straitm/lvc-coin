@@ -1,0 +1,35 @@
+#include "ligoanalysis.fcl"
+#include "services.fcl"
+
+process_name: ligoblindrawinput
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  message:      @local::standard_out
+
+  # Ug, why do I need this?
+  @table::standard_services
+}
+
+source:
+{
+  module_type: NOvARawInputSource
+  DoFillFlatDAQData: true
+  FilterCorruptedNanoslices: true
+}
+
+this_here_ligoanalysis: @local::standard_ligoanalysis
+this_here_ligoanalysis.AnalysisClass: Blind
+
+this_here_ligoanalysis.GWEventTime: "2020-01-01T00:00:00.000000Z"
+
+physics:
+{
+  producers:
+  {
+    ligoanalysis: @local::this_here_ligoanalysis
+  }
+
+  reco: [ ligoanalysis ]
+}
