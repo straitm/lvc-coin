@@ -1134,8 +1134,8 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
   auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
 
   if(rfb == NULL){
-    printf("Can't get event count. Probably raw input. Assuming 200.\n");
-    eventsinfile = 200;
+    printf("Can't get event count. Probably raw input. Assuming 275.\n");
+    eventsinfile = 275;
   }
   else{
     eventsinfile = rfb->tree()->GetEntries();
@@ -1825,6 +1825,13 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     // long trigger sub-triggers, because this is a list of things to
     // *exclude*.
     sliceinfo.push_back(slc);
+
+    #if 0
+    if(slc.ntrack == 0)
+      printf("slice %u is trackless. nhit %3u. Extents: %5.1f, %d %d %d\n", i,
+             (*slice)[i].NCell(), slc.maxtns - slc.mintns, slc.maxcellx - slc.mincellx,
+             slc.maxcelly - slc.mincelly, slc.maxplane - slc.minplane);
+    #endif
   }
 
   // Make pseudo-slices for all unsliced hits >= high_adc.  These, near
