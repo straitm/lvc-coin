@@ -195,6 +195,7 @@ vector<uint64_t> generateprintpoints(const uint64_t total,
   // makes 10% - 90% print
   // Look at the parentheses around (total/10).  Those are required
   // to make this work for numbers bigger than 0xffffffff/10
+  // Note for small 'total', this can be somewhat off ideal.
   for(uint64_t i = 1; i <= 9; i++) ppoints.push_back(i * (total/10));
 
   // Makes 1%-9% and 91%-99%, 0.1%-0.9% and 99.1%-99.9%, etc.
@@ -205,9 +206,11 @@ vector<uint64_t> generateprintpoints(const uint64_t total,
     }
   }
 
-  // And let's toss in 75% and 85%.  This is helpful for long running programs
-  // where the estimate for 80% otherwise sits there saying, e.g. 3h all the way
-  // up to when there's really only half of that (e.g. 1h30) left.
+  // And let's toss in 75% and 85%. This is helpful for long running
+  // programs where the estimate for 80% otherwise sits there saying,
+  // e.g. 3h all the way up to when there's really only half of that
+  // (e.g. 1h30) left.
+  // XXX This seems to do nothing.
   ppoints.push_back(0.75 * total);
   ppoints.push_back(0.85 * total);
 
