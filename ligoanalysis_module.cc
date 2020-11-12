@@ -1165,7 +1165,14 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
   }catch(...){}
 
   if(noisy == NULL || noisy->IsZombie()){
+    try{
+      noisy = new TFile("noisychannels.root", "read");
+    }catch(...){}
+  }
+
+  if(noisy == NULL || noisy->IsZombie()){
     fprintf(stderr, "Could not open noisychannels_r%08d_s%02d.root\n"
+                    "or noisychannels.root. "
                     "Need this for low-energy analysis.\n"
                     "Try nova -c noisychannelsjob.fcl inputfile.root -T "
                     "noisychannels_r%08d_s%02d.root\n",
