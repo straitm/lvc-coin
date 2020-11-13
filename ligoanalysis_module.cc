@@ -110,6 +110,8 @@ static long long window_size_s = 1000;
 
 // Relaxed for the supernova analysis
 // Were: 85, 600, 107, 2500
+// XXX Wait, shouldn't I allow these to participate in clusters so
+// then I can reject the cluster because they are there? Probably.
 static const int16_t fd_high_adc = 1500;
 static const int16_t nd_high_adc = 2500;
 
@@ -236,9 +238,6 @@ struct mhit{
 
   // The time since the previous big shower *anywhere*
   double sincelastbigshower_s;
-
-  // Whether this channel is noisy
-  bool noisy;
 };
 
 typedef std::vector<mhit *> sncluster;
@@ -875,10 +874,6 @@ struct sninfo_t{
   // It's the index of the hit in the noise slice, because CellHit::ID()
   // seems to always return zero.
   unsigned int hitid;
-
-  // Fraction of the hits in this cluster that are from noisy channels
-  float noisefrac;
-
 } sninfo;
 
 /*********************************************************************/
@@ -944,7 +939,6 @@ static void init_mev_stuff()
   BRN(subrun,           i);
   BRN(event,            i);
   BRN(hitid,            i);
-  BRN(noisefrac,        F);
 }
 
 static void init_blind_hist()
@@ -2061,7 +2055,12 @@ static std::vector<mhit> select_hits_for_mev_search(
 
     static TRandom3 randfortiming;
 
-    // Smear out MC timing as per my study shown in doc-45041
+    // Smear out MC timing as per my study shown in doc-45041.
+    // The smearing could be more sophisticated than this because it
+    // appears to be a function of position.  But probably we need to
+    // know w to smear correctly, which we don't under we make a cluster,
+    // so this code would need to get substantially more complex to
+    // implement that.
     const float tns = hit->TNS()
       + (hit->IsMC()?randfortiming.Gaus()*23.:0);
 
@@ -2175,9 +2174,7 @@ static std::vector<mhit> select_hits_for_mev_search(
     }
 
     h.hitid = i; // Because CellHit::ID() seems to always be zero
-    h.noisy = false; // previously would keep noisy channels, now don't
     h.used  = false;
-    h.paired= false;
     h.tns   = tns;
     h.tdc   = hit->TDC();
     h.plane = plane;
@@ -2390,13 +2387,6 @@ static int16_t plurality_of_truecelly(const sncluster & c)
     }
 
   return best;
-}
-
-static float noise_frac(const sncluster & c)
-{
-  unsigned int nn = 0;
-  for(const mhit * h : c) nn += h->noisy;
-  return float(nn)/c.size();
 }
 
 // For the given supernova cluster, return the true PDG id that contributed
@@ -2765,11 +2755,6 @@ static void savecluster(const art::Event & evt, const sncluster & c)
     return;
   }
 
-  sninfo.noisefrac = noise_frac(c);
-
-  // At the moment, I don't anticipate using such events
-  if(sninfo.noisefrac > 0) return;
-
   sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
@@ -2912,7 +2897,7 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
         if(res == past_plane_of_interest) break;
         if(res == falSe) continue;
 
-        mhits[i].paired = mhits[j].paired = mhits[j].used = true;
+        mhits[j].used = true;
         clu.push_back(&mhits[j]);
         done = false;
       }
@@ -2929,22 +2914,9 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
 
   std::sort(snclusters.begin(), snclusters.end(), comparebytime);
 
+  // While we throw most of these events out in preselection later,
+  // writing them out is an insignificant minority of the time usage.
   for(const auto & c : snclusters) savecluster(evt, c);
-
-  unsigned int unpairedbighits = 0, unpairedsmallhits = 0;
-  for(unsigned int i = 0; i < nmhits; i++){
-    if(mhits[i].paired) continue;
-    (mhits[i].pe > bighit_threshold? unpairedbighits: unpairedsmallhits)++;
-  }
-
-  if(supernovalike){
-    THplusequals(lh_supernovalike, timebin(evt), hitclusters, livetime);
-  }else{
-    const unsigned int big = hitclusters + unpairedbighits;
-    const unsigned int all = big + unpairedsmallhits;
-    THplusequals(lh_unsliced_big_hits, timebin(evt), big, livetime);
-    THplusequals(lh_unsliced_hits,     timebin(evt), all, livetime);
-  }
 }
 
 // Passes back the {ra, dec} of a track direction given an event and that
