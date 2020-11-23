@@ -1133,7 +1133,8 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
 
   if(rfb == NULL){
     eventsinfile = fAnalysisClass == SNonlyND? 9060: 275;
-    printf("Can't get event count. Probably raw input. Assuming %lu.\n", eventsinfile);
+    printf("Can't get event count. Probably raw input. Assuming %lu.\n",
+           eventsinfile);
   }
   else{
     eventsinfile = rfb->tree()->GetEntries();
@@ -1865,13 +1866,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     // long trigger sub-triggers, because this is a list of things to
     // *exclude*.
     sliceinfo.push_back(slc);
-
-    #if 0
-    if(slc.ntrack == 0)
-      printf("slice %u is trackless. nhit %3u. Extents: %5.1f, %d %d %d\n", i,
-             (*slice)[i].NCell(), slc.maxtns - slc.mintns, slc.maxcellx - slc.mincellx,
-             slc.maxcelly - slc.mincelly, slc.maxplane - slc.minplane);
-    #endif
   }
 
   // Make pseudo-slices for all unsliced hits >= high_adc.  These, near
@@ -1904,8 +1898,8 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     // physics events.
     slc.mergeslice = -i;
 
-    slc.time_s  = art_time_plus_some_ns(evt.time().value(), slc.mintns).first;
-    slc.time_ns = art_time_plus_some_ns(evt.time().value(), slc.mintns).second;
+    slc.time_s =art_time_plus_some_ns(evt.time().value(), slc.mintns).first;
+    slc.time_ns=art_time_plus_some_ns(evt.time().value(), slc.mintns).second;
 
     slc.bminplane_near = plane - near_slc_pln_buf;
     slc.bmaxplane_near = plane + near_slc_pln_buf;
