@@ -21,11 +21,11 @@ rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
 trigger=$2
 
 if [ $trigger == neardet-ddsnews ]; then
-  filepattern='neardet.*_ddsnews_.*data.artdaq'
+  filepattern='neardet.*_DDsnews.raw'
 elif [ $trigger == fardet-ddsnews ]; then
   filepattern='fardet.*_DDsnews.raw'
 elif [ $trigger == neardet-ligo ]; then
-  filepattern='neardet.*ligo'
+  filepattern='neardet.*_ligo.raw'
 elif [ $trigger == fardet-ligo ]; then
   filepattern='fardet.*_ligo.raw'
 elif [ $trigger == fardet-ddsn ]; then

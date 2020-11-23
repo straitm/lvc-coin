@@ -1132,8 +1132,8 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
   auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
 
   if(rfb == NULL){
-    printf("Can't get event count. Probably raw input. Assuming 275.\n");
-    eventsinfile = 275;
+    eventsinfile = fAnalysisClass == SNonlyND? 9060: 275;
+    printf("Can't get event count. Probably raw input. Assuming %lu.\n", eventsinfile);
   }
   else{
     eventsinfile = rfb->tree()->GetEntries();
@@ -1190,7 +1190,12 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
   for(int i = 0; i < 896; i++)
    for(int j = 0; j < 384; j++){
      chmaskv[i][j] = chmask->GetBinContent(i, j);
+
+     // Really lazy way of handling the ND.  Try all possible
+     // channels, and ignore it when it doesn't work.
+     try{
      tposoverc[i][j] = geo->CellTpos(i, j) * invlightspeed;
+     }catch(...){}
    }
 }
 
@@ -1517,6 +1522,18 @@ static int which_mergeslice_is_this_track_in(
   return -1;
 }
 
+// Same thing as CellHit::operator== does, except this can be
+// inlined, and I skip the check that the ADCs are the same, because
+// how could there be two hits in the same cell at the same time?
+// (I mean, except for overlaid MC
+static bool celleq(const art::Ptr<rb::CellHit> & a,
+                   const art::Ptr<rb::CellHit> & b)
+{
+  return a->Cell() == b->Cell() &&
+         a->Plane() == b->Plane() &&
+         a->TDC() == b->TDC();
+}
+
 // return the index in the regular slice array that the given track is in.
 static int which_slice_is_this_track_in(
   const rb::Track & t,
@@ -1527,11 +1544,23 @@ static int which_slice_is_this_track_in(
     t.Cell(0); // some random hit on the track
 
   // Skip slice 0 since it is the noise slice
-  for(unsigned int i = 1; i < slice->size(); i++){
+  const unsigned int nslice = slice->size();
+  for(unsigned int i = 1; i < nslice; i++){
     const rb::Cluster & slc = (*slice)[i];
-    for(unsigned int j = 0; j < slc.NCell(); j++){
-      const art::Ptr<rb::CellHit> shit = slc.Cell(j);
-      if(*ahit == *shit) return i;
+
+    if(ahit->View() == geo::kX){
+      const unsigned int ncell = slc.NXCell();
+      for(unsigned int j = 0; j < ncell; j++){
+        const art::Ptr<rb::CellHit> & shit = slc.XCell(j);
+        if(celleq(ahit, shit)) return i;
+      }
+    }
+    if(ahit->View() == geo::kY){
+      const unsigned int ncell = slc.NYCell();
+      for(unsigned int j = 0; j < ncell; j++){
+        const art::Ptr<rb::CellHit> & shit = slc.YCell(j);
+        if(celleq(ahit, shit)) return i;
+      }
     }
   }
   return -1;
@@ -1992,6 +2021,12 @@ static bool hitinbox(const int lowplane, const int highplane,
 }
 
 
+static bool compare_plane(const mhit & a, const mhit & b)
+{
+  return a.plane < b.plane;
+}
+
+
 // Helper function for count_mev(). Selects hits that
 // are candidates to be put into hit pairs. Apply a low ADC cut if
 // 'adc_cut'. Always apply a high ADC cut. This is intended to be true
@@ -2048,6 +2083,7 @@ select_hits_for_mev_search(const rb::Cluster & noiseslice,
 
     mhits.push_back(h);
   }
+  std::sort(mhits.begin(), mhits.end(), compare_plane);
   return mhits;
 }
 
@@ -2211,34 +2247,10 @@ static void fill_in_hit(mhit & h,
   }
 }
 
-// https://thedailywtf.com/articles/What_Is_Truth_0x3f_
-enum boOl { falSe, trUe, past_plane_of_interest };
-
-// Return trUe if this hit does cluster with the existing cluster,
-// falSe if it does not, but further hits should be checked,
-// and past_plane_of_interest if it does not and no more hits
-// should be checked because the hits are sorted by plane number
-// and this hit is too far downstream already.
-static boOl does_cluster(const sncluster & clu, const mhit & h)
+// Return true iff this hit does cluster with the existing cluster.
+static bool does_cluster(const sncluster & clu, const mhit & h)
 {
-  // 1. Check if this hit is close enough in planes to an existing hit
-  // in the cluster. If not, fail it. If there's another hit between
-  // which would bridge them, that's fine because we will come back and
-  // check this hit again.
-  bool another_hit_few_enough_planes_away = false;
-  int leastpast = 1000;
-  for(unsigned int i = 0; i < clu.size(); i++){
-    if(abs(h.plane - clu[i]->plane) <= MaxPlaneDist)
-      another_hit_few_enough_planes_away = true;
-    const int pastby = h.plane - clu[i]->plane;
-    if(pastby < leastpast) leastpast = pastby;
-  }
-
-  if(leastpast > MaxPlaneDist) return past_plane_of_interest;
-
-  if(!another_hit_few_enough_planes_away) return falSe;
-
-  // 2. Check that the hit is in time with the first hit of the cluster.
+  // 1. Check that the hit is in time with the first hit of the cluster.
   // Maybe it should have to be in time with the mean time of the
   // cluster so far or something. I think checking against the first hit
   // is good enough.
@@ -2247,9 +2259,9 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   // with a greater total extent than 100ns.
   const float timewindow = 100; // ns
 
-  if(clu[0]->plane%2 == h.plane%2){
+  if(clu[0]->isx == h.isx){
     // These hits are in the same view, so the times can be compared directly
-    if(fabs(clu[0]->tns - h.tns) > timewindow) return falSe;
+    if(fabs(clu[0]->tns - h.tns) > timewindow) return false;
   }
   else{
     // These hits are in different views, so for each, use the other's
@@ -2258,10 +2270,10 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
       time_1st_corr = clu[0]->tns +       h.tposoverc,
       time_new_corr =       h.tns + clu[0]->tposoverc;
 
-    if(fabs(time_new_corr - time_1st_corr) > timewindow) return falSe;
+    if(fabs(time_new_corr - time_1st_corr) > timewindow) return false;
   }
 
-  // 3. Check that if this hit is in the same view as another hit
+  // 2. Check that if this hit is in the same view as another hit
   // in the cluster, that they are nearby.  Otherwise, fail it.  This
   // introduces an order dependence, and in principle we could pick
   // a bad hit first, and then fail a subsequent good hit.  We could
@@ -2273,17 +2285,21 @@ static boOl does_cluster(const sncluster & clu, const mhit & h)
   bool close_to_another_hit_in_w = false;
 
   for(unsigned int i = 0; i < clu.size(); i++)
-    if(h.plane%2 == clu[i]->plane%2)
+    if(h.isx == clu[i]->isx){
       in_same_view_as_another_hit = true;
+      break;
+    }
 
   for(unsigned int i = 0; i < clu.size(); i++)
-    if(h.plane%2 == clu[i]->plane%2 &&
-       abs(h.cell - clu[i]->cell) <= MaxCellDist)
+    if(h.isx == clu[i]->isx &&
+       abs(h.cell - clu[i]->cell) <= MaxCellDist){
       close_to_another_hit_in_w = true;
+      break;
+    }
 
-  if(in_same_view_as_another_hit && !close_to_another_hit_in_w) return falSe;
+  if(in_same_view_as_another_hit && !close_to_another_hit_in_w) return false;
 
-  return trUe;
+  return true;
 }
 
 // For the given supernova cluster, return the energy of the particle that
@@ -2809,11 +2825,6 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sntree->Fill();
 }
 
-static bool compare_plane(const mhit & a, const mhit & b)
-{
-  return a.plane < b.plane;
-}
-
 static bool comparebytime(const sncluster & a, const sncluster & b)
 {
   return mean_tns(a) < mean_tns(b);
@@ -2844,13 +2855,8 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
   const double livetime = rawlivetime(evt);
 
   // Find hits which we'll accept for possible membership in pairs.
-  // Return value is not const because we modify ::used below.
   std::vector<mhit> mhits =
     select_hits_for_mev_search((*slice)[0], livetime);
-
-  std::sort(mhits.begin(), mhits.end(), compare_plane);
-
-  unsigned int hitclusters = 0;
 
   std::vector<sncluster> snclusters;
 
@@ -2877,12 +2883,17 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
                          compare_plane)
         - mhits.begin();
 
-      for(unsigned int j = startat; j < nmhits; j++){
+      const unsigned int endat =
+        std::lower_bound(mhits.begin(), mhits.end(),
+                         hitwithplane(max_plane(clu) + MaxPlaneDist + 1),
+                         compare_plane)
+        - mhits.begin();
+
+
+      for(unsigned int j = startat; j < endat; j++){
         if(mhits[j].used) continue;
 
-        const boOl res = does_cluster(clu, mhits[j]);
-        if(res == past_plane_of_interest) break;
-        if(res == falSe) continue;
+        if(!does_cluster(clu, mhits[j])) continue;
 
         mhits[j].used = true;
         clu.push_back(&mhits[j]);
@@ -2900,7 +2911,6 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
         fill_in_hit(*clu[j], (*slice)[0], sliceinfo, trackinfo);
 
       snclusters.push_back(clu);
-      hitclusters++;
     }
   }
 
