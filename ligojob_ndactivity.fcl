@@ -83,7 +83,7 @@ physics:
     elasticarmshs: @local::standard_elasticarmshs
     fuzzykvertex: @local::standard_fuzzykvertex
     breakpoint: @local::thisone_breakpoint_here
-    ligoanalysis: @local::this_here_ligoanalysis
+    snanalysis: @local::this_here_ligoanalysis
   }
 
   reco: [ ebeam,

@@ -26,7 +26,7 @@ physics:
 {
   producers:
   {
-    ligoanalysis: @local::this_here_ligoanalysis
+    snanalysis: @local::this_here_ligoanalysis
   }
 
   reco: [ ligoanalysis ]
