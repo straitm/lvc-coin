@@ -2963,11 +2963,9 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
 
       // Some preselection here to save time calculating slice
       // distance variables.  This is a massive time savings.
-      if(gDet == caf::kFARDET){
-        if(clu.size() == 2 &&
-           clu[0]->adc + clu[1]->adc <= 110) continue;
-        }
-      }
+      if(gDet == caf::kFARDET &&
+         clu.size() == 2 &&
+         clu[0]->adc + clu[1]->adc <= 110) continue;
 
       // Now that we're going to keep it, do the hard work
       for(unsigned int j = 0; j < clu.size(); j++)
