@@ -156,6 +156,28 @@ else
   elif [ $gwbase == snews20201102 ]; then realgweventtime="2020-11-02T14:29:01.350000Z"
   elif [ $gwbase == snews20201103 ]; then realgweventtime="2020-11-03T14:29:01.350000Z"
 
+  elif [ $gwbase == snews20201104 ]; then realgweventtime="2020-11-04T14:29:01.350000Z"
+  elif [ $gwbase == snews20201105 ]; then realgweventtime="2020-11-05T14:29:01.350000Z"
+  elif [ $gwbase == snews20201106 ]; then realgweventtime="2020-11-06T14:29:01.350000Z"
+  elif [ $gwbase == snews20201107 ]; then realgweventtime="2020-11-07T14:29:01.350000Z"
+  elif [ $gwbase == snews20201108 ]; then realgweventtime="2020-11-08T14:29:01.350000Z"
+  elif [ $gwbase == snews20201109 ]; then realgweventtime="2020-11-09T14:29:01.350000Z"
+
+  elif [ $gwbase == snews20201110 ]; then realgweventtime="2020-11-10T14:29:01.350000Z"
+  elif [ $gwbase == snews20201111 ]; then realgweventtime="2020-11-11T14:29:01.350000Z"
+  elif [ $gwbase == snews20201112 ]; then realgweventtime="2020-11-12T14:29:01.350000Z"
+  elif [ $gwbase == snews20201113 ]; then realgweventtime="2020-11-13T14:29:01.350000Z"
+  elif [ $gwbase == snews20201114 ]; then realgweventtime="2020-11-14T14:29:01.350000Z"
+  elif [ $gwbase == snews20201115 ]; then realgweventtime="2020-11-15T14:29:01.350000Z"
+  elif [ $gwbase == snews20201116 ]; then realgweventtime="2020-11-16T14:29:01.350000Z"
+  elif [ $gwbase == snews20201117 ]; then realgweventtime="2020-11-17T14:29:01.350000Z"
+  elif [ $gwbase == snews20201118 ]; then realgweventtime="2020-11-18T14:29:01.350000Z"
+  elif [ $gwbase == snews20201119 ]; then realgweventtime="2020-11-19T14:29:01.350000Z"
+  elif [ $gwbase == snews20201113 ]; then realgweventtime="2020-11-13T14:29:01.350000Z"
+
+  elif [ $gwbase == snews20201120 ]; then realgweventtime="2020-11-20T14:29:01.350000Z"
+  elif [ $gwbase == snews20201121 ]; then realgweventtime="2020-11-21T14:29:01.350000Z"
+
 
   else
     echo I do not know when $gwbase was.  Edit env.sh
