@@ -172,6 +172,10 @@ const double trkproj_cm_buf = trkproj_pln_buf * plnz;
 const double trkproj_cell_buf = trkproj_pln_buf * cellw;
 const double cos_trkproj_ang_buf = cos(trkproj_ang_buf*M_PI/180);
 
+// Distance from any hit in a slice for the slice shape variables.
+// XXX wow that was a cryptic comment
+const float shape_pln_buf = 24.;
+
 // Boxes to put around each slice for determining if we are near it.
 const int near_slc_pln_buf = 24, near_slc_cel_buf = 48;
 const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
@@ -221,6 +225,9 @@ struct mhit{
   double totrkproj_s;
   // The time since the previous projected-forward track wedge
   double sincetrkproj_s;
+
+  double toshapeslc_s;
+  double sinceshapeslc_s;
 
   // The minimum time to the next slice overlapping this hit in space.
   double tonearslc_s;
@@ -282,6 +289,9 @@ struct mslice{
   // Index into a reduced set of slices where if two overlap in time,
   // they are considered one.  This index is not contiguous.
   int mergeslice;
+
+  // We'll see if this is too heavy.  Pairs of plane, cell.
+  vector< std::pair<int16_t, int> > xhits, yhits;
 };
 
 // Minimal track information, distilled from rb::Track, for use
@@ -812,6 +822,9 @@ struct sninfo_t{
   double totrkproj_s;
   double sincetrkproj_s;
 
+  double toshapeslc_s;
+  double sinceshapeslc_s;
+
   // The time until and since the last slice that overlaps this cluster
   // in space, plus a buffer of several cells and planes.  If this
   // hit is during such a slice, both are zero.  If there is no such
@@ -910,6 +923,8 @@ static void init_mev_stuff()
   BRN(sincefartrkend_s, D);
   BRN(totrkproj_s,      D);
   BRN(sincetrkproj_s,   D);
+  BRN(toshapeslc_s,      D);
+  BRN(sinceshapeslc_s,   D);
   BRN(tonearslc_s,      D);
   BRN(sincenearslc_s,   D);
   BRN(totlslc_s,        D);
@@ -1812,6 +1827,11 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 
     if((*slice)[i].NCell() == 0) continue;
 
+    for(const auto & hit : (*slice)[i].XCells())
+      slc.xhits.push_back(std::pair<int16_t, int>(hit->Plane(), hit->Cell()));
+    for(const auto & hit : (*slice)[i].YCells())
+      slc.yhits.push_back(std::pair<int16_t, int>(hit->Plane(), hit->Cell()));
+
     for(const mtrack & t : trkinfo) if(t.slice == (int)i) slc.ntrack++;
 
     slc.mintns = (*slice)[i].MinTNS();
@@ -2081,6 +2101,21 @@ select_hits_for_mev_search(const rb::Cluster & noiseslice,
   return mhits;
 }
 
+static bool hitinshape(const mslice & slc, const int16_t plane,
+                       const int cell, const int view)
+{
+  const auto & hits = view == geo::kX? slc.xhits: slc.yhits;
+  for(const auto & slchit : hits){
+    if(abs(plane - slchit.first) > shape_pln_buf) continue;
+    if(fabs((cell -  slchit.second)*cellw/plnz) > shape_pln_buf) continue;
+    const float dist = hypot(plane - slchit.first,
+                             (cell -  slchit.second)*cellw/plnz);
+    if(dist < shape_pln_buf) return true;
+  }
+
+  return false;
+}
+
 static void fill_in_hit(mhit & h,
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
   const std::vector<mtrack> & trackinfo)
@@ -2098,6 +2133,8 @@ static void fill_in_hit(mhit & h,
   h.tofartrkend_s = 1e9;
   h.sincetrkproj_s = 1e9;
   h.totrkproj_s = 1e9;
+  h.sinceshapeslc_s = 1e9;
+  h.toshapeslc_s = 1e9;
   h.sincenearslc_s = 1e9;
   h.tonearslc_s = 1e9;
   h.sincetlslc_s = 1e9;
@@ -2126,6 +2163,9 @@ static void fill_in_hit(mhit & h,
     const double timeto_s    = (slc.mintns - h.tns)*1e-9;
 
     tosince(h.sinceanyslice_s, h.toanyslice_s, timesince_s, timeto_s);
+
+    if(hitinshape(slc, h.plane, h.cell, view))
+      tosince(h.sinceshapeslc_s, h.toshapeslc_s, timesince_s, timeto_s);
 
     // Now with "far" spatial restriction
     if(hitinbox(slc.bminplane_far, slc.bmaxplane_far,
@@ -2557,6 +2597,24 @@ static double since_trkproj(const sncluster & c)
   return least;
 }
 
+static double to_shapeslc(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->toshapeslc_s < least)
+      least = h->toshapeslc_s;
+  return least;
+}
+
+static double since_shapeslc(const sncluster & c)
+{
+  double least = 1e9;
+  for(const auto h : c)
+    if(h->sinceshapeslc_s < least)
+      least = h->sinceshapeslc_s;
+  return least;
+}
+
 static double to_nearslc(const sncluster & c)
 {
   double least = 1e9;
@@ -2795,6 +2853,9 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.sincetrkproj_s = since_trkproj(c);
   sninfo.   totrkproj_s =    to_trkproj(c);
 
+  sninfo.toshapeslc_s = to_shapeslc(c);
+  sninfo.sinceshapeslc_s = since_shapeslc(c);
+
   sninfo.tonearslc_s = to_nearslc(c);
   sninfo.sincenearslc_s = since_nearslc(c);
 
@@ -2899,6 +2960,14 @@ static void count_mev(const art::Event & evt, const bool supernovalike,
        (clu.size() == 1 &&
         clu[0]->adc >= (gDet == caf::kFARDET? FD_MINSINGLETONADC
                                             : ND_MINSINGLETONADC))){
+
+      // Some preselection here to save time calculating slice
+      // distance variables.  This is a massive time savings.
+      if(gDet == caf::kFARDET){
+        if(clu.size() == 2 &&
+           clu[0]->adc + clu[1]->adc <= 110) continue;
+        }
+      }
 
       // Now that we're going to keep it, do the hard work
       for(unsigned int j = 0; j < clu.size(); j++)
