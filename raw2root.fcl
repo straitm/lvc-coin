@@ -1,38 +1,58 @@
-#include "services.fcl"
+#include "Metadata.fcl"
+#include "Geometry.fcl"
+#include "messageservice.fcl"
+#include "DetectorService.fcl"
 
-process_name: raw2root
-
-services.TimeTracker: { }
-services.scheduler.wantSummary: true
+process_name: RawConvert
 
 services:
 {
-  scheduler:    { wantTracer: false wantSummary: true }
-  message:      @local::standard_out
-  @table::standard_services
+  # Load the service that manages root files for histograms.
+  TFileService: { fileName: "daq_hist.root" closeFileFast: false }
+  TimeTracker:  {}
+  RandomNumberGenerator: {} #ART native random number generator
+
+message: { destinations: { debugmsg:{ type: "cout" threshold: "WARNING"} } }
+
+
+  Geometry:     @local::standard_geo
+  IFDH:         { IFDH_BASE_URI:  "http://samweb.fnal.gov:8480/sam/nova/api"}
+  Detector:     @local::standard_detector
 }
 
+#Start each new event with an empty event.
 source:
 {
-  module_type: NOvARawInputSource
-  DoFillFlatDAQData: true
+  module_type:               NOvARawInputSource
+  fileNames:                 ["ndos_r00012250_s00_t02.raw"]
   FilterCorruptedNanoslices: true
-}
-
-physics:
-{
-  reco: []
-
- stream1: [ out1 ]
-
- end_paths: [ stream1 ]
+  DoFillFlatDAQData:         true                          # Do we need to fill FlatDAQData object?
+  maxEvents:                 -1                             # Number of events to process
 }
 
 outputs:
 {
- out1:
+  out1:
   {
-   module_type: RootOutput
-   fileName:    "ligo.root"
+    module_type: RootOutput
+    fileName:    "novadata.root" #default file name, can override from command line with -o or --output
   }
 }
+
+# Define and configure some modules to do work on each event.
+# First modules are defined; they are scheduled later.
+# Modules are grouped by type.
+physics:
+{
+  analyzers:
+  {
+    metadata: @local::standard_metadata
+  }
+
+  stream1:  [ metadata, out1 ] #could have multiple paths
+
+  end_paths:     [stream1]  #end_path are things that do not modify art::Event, includes analyzers and output modules. all items here can be run simultaneously
+}
+
+physics.analyzers.metadata.params.DAQ2RawDigit.base_release: ""
+physics.analyzers.metadata.params.NOVA.Standard: "true"
