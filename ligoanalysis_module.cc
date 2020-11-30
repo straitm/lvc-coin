@@ -3323,18 +3323,20 @@ void ligoanalysis::produce(art::Event & evt)
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
 
-  {
-    art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
-    getrawtrigger(rawtrigger, evt);
-    if(!goodtriggertype(trigger(rawtrigger))) return;
+  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  getrawtrigger(rawtrigger, evt);
+  if(!goodtriggertype(trigger(rawtrigger))) return;
 
+  const bool is_long_trigger = longtriggertype(trigger(rawtrigger));
+
+  {
     art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
     getflatdaq(flatdaq, evt);
     if(!flatdaq.failedToGet() && !is_complete_event(flatdaq)){
       printf("WARNING: Incomplete event, but assuming can trust livetime\n");
     }
 
-    if(longtriggertype(trigger(rawtrigger))){
+    if(is_long_trigger){
       int64_t event_length_tdc, delta_tdc;
       delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger);
 
@@ -3454,16 +3456,23 @@ void ligoanalysis::produce(art::Event & evt)
       printf("No case for type %d\n", fAnalysisClass);
   }
 
-  prev_trackinfo = trackinfo;
-  prev_sliceinfo = sliceinfo;
-
   // Translate times for the next event, 5ms later. This ONLY makes
-  // sense for long readouts, and is wrong if a trigger is dropped.
-  for(unsigned int i = 0; i < prev_trackinfo.size(); i++)
-    prev_trackinfo[i].tns -= 5e6; // 5 ms in ns
-  for(unsigned int i = 0; i < prev_sliceinfo.size(); i++){
-    prev_sliceinfo[i].mintns -= 5e6;
-    prev_sliceinfo[i].maxtns -= 5e6;
+  // sense for long readouts, and is wrong if a trigger is dropped. If
+  // it's not a long trigger, don't fill these vectors. The effect will
+  // be to admit more background because we don't know about cosmics
+  // as long ago, but usually only the previous ~25us matters. And, as
+  // always we measure the background with the data, so it comes out in
+  // the wash.
+  if(is_long_trigger){
+    prev_trackinfo = trackinfo;
+    prev_sliceinfo = sliceinfo;
+
+    for(unsigned int i = 0; i < prev_trackinfo.size(); i++)
+      prev_trackinfo[i].tns -= 5e6; // 5 ms in ns
+    for(unsigned int i = 0; i < prev_sliceinfo.size(); i++){
+      prev_sliceinfo[i].mintns -= 5e6;
+      prev_sliceinfo[i].maxtns -= 5e6;
+    }
   }
 }
 
