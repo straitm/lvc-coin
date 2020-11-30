@@ -168,13 +168,14 @@ else
   elif [ $gwbase == snews20201112 ]; then realgweventtime="2020-11-12T14:29:01.350000Z"
   elif [ $gwbase == snews20201113 ]; then realgweventtime="2020-11-13T14:29:01.350000Z"
   elif [ $gwbase == snews20201114 ]; then realgweventtime="2020-11-14T14:29:01.350000Z"
+
+  # Used for overlaying MC
   elif [ $gwbase == snews20201115 ]; then realgweventtime="2020-11-15T14:29:01.350000Z"
+
   elif [ $gwbase == snews20201116 ]; then realgweventtime="2020-11-16T14:29:01.350000Z"
   elif [ $gwbase == snews20201117 ]; then realgweventtime="2020-11-17T14:29:01.350000Z"
   elif [ $gwbase == snews20201118 ]; then realgweventtime="2020-11-18T14:29:01.350000Z"
   elif [ $gwbase == snews20201119 ]; then realgweventtime="2020-11-19T14:29:01.350000Z"
-  elif [ $gwbase == snews20201113 ]; then realgweventtime="2020-11-13T14:29:01.350000Z"
-
   elif [ $gwbase == snews20201120 ]; then realgweventtime="2020-11-20T14:29:01.350000Z"
   elif [ $gwbase == snews20201121 ]; then realgweventtime="2020-11-21T14:29:01.350000Z"
 
@@ -188,8 +189,8 @@ else
 
   intgwunixtime=$(TZ=UTC date +%s -d "$(echo $realgweventtime | sed -e 's/\..*//' -e 's/T/ /')")
   gwunixtime=$intgwunixtime.$(echo $realgweventtime | sed -e 's/.*\.//' -e s/Z//)
-  nddef=strait-ligo-coincidence-artdaq-$intgwunixtime-neardet-ligo
-  fddef=strait-ligo-coincidence-artdaq-$intgwunixtime-fardet-ligo
+  nddef=strait-ligo-coincidence-artdaq-$gwunixtime-neardet-ligo
+  fddef=strait-ligo-coincidence-artdaq-$gwunixtime-fardet-ligo
 
   mkdir -p $outhistdir $outhadddir
 

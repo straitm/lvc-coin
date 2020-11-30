@@ -1,24 +1,18 @@
 #!/bin/bash
 
+echo Using $GWNAME
+
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
-# Unix time stamp of the event we want to search around.
-# (How does Online.SubRun*Time handle leap seconds!?)
 if ! [ $1 ]; then
-  echo Specify a Unix timestamp for first argument
-  exit 1
-fi
-
-if ! [ $2 ]; then
   echo Specify a trigger stream for second argument
   exit 1
 fi
 
-unixtime=$1
-fracsec=$(cut -d. -f 2 -s <<< $unixtime)
-intsec=$(cut -d. -f 1 <<< $unixtime)
+fracsec=$(cut -d. -f 2 -s <<< $gwunixtime)
+intsec=$(cut -d. -f 1 <<< $gwunixtime)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
-trigger=$2
+trigger=$1
 
 if [ $trigger == neardet-ddsnews ]; then
   filepattern='neardet.*_DDsnews.raw'
@@ -46,8 +40,8 @@ else
   exit 1
 fi
 
-defbase=strait-ligo-coincidence-artdaq-$unixtime
-recodefbase=strait-ligo-coincidence-reco-$unixtime
+defbase=strait-ligo-coincidence-artdaq-$gwunixtime
+recodefbase=strait-ligo-coincidence-reco-$gwunixtime
 rawdef=$defbase-$trigger
 recodef=$recodefbase-$trigger-$gwbase
 
@@ -86,7 +80,7 @@ havedef()
   fi
 
   if samweb describe-definition $def &> /dev/null; then
-    echo SAM definition $def exists for $unixtime
+    echo SAM definition $def exists for $gwunixtime
 
     samweb list-files defname: $def > $tmplist
     for f in $(cat $tmplist); do
@@ -194,10 +188,6 @@ makerawdef()
   # Fantastically slow
   echo Asking SAM for a list of files. This typically takes forever.
 
-  # Remove fractional part for integer arithmetic below.  Sub-second
-  # precision isn't needed since we leave large buffers on either side.
-  intunixtime=${unixtime%.*}
-
   # Some subruns have a start time of zero in the metadata.  In this case,
   # Look at the run start time.  If the run start time isn't there, don't
   # select.  I don't know if this happens. Might there be other problems?
@@ -221,7 +211,7 @@ makerawdef()
     echo No files selected, nothing to do
     if [ $trigger == neardet-t00 ]; then
       echo Making empty spill list file since there are no spills.
-      touch $spilldir/spills-$unixtime-$rfctime.txt
+      touch $spilldir/spills-$gwunixtime-$rfctime.txt
     fi
     exit 2
   fi
