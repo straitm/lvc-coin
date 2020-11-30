@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 echo Using $GWNAME
 
@@ -193,21 +193,21 @@ makerawdef()
   # select.  I don't know if this happens. Might there be other problems?
   blocksam
   samweb list-files \
-         'Online.SubRunEndTime   > '$((intunixtime-550))\
+         'Online.SubRunEndTime   > '$((intgwunixtime-550))\
     ' and ( '\
-    ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((intunixtime+2000))\
+    ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((intgwunixtime+2000))\
     ' ) or '\
     ' ( Online.SubRunStartTime = 0 and Online.RunStartTime > 0 and '\
-    '                                  Online.RunStartTime < '$((intunixtime+2000))\
+    '                                  Online.RunStartTime < '$((intgwunixtime+2000))\
     ' ) )' \
-     > $metadir/allfiles.$unixtime.$trigger
+     > $metadir/allfiles.$gwunixtime.$trigger
 
   echo SAM selected these files:
 
-  cat $metadir/allfiles.$unixtime.$trigger | grep -Ei "$filepattern" | sort | \
-    tee $metadir/selectedfiles.$unixtime.$trigger
+  cat $metadir/allfiles.$gwunixtime.$trigger | grep -Ei "$filepattern" | sort | \
+    tee $metadir/selectedfiles.$gwunixtime.$trigger
 
-  if ! [ "$(cat $metadir/selectedfiles.$unixtime.$trigger)" ]; then
+  if ! [ "$(cat $metadir/selectedfiles.$gwunixtime.$trigger)" ]; then
     echo No files selected, nothing to do
     if [ $trigger == neardet-t00 ]; then
       echo Making empty spill list file since there are no spills.
@@ -216,12 +216,12 @@ makerawdef()
     exit 2
   fi
 
-  if cat $metadir/selectedfiles.$unixtime.$trigger | grep -qi "$filepattern"; then
+  if cat $metadir/selectedfiles.$gwunixtime.$trigger | grep -qi "$filepattern"; then
     # Even during the SNEWS trigger, we only get about 40 subruns at
     # the FD in a half hour. Finding much more than about three times
     # that number (raw + artdaq + pid) in 1100 seconds (0.3h) means that
     # something is broken.
-    if [ $(cat $metadir/selectedfiles.$unixtime.$trigger|grep -i "$filepattern"|wc -l) -gt 200 ]; then
+    if [ $(cat $metadir/selectedfiles.$gwunixtime.$trigger|grep -i "$filepattern"|wc -l) -gt 200 ]; then
       echo Unreasonable number of files for $trigger.
       exit 1
     fi
@@ -229,7 +229,7 @@ makerawdef()
     # Just in case another script made the definition in the meanwhile?!
     if ! samweb describe-definition $def &> /dev/null; then
       timeout 5m samweb create-definition $def \
-        "$(for f in $(grep -i "$filepattern" $metadir/selectedfiles.$unixtime.$trigger); do
+        "$(for f in $(grep -i "$filepattern" $metadir/selectedfiles.$gwunixtime.$trigger); do
              printf "file_name %s or " $(basename $f);
            done | sed 's/ or $//')"
 
@@ -274,4 +274,4 @@ if ! samweb describe-definition $def &> /dev/null; then
   exit 1
 fi
 
-rm -f $metadir/allfiles.$unixtime.$trigger $metadir/selectedfiles.$unixtime.$trigger
+rm -f $metadir/allfiles.$gwunixtime.$trigger $metadir/selectedfiles.$gwunixtime.$trigger
