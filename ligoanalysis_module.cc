@@ -734,6 +734,13 @@ struct sninfo_t{
   // absolute time.
   int32_t tdc;
 
+  // Number of TDC from the earliest hit in the cluster to the beginning
+  // and end of the trigger. This is useful primarily for the FD 10Hz
+  // trigger where we don't have contiguous readout and need to know
+  // where our ignorance starts.
+  int32_t tdc_tobeginning;
+  int32_t tdc_toend;
+
   // Mean time of the hits in this cluster in seconds and nanoseconds
   // since Jan 1, 1970.
   uint32_t time_s;
@@ -915,6 +922,8 @@ static void init_mev_stuff()
   BRN(truecellx,        S);
   BRN(truecelly,        S);
   BRN(tdc,              I);
+  BRN(tdc_tobeginning,  I);
+  BRN(tdc_toend,        I);
   BRN(time_s,           i);
   BRN(time_ns,          i);
   BRN(totrkend_s,       D);
@@ -2811,6 +2820,20 @@ static void savecluster(const art::Event & evt, const sncluster & c)
     return;
   }
 
+  // Already got this before, so (maybe) don't need to check it
+  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  getrawtrigger(rawtrigger, evt);
+
+  art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
+  getflatdaq(flatdaq, evt);
+  if(flatdaq.failedToGet()){
+    fprintf(stderr, "Couldn't get flatdaq in savecluster()");
+    exit(1);
+  }
+
+  int64_t event_length_tdc, delta_tdc;
+  delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger);
+
   sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
@@ -2819,6 +2842,8 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.truecellx = plurality_of_truecellx(c);
   sninfo.truecelly = plurality_of_truecelly(c);
   sninfo.tdc = first_tdc(c);
+  sninfo.tdc_tobeginning = sninfo.tdc + delta_tdc;
+  sninfo.tdc_toend       = event_length_tdc - (sninfo.tdc + delta_tdc);
   sninfo.time_s = art_time_plus_some_ns(evt.time().value(),
                     mean_tns(c)).first;
   sninfo.time_ns = art_time_plus_some_ns(evt.time().value(),
