@@ -48,38 +48,38 @@ else
 
   #03
   elif [ $gwbase == S190412m  ]; then realgweventtime="2019-04-12T05:30:44.165622Z"
-  elif [ $gwbase == S190421ar ]; then realgweventtime="2019-04-21T21:38:56.250977Z"
-  elif [ $gwbase == S190425z  ]; then realgweventtime="2019-04-25T08:18:05.017147Z"
-  elif [ $gwbase == S190426c  ]; then realgweventtime="2019-04-26T15:21:55.336540Z"
-  elif [ $gwbase == S190503bf ]; then realgweventtime="2019-05-03T18:54:04.294490Z"
+  elif [ $gwbase == S190421ar ] || [ $gwbase == GW190421_213856 ]; then realgweventtime="2019-04-21T21:38:56.250977Z"
+  elif [ $gwbase == S190425z  ] || [ $gwbase == GW190425 ]; then realgweventtime="2019-04-25T08:18:05.017147Z"
+  elif [ $gwbase == S190426c  ] || [ $gwbase == GW190426_152155 ]; then realgweventtime="2019-04-26T15:21:55.336540Z"
+  elif [ $gwbase == S190503bf ] || [ $gwbase == GW190503_185404 ]; then realgweventtime="2019-05-03T18:54:04.294490Z"
   elif [ $gwbase == S190510g  ]; then realgweventtime="2019-05-10T02:59:39.291636Z"
-  elif [ $gwbase == S190512at ]; then realgweventtime="2019-05-12T18:07:14.422363Z"
-  elif [ $gwbase == S190513bm ]; then realgweventtime="2019-05-13T20:54:28.747089Z"
-  elif [ $gwbase == S190517h  ]; then realgweventtime="2019-05-17T05:51:01.830582Z"
-  elif [ $gwbase == S190519bj ]; then realgweventtime="2019-05-19T15:35:44.397949Z"
-  elif [ $gwbase == S190521g  ]; then realgweventtime="2019-05-21T03:02:29.447266Z"
-  elif [ $gwbase == S190521r  ]; then realgweventtime="2019-05-21T07:43:59.463379Z"
-  elif [ $gwbase == S190602aq ]; then realgweventtime="2019-06-02T17:59:27.089355Z"
-  elif [ $gwbase == S190630ag ]; then realgweventtime="2019-06-30T18:52:05.179550Z"
-  elif [ $gwbase == S190701ah ]; then realgweventtime="2019-07-01T20:33:06.577637Z"
-  elif [ $gwbase == S190706ai ]; then realgweventtime="2019-07-06T22:26:41.344727Z"
-  elif [ $gwbase == S190707q  ]; then realgweventtime="2019-07-07T09:33:26.181226Z"
+  elif [ $gwbase == S190512at ] || [ $gwbase == GW190512_180714 ]; then realgweventtime="2019-05-12T18:07:14.422363Z"
+  elif [ $gwbase == S190513bm ] || [ $gwbase == GW190513_205428 ]; then realgweventtime="2019-05-13T20:54:28.747089Z"
+  elif [ $gwbase == S190517h  ] || [ $gwbase == GW190517_055101 ]; then realgweventtime="2019-05-17T05:51:01.830582Z"
+  elif [ $gwbase == S190519bj ] || [ $gwbase == GW190519_153544 ]; then realgweventtime="2019-05-19T15:35:44.397949Z"
+  elif [ $gwbase == S190521g  ] || [ $gwbase == GW190521 ]; then realgweventtime="2019-05-21T03:02:29.447266Z"
+  elif [ $gwbase == S190521r  ] || [ $gwbase == GW190521_074359 ]; then realgweventtime="2019-05-21T07:43:59.463379Z"
+  elif [ $gwbase == S190602aq ] || [ $gwbase == GW190602_175927 ]; then realgweventtime="2019-06-02T17:59:27.089355Z"
+  elif [ $gwbase == S190630ag ] || [ $gwbase == GW190630_185205 ]; then realgweventtime="2019-06-30T18:52:05.179550Z"
+  elif [ $gwbase == S190701ah ] || [ $gwbase == GW190701_203306 ]; then realgweventtime="2019-07-01T20:33:06.577637Z"
+  elif [ $gwbase == S190706ai ] || [ $gwbase == GW190706_222641 ]; then realgweventtime="2019-07-06T22:26:41.344727Z"
+  elif [ $gwbase == S190707q  ] || [ $gwbase == GW190707_093326 ]; then realgweventtime="2019-07-07T09:33:26.181226Z"
 
   # Still O3, my new analysis
   elif [ $gwbase == S190718y  ]; then realgweventtime="2019-07-18T14:35:12.067865Z"
-  elif [ $gwbase == S190720a  ]; then realgweventtime="2019-07-20T00:08:36.747070Z"
-  elif [ $gwbase == S190727h  ]; then realgweventtime="2019-07-27T06:03:33.985887Z"
-  elif [ $gwbase == S190728q  ]; then realgweventtime="2019-07-28T06:45:10.546797Z"
-  elif [ $gwbase == S190814bv ]; then realgweventtime="2019-08-14T21:10:39.013334Z"
-  elif [ $gwbase == S190828j  ]; then realgweventtime="2019-08-28T06:34:05.756472Z"
-  elif [ $gwbase == S190828l  ]; then realgweventtime="2019-08-28T06:55:09.886557Z"
+  elif [ $gwbase == S190720a  ] || [ $gwbase == GW190720_000836 ]; then realgweventtime="2019-07-20T00:08:36.747070Z"
+  elif [ $gwbase == S190727h  ] || [ $gwbase == GW190727_060333 ]; then realgweventtime="2019-07-27T06:03:33.985887Z"
+  elif [ $gwbase == S190728q  ] || [ $gwbase == GW190728_064510 ]; then realgweventtime="2019-07-28T06:45:10.546797Z"
+  elif [ $gwbase == S190814bv ] || [ $gwbase == GW190814 ]; then realgweventtime="2019-08-14T21:10:39.013334Z"
+  elif [ $gwbase == S190828j  ] || [ $gwbase == GW190828_063405 ]; then realgweventtime="2019-08-28T06:34:05.756472Z"
+  elif [ $gwbase == S190828l  ] || [ $gwbase == GW190828_065509 ]; then realgweventtime="2019-08-28T06:55:09.886557Z"
   elif [ $gwbase == S190901ap ]; then realgweventtime="2019-09-01T23:31:01.837767Z"
   elif [ $gwbase == S190910d  ]; then realgweventtime="2019-09-10T01:26:19.242676Z"
   elif [ $gwbase == S190910h  ]; then realgweventtime="2019-09-10T08:29:58.544448Z"
-  elif [ $gwbase == S190915ak ]; then realgweventtime="2019-09-15T23:57:02.690891Z"
+  elif [ $gwbase == S190915ak ] || [ $gwbase == GW190915_235702 ]; then realgweventtime="2019-09-15T23:57:02.690891Z"
   elif [ $gwbase == S190923y  ]; then realgweventtime="2019-09-23T12:55:59.645508Z"
-  elif [ $gwbase == S190924h  ]; then realgweventtime="2019-09-24T02:18:46.846654Z"
-  elif [ $gwbase == S190930s  ]; then realgweventtime="2019-09-30T13:35:41.246810Z"
+  elif [ $gwbase == S190924h  ] || [ $gwbase == GW190924_021846 ]; then realgweventtime="2019-09-24T02:18:46.846654Z"
+  elif [ $gwbase == S190930s  ] || [ $gwbase == GW190930_133541 ]; then realgweventtime="2019-09-30T13:35:41.246810Z"
   elif [ $gwbase == S190930t  ]; then realgweventtime="2019-09-30T14:34:07.685342Z"
   elif [ $gwbase == S191105e  ]; then realgweventtime="2019-11-05T14:35:21.933105Z"
   elif [ $gwbase == S191109d  ]; then realgweventtime="2019-11-09T01:07:17.220703Z"
@@ -105,9 +105,36 @@ else
   elif [ $gwbase == S200311bg ]; then realgweventtime="2020-03-11T11:58:53.397788Z"
   elif [ $gwbase == S200316bj ]; then realgweventtime="2020-03-16T21:57:56.157221Z"
 
+  # #!/bin/bash
+  # 
+  # in=$1
+  # 
+  # year=20${in:2:2}
+  # month=${in:4:2}
+  # day=${in:6:2}
+  # hour=${in:9:2}
+  # minute=${in:11:2}
+  # second=${in:13:2}
+  # 
+  # echo 'elif [ '\$gwbase' == '$in' ]; then realgweventtime="'$year-$month-${day}T$hour:$minute:${second}.0Z\"
+
+  elif [ $gwbase == GW190413_052954 ]; then realgweventtime="2019-04-13T05:29:54.0Z"
+  elif [ $gwbase == GW190413_134308 ]; then realgweventtime="2019-04-13T13:43:08.0Z"
+  elif [ $gwbase == GW190424_180648 ]; then realgweventtime="2019-04-24T18:06:48.0Z"
+  elif [ $gwbase == GW190514_065416 ]; then realgweventtime="2019-05-14T06:54:16.0Z"
+  elif [ $gwbase == GW190527_092055 ]; then realgweventtime="2019-05-27T09:20:55.0Z"
+  elif [ $gwbase == GW190620_030421 ]; then realgweventtime="2019-06-20T03:04:21.0Z"
+  elif [ $gwbase == GW190708_232457 ]; then realgweventtime="2019-07-08T23:24:57.0Z"
+  elif [ $gwbase == GW190719_215514 ]; then realgweventtime="2019-07-19T21:55:14.0Z"
+  elif [ $gwbase == GW190731_140936 ]; then realgweventtime="2019-07-31T14:09:36.0Z"
+  elif [ $gwbase == GW190803_022701 ]; then realgweventtime="2019-08-03T02:27:01.0Z"
+  elif [ $gwbase == GW190910_112807 ]; then realgweventtime="2019-09-10T11:28:07.0Z"
+  elif [ $gwbase == GW190929_012149 ]; then realgweventtime="2019-09-29T01:21:49.0Z"
+
+
   # SNEWS test trigger 8:30 Fermilab time = 13:29:01.35 during daylight savings time
   #                                         14:29:01.35 during standard time
-  # That is, recently, since we changed the offset, whenver that was.
+  # That is, recently, since we changed the offset, whenever that was.
 
   elif [ $gwbase == snews20191201 ]; then realgweventtime="2019-12-01T14:29:01.350000Z"
 
