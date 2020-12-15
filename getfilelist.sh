@@ -1,18 +1,20 @@
-#!/bin/bash -x
+#!/bin/bash
+
+if ! [ $2 ]; then
+  echo Give event name and trigger stream
+  exit 1
+fi
+
+export GWNAME=$1
 
 echo Using $GWNAME
 
 . $SRT_PRIVATE_CONTEXT/ligo/env.sh
 
-if ! [ $1 ]; then
-  echo Specify a trigger stream for second argument
-  exit 1
-fi
-
 fracsec=$(cut -d. -f 2 -s <<< $gwunixtime)
 intsec=$(cut -d. -f 1 <<< $gwunixtime)
 rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
-trigger=$1
+trigger=$2
 
 if [ $trigger == neardet-ddsnews ]; then
   filepattern='neardet.*_DDsnews.raw'
