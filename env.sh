@@ -47,7 +47,7 @@ else
   elif [ $gwbase == GW151216  ]; then realgweventtime="2015-12-16T09:24:16.165Z"
 
   #03
-  elif [ $gwbase == S190412m  ]; then realgweventtime="2019-04-12T05:30:44.165622Z"
+  elif [ $gwbase == S190412m  ] || [ $gwbase == GW190412 ]; then realgweventtime="2019-04-12T05:30:44.165622Z"
   elif [ $gwbase == S190421ar ] || [ $gwbase == GW190421_213856 ]; then realgweventtime="2019-04-21T21:38:56.250977Z"
   elif [ $gwbase == S190425z  ] || [ $gwbase == GW190425 ]; then realgweventtime="2019-04-25T08:18:05.017147Z"
   elif [ $gwbase == S190426c  ] || [ $gwbase == GW190426_152155 ]; then realgweventtime="2019-04-26T15:21:55.336540Z"
