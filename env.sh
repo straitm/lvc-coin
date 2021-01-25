@@ -224,4 +224,6 @@ else
   if ! echo $PATH | grep -qE "$SRT_PRIVATE_CONTEXT/ligo([:/]|$)"; then
     PATH+=:$SRT_PRIVATE_CONTEXT/ligo
   fi
+
+  export gwnovatime=$(NovaTimeConvert "$(echo $realgweventtime | sed -e 's/T/ /' -e 's/Z/ UTC/')" | grep "base time" | awk '{print $6}')
 fi
