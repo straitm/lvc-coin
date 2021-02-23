@@ -118,6 +118,12 @@ else
   # 
   # echo 'elif [ '\$gwbase' == '$in' ]; then realgweventtime="'$year-$month-${day}T$hour:$minute:${second}.0Z\"
 
+  # Ok, I didn't realize that fractional seconds were available for these because the
+  # paper doesn't list them.  But they are there at 
+  # https://www.gw-openscience.org/eventapi/html/GWTC/
+  # Since I already processed all of them except GW190909_114149 with no fractional
+  # part, I think it violates blindness to go back and redo them.  But I missed GW190909_114149,
+  # so I may as well include its fractional part.
   elif [ $gwbase == GW190413_052954 ]; then realgweventtime="2019-04-13T05:29:54.0Z"
   elif [ $gwbase == GW190413_134308 ]; then realgweventtime="2019-04-13T13:43:08.0Z"
   elif [ $gwbase == GW190424_180648 ]; then realgweventtime="2019-04-24T18:06:48.0Z"
@@ -128,6 +134,7 @@ else
   elif [ $gwbase == GW190719_215514 ]; then realgweventtime="2019-07-19T21:55:14.0Z"
   elif [ $gwbase == GW190731_140936 ]; then realgweventtime="2019-07-31T14:09:36.0Z"
   elif [ $gwbase == GW190803_022701 ]; then realgweventtime="2019-08-03T02:27:01.0Z"
+  elif [ $gwbase == GW190909_114149 ]; then realgweventtime="2019-09-09T11:41:49.7Z"
   elif [ $gwbase == GW190910_112807 ]; then realgweventtime="2019-09-10T11:28:07.0Z"
   elif [ $gwbase == GW190929_012149 ]; then realgweventtime="2019-09-29T01:21:49.0Z"
 

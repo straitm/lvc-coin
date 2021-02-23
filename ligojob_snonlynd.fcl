@@ -25,7 +25,7 @@ services:
 services.BackTracker: @local::standard_backtracker
 
 eliminatebeam: @local::standard_eliminatebeamspills
-eliminatebeam.spillfile: "dummy.txt"
+eliminatebeam.spillfile: "spills"
 
 source:
 {
@@ -39,10 +39,10 @@ this_here_ligoanalysis.AnalysisClass: SNonlyND
 
 physics:
 {
-  #filters:
-  #{
-    #ebeam: @local::eliminatebeam
-  #}
+  filters:
+  {
+    ebeam: @local::eliminatebeam
+  }
 
   producers:
   {
@@ -52,7 +52,7 @@ physics:
     snanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ #ebeam,
+  reco: [ ebeam,
           calhit, slicer, windowtrack, snanalysis ]
 }
 
