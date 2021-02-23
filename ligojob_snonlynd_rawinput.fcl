@@ -3,7 +3,6 @@
 #include "Slicer4D.fcl"
 #include "services.fcl"
 #include "BackTracker.fcl"
-#include "CelestialLocator.fcl"
 #include "CosmicTrack.fcl"
 #include "EliminateBeamSpills.fcl"
 
@@ -16,7 +15,6 @@ services:
   TimeTracker:  { printSummary: true }
   message:      { debugModules: ["*"] destinations: { debugmsg:{type: "cout" threshold: "WARNING"} } }
   @table::standard_services
-  CelestialLocator:    @local::standard_celestial
 }
 
 services.BackTracker: @local::standard_backtracker

@@ -9,41 +9,28 @@ standard_ligoanalysis:
   # UTC, always with a Z at the end (to emphasize that it is UTC).
   GWEventTime: "2017-03-26T17:46:40.5Z"
 
-  # If we want to measure the skymap-dependent background for a gravitational
-  # wave at NeedBGEventTime, set this to the time of the GW, and set
-  # GWEventTime to the time we're using as a background sample.  Otherwise,
-  # leave this as the empty string.
-  NeedBGEventTime: ""
-
   # Length of the window in seconds.  We will look for half this amount of
   # time to each side of the absolute time given above.  Must be an integer.
   WindowSize: 1000
 
   # Which class of file we are processing.  One of:
-  # NDactivity:  for ND ddactivity1 files
-  # DDenergy:    for FD ddenergy
-  # MinBiasFD:   MeV and GeV search at the FD
-  # MinBiasND:   MeV search at the ND
-  # Blind:       Just report livetime
-  AnalysisClass: NDactivity
+  # SNonlyFD: supernova-like event search at the FD
+  # SNonlyND: supernova-like event search at the ND
+  # Blind:    Just report livetime
+  # (There used to be other types, but they have been removed for lack
+  # of interest.)
+  AnalysisClass: MinBiasFD
 
-  # LIGO/Virgo skymap file for analysis classes (above) that have
-  # pointing.  If not needed, leave it as the empty string.
-  SkyMap: ""
-
-  # If true, cut ND events with multiple slices to remove NuMI events
-  CutNDmultislices: true
-
-  # Largest number of planes away a hit can be to be clustered for the
-  # supernova-like selection. This default appears ok for the ND, but
-  # too big for the FD (so I set it in the job fcl)
+  # Largest number of planes away a hit can be to be clustered. This
+  # default appears ok for the ND, but too big for the FD (so I set it
+  # in the job fcl)
   MaxPlaneDist: 10
 
-  # Largest number of cells away a hit can be to be clustered for the
-  # supernova-like selection. If set to 1, cells must be contiguous.
-  # Note that this applies across planes, and cells are staggered, so
-  # the definition is a little odd. This default appears to be ok for
-  # the ND, but too big for the FD (so I set it in the job fcl).
+  # Largest number of cells away a hit can be to be clustered. If set
+  # to 1, cells must be contiguous. This applies across planes, and
+  # cells are staggered, so the definition is a little odd. This default
+  # appears to be ok for the ND, but too big for the FD (so I set it in
+  # the job fcl).
   MaxCellDist: 16
 }
 

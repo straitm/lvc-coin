@@ -126,7 +126,7 @@ void ligofilter::endJob()
 // second in our window it is going to be 1s too long and/or have 2
 // seconds of events piled up in 1s, depending on how the rest of this
 // module is implemented. If there were to be a negative leap second
-// (never happened as of 2017), there'd be the opposite problem.
+// (never happened as of 2021), there'd be the opposite problem.
 //
 // We could solve this problem by using the time from the header and
 // converting it ourselves *without* leap seconds, so it is the (simple
