@@ -12,23 +12,16 @@
 #include "art/Framework/Core/ModuleMacros.h"
 #include "art/Framework/Core/EDProducer.h"
 
-#include "Geometry/Geometry.h"
-
-#include "DAQDataFormats/RawTriggerTime.h"
 #include "DAQDataFormats/RawEvent.h"
-#include "DAQDataFormats/RawTrigger.h"
 #include "DAQDataFormats/RawTriggerMask.h"
 #include "DAQDataFormats/RawDataBlock.h"
-#include "StandardRecord/SREnums.h"
-
 #include "RawData/FlatDAQData.h"
 #include "RawData/RawTrigger.h"
 
+#include "Geometry/Geometry.h"
+#include "StandardRecord/SREnums.h"
 #include "RecoBase/Track.h"
-
 #include "MCCheater/BackTracker.h"
-
-#include "CMap/service/DetectorService.h"
 
 #include "TH1.h"
 #include "TH2.h"
@@ -43,11 +36,9 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-
 #include <signal.h>
 
 #include "progress.cpp"
-
 #include "func/timeutil.h"
 
 
@@ -76,27 +67,25 @@ static const double cellw = (63.455+0.048)/16.;
 static double gwevent_unix_double_time = 0;
 static long long window_size_s = 1000;
 
-// Relaxed for the supernova analysis
-// Were: 85, 600, 107, 2500
 // XXX Wait, shouldn't I allow these to participate in clusters so
 // then I can reject the cluster because they are there? Probably.
 static const int16_t fd_high_adc = 1500;
 static const int16_t nd_high_adc = 2500;
 
 // Smallest ADC to save a single hit as a cluster. Without a cut here,
-//the output is extremely large.
+// the output is extremely large.
 //
 // About 2/3 of the FD signal with any hits has only one hit. 70% of
 // that is above 65 ADC.
 //
 // Not clear what the best value is here.  At the moment, I'm not
 // using single hits at all, so effectively disable it.
-static const int16_t FD_MINSINGLETONADC = SHRT_MAX; // 130;
-static const int16_t ND_MINSINGLETONADC = SHRT_MAX; // 0;
+static const int16_t FD_MINSINGLETONADC = SHRT_MAX;
+static const int16_t ND_MINSINGLETONADC = SHRT_MAX;
 
 
 // Should we allow non-adjacent planes to get neutron hit clusters?
-// Yes, it seems so. It looks like 2.6% of neutrons do the golden
+// Yes, it seems so. It looks like 2.6% of FD neutrons do the golden
 // thing of having hits in adjacent planes, but another 3.8% have hits
 // in two (or more) non-adjacent planes. Unfortunately, they're spread
 // out over many planes, with 1.1% two planes separated, 0.4% three
@@ -127,14 +116,14 @@ static int MaxCellDist = 16;
 const int trk_pln_buf = 5, trk_cel_buf = 9;
 const int big_trk_pln_buf = 40, big_trk_cel_buf = 67;
 
-// Size of wedge forward of a track in which we'll
-// look for stealth Michels. The first number is the distance in
-// "planes", where a "plane" is just cm times the plane extent, so not
-// really planes. The second number is the half-angle of the wedge in
-// degrees. It's really a triangle because it is done in 2D. The number
-// of planes is deliberately quite large, because I keep finding cases
-// of stealth Michels inplausibly far away in real data (I've seen one
-// 30 planes and some cells away).
+// Size of wedge forward of a track in which we'll look for stealth
+// Michels. The first number is the distance in "planes", where a
+// "plane" is just cm times the plane extent, so not really planes.
+// The second number is the half-angle of the wedge in degrees. It's
+// really a triangle because it is done in 2D. The number of planes is
+// deliberately quite large, because I keep finding cases of stealth
+// Michels implausibly far away in real data (I've seen one 30 planes
+// and some cells away).
 const double trkproj_pln_buf = 60, trkproj_ang_buf = 15;
 const double trkproj_cm_buf = trkproj_pln_buf * plnz;
 const double trkproj_cell_buf = trkproj_pln_buf * cellw;
@@ -299,14 +288,12 @@ class ligoanalysis : public art::EDProducer {
   /// We search for half this length on either side of the given time.
   float fWindowSize;
 
-  /// \brief Largest number of planes away a hit can be to be clustered
-  /// for the supernova-like selection.
+  /// \brief Largest number of planes away a hit can be to be clustered.
   ///
   /// If set to 1, planes must be contiguous.
   int fMaxPlaneDist;
 
-  /// \brief Largest number of cells away a hit can be to be clustered
-  /// for the supernova-like selection.
+  /// \brief Largest number of cells away a hit can be to be clustered.
   ///
   /// If set to 1, cells must be contiguous.  Note that this applies across
   /// planes, and cells are staggered, so the definition is a little odd.
@@ -702,7 +689,7 @@ struct sninfo_t{
   unsigned int hitid;
 } sninfo;
 
-static void init_mev_stuff()
+static void init_supernova()
 {
   art::ServiceHandle<art::TFileService> t;
   sntree = t->make<TTree>("sn", "");
@@ -728,8 +715,8 @@ static void init_mev_stuff()
   BRN(sincefartrkend_s, D);
   BRN(totrkproj_s,      D);
   BRN(sincetrkproj_s,   D);
-  BRN(toshapeslc_s,      D);
-  BRN(sinceshapeslc_s,   D);
+  BRN(toshapeslc_s,     D);
+  BRN(sinceshapeslc_s,  D);
   BRN(tonearslc_s,      D);
   BRN(sincenearslc_s,   D);
   BRN(totlslc_s,        D);
@@ -849,7 +836,7 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
      // Really lazy way of handling the ND.  Try all possible
      // channels, and ignore it when it doesn't work.
      try{
-     tposoverc[i][j] = geo->CellTpos(i, j) * invlightspeed;
+       tposoverc[i][j] = geo->CellTpos(i, j) * invlightspeed;
      }catch(...){}
    }
 }
@@ -860,9 +847,6 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   fMaxPlaneDist(pset.get<int>("MaxPlaneDist")),
   fMaxCellDist(pset.get<int>("MaxCellDist"))
 {
-  MaxPlaneDist = fMaxPlaneDist;
-  MaxCellDist = fMaxCellDist;
-
   const std::string analysis_class_string(
     pset.get<std::string>("AnalysisClass"));
 
@@ -875,7 +859,10 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
     exit(1);
   }
 
-  analysis_class = fAnalysisClass; // expose to static functions
+  // expose to static functions
+  analysis_class = fAnalysisClass;
+  MaxPlaneDist = fMaxPlaneDist;
+  MaxCellDist = fMaxCellDist;
 
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
   window_size_s = fWindowSize;
@@ -885,7 +872,7 @@ ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
   livetimehist = t->make<TH1D>("blindlive", "",
     window_size_s, -window_size_s/2, window_size_s/2);
 
-  if(fAnalysisClass != Blind) init_mev_stuff();
+  if(fAnalysisClass != Blind) init_supernova();
 }
 
 // Get the FlatDAQData, either from "minbias", in the case of supernova MC
@@ -1207,7 +1194,7 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
 {
   std::vector<mslice> sliceinfo;
 
-  // Start at 1 to skip "noise" slice. Slice indicies will all be off by
+  // Start at 1 to skip "noise" slice. Slice indices will all be off by
   // one, but makes it easier not to accidentally use the noise slice.
   for(unsigned int i = 1; i < slice->size(); i++){
     mslice slc;
@@ -1412,18 +1399,17 @@ static bool compare_plane(const mhit & a, const mhit & b)
 }
 
 
-// Helper function for count_mev(). Selects hits that are candidates to
-// be put into supernova cluters.
-static std::vector<mhit>
-select_hits_for_mev_search(const rb::Cluster & noiseslice,
-                           const double livetime)
+// Helper function for supernova(). Selects hits that are candidates to
+// be put into supernova clusters.
+static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
+                                            const double livetime)
 {
   std::vector<mhit> mhits;
 
   const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
-  for(unsigned int i = 0; i < noiseslice.NCell(); i++){
-    const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(i);
+  for(unsigned int i = 0; i < slice.NCell(); i++){
+    const art::Ptr<rb::CellHit> & hit = slice.Cell(i);
 
     if(!uniquedata_tdc(livetime, hit->TDC())) continue;
 
@@ -1449,12 +1435,11 @@ select_hits_for_mev_search(const rb::Cluster & noiseslice,
 
     static TRandom3 randfortiming;
 
-    // Smear out MC timing as per my study shown in doc-45041.
-    // The smearing could be more sophisticated than this because it
-    // appears to be a function of position.  But probably we need to
-    // know w to smear correctly, which we don't under we make a cluster,
-    // so this code would need to get substantially more complex to
-    // implement that.
+    // Smear out MC timing as per my study in doc-45041. The smearing
+    // could be more sophisticated than this because it appears to be a
+    // function of position. But we need to know w to smear correctly,
+    // which we don't have until we make a cluster, so this code would
+    // need to get substantially more complex to implement it.
     const float tns = hit->TNS()
       + (hit->IsMC()?randfortiming.Gaus()*23.:0);
 
@@ -1704,7 +1689,7 @@ static bool does_cluster(const sncluster & clu, const mhit & h)
 }
 
 // For the given supernova cluster, return the energy of the particle that
-// contributed the most pe-weighted hits.  Ignore hits with no truth
+// contributed the most PE-weighted hits.  Ignore hits with no truth
 // information.
 static float plurality_of_E(const sncluster & c)
 {
@@ -1726,7 +1711,7 @@ static float plurality_of_E(const sncluster & c)
 }
 
 // For the given supernova cluster, return the true plane of the particle
-// that contributed the most pe-weighted hits.
+// that contributed the most PE-weighted hits.
 static int16_t plurality_of_trueplane(const sncluster & c)
 {
   if(c.empty()) return -1;
@@ -1749,7 +1734,7 @@ static int16_t plurality_of_trueplane(const sncluster & c)
 }
 
 // For the given supernova cluster, return the true x cell of the particle
-// that contributed the most pe-weighted hits.
+// that contributed the most PE-weighted hits.
 static int16_t plurality_of_truecellx(const sncluster & c)
 {
   if(c.empty()) return -1;
@@ -1772,7 +1757,7 @@ static int16_t plurality_of_truecellx(const sncluster & c)
 }
 
 // For the given supernova cluster, return the true x cell of the particle
-// that contributed the most pe-weighted hits.
+// that contributed the most PE-weighted hits.
 static int16_t plurality_of_truecelly(const sncluster & c)
 {
   if(c.empty()) return -1;
@@ -1795,7 +1780,7 @@ static int16_t plurality_of_truecelly(const sncluster & c)
 }
 
 // For the given supernova cluster, return the true PDG id that contributed
-// the most pe-weighted hits.  Ignore hits with no truth information.
+// the most PE-weighted hits.  Ignore hits with no truth information.
 static int plurality_of_truth(const sncluster & c)
 {
   if(c.empty()) return 0;
@@ -2127,7 +2112,7 @@ static double atten(const double w, const bool isx)
   const double viewfactor = isx? 0.6374: 0.5546;
   const double B = 0.4493, a1 = 203.6, a2 = 755.4;
 
-  const double celllength = gDet == caf::kFARDET?1650:399.28;
+  const double celllength = gDet == caf::kFARDET?1650.:399.28;
 
   const double att = viewfactor*(
        B *exp(-(celllength-w)/a1) +
@@ -2275,10 +2260,8 @@ static mhit hitwithplane(const unsigned int plane)
   return ans;
 }
 
-// Search for supernova-like events. Otherwise search for the sum of
-// supernova like events and unpaired hits, once with a PE cut and once
-// without.
-static void count_mev(const art::Event & evt,
+// Search for supernova-like events.
+static void supernova(const art::Event & evt,
                       const std::vector<mslice> & sliceinfo,
                       const std::vector<mtrack> & trackinfo)
 {
@@ -2293,8 +2276,7 @@ static void count_mev(const art::Event & evt,
   const double livetime = rawlivetime(evt);
 
   // Find hits which we'll accept for possible membership in pairs.
-  std::vector<mhit> mhits =
-    select_hits_for_mev_search((*slice)[0], livetime);
+  std::vector<mhit> mhits = hits_for_supernova((*slice)[0], livetime);
 
   std::vector<sncluster> snclusters;
 
@@ -2483,7 +2465,7 @@ void ligoanalysis::produce(art::Event & evt)
                          sliceinfo.begin(), sliceinfo.end());
 
   if(fAnalysisClass != Blind)
-    count_mev(evt, sliceinfo_wprev, trackinfo_wprev);
+    supernova(evt, sliceinfo_wprev, trackinfo_wprev);
   count_livetime(evt);
 
   // Translate times for the next event, 5ms later. This ONLY makes

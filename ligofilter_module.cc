@@ -3,6 +3,14 @@
 ///
 /// It *only* filters on time, not on trigger type or anything else.
 ///
+/// Doing this filtering turns out to be less important than I originally
+/// thought, and I now only use it when making blinded (livetime-only)
+/// files to get a clear picture of the livetime.  In principle using
+/// this module saves processing time by avoiding reconstruction of
+/// events we don't care about, but actually most processing time is
+/// spent in long triggers (45s readouts) and we want to process all
+/// of them anyway.
+///
 /// \author  M. Strait
 ////////////////////////////////////////////////////////////////////////
 

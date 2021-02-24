@@ -32,11 +32,6 @@ elif [ $trigger == fardet-t02 ]; then
   filepattern='fardet.*_t02_.*data.artdaq'
 elif [ $trigger == neardet-t00 ]; then
   filepattern='neardet.*_t00_.*data.artdaq'
-elif [ $trigger == fardet-ddenergy ]; then
-  filepattern='fardet.*_ddenergy_.*data.artdaq'
-elif [ $trigger == neardet-ddactivity1 ]; then
-  # Changed from "DDActivity1" to "ddactivity1" sometime in late 2015, it seems
-  filepattern='neardet.*_[Dd][Dd][Aa]ctivity1_.*data.artdaq'
 else
   echo unknown trigger \"$trigger\"
   exit 1
@@ -107,8 +102,7 @@ makerecodef()
   # These are the only trigger streams for which we might want to read
   # reco files
   if [ $trigger != fardet-t02 ] &&
-     [ $trigger != fardet-ddsnews ] &&
-     [ $trigger != neardet-ddactivity1 ]; then
+     [ $trigger != fardet-ddsnews ]; then
     return 1
   fi
 

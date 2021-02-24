@@ -14,21 +14,6 @@ else
   outhadddir=/nova/ana/users/mstrait/ligo${tag}results-$GWNAME/
   spilldir=/pnfs/nova/users/mstrait/spills
 
-  # My naming convention for files I get from GraceDB that don't have the event
-  # name in them.
-  skymap=/pnfs/nova/users/mstrait/ligo/LALInference_skymap-$gwbase.fits
-
-  # My naming convention for file I get from GraceDB that are done with bayestar,
-  # whatever that is.
-  if ! [ -e $skymap ]; then
-    skymap=/pnfs/nova/users/mstrait/ligo/bayestar_skymap-${gwbase}.fits
-  fi
-
-  # Naming convention for O1 and O2 event catalog
-  if ! [ -e $skymap ]; then
-    skymap=/pnfs/nova/users/mstrait/ligo/${gwbase}_skymap.fits
-  fi
-
   # O1 and O2
   if   [ $gwbase == GW150914 ]; then realgweventtime="2015-09-14T09:50:45.4Z"
   elif [ $gwbase == GW151012 ]; then realgweventtime="2015-10-12T09:54:43.4Z"
@@ -43,7 +28,6 @@ else
   elif [ $gwbase == GW170823 ]; then realgweventtime="2017-08-23T13:13:58.5Z"
 
   # From PHYS. REV. D 100, 023007 (2019)
-  # No skymap available?
   elif [ $gwbase == GW151216  ]; then realgweventtime="2015-12-16T09:24:16.165Z"
 
   #03
