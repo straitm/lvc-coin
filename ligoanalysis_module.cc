@@ -129,17 +129,23 @@ const double trkproj_cm_buf = trkproj_pln_buf * plnz;
 const double trkproj_cell_buf = trkproj_pln_buf * cellw;
 const double cos_trkproj_ang_buf = cos(trkproj_ang_buf*M_PI/180);
 
-// Distance from any hit in a slice for the slice shape variables.
-// XXX wow that was a cryptic comment
+// The "shape" variables measure how close in time a hit or cluster is
+// to a slice, taking into account the closest distance between any hit
+// in the slice and the candidate supernova hit. This defines how far,
+// in units of plane widths, counts as being close to a slice for the
+// "shape" variables.
 const float shape_pln_buf = 24.;
 
 // Boxes to put around each slice for determining if we are near it.
 const int near_slc_pln_buf = 24, near_slc_cel_buf = 48;
 const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
 
+static const int nplanefd = 896;
+static const int ncellfd  = 384;
+
 static TH2C * chmask = NULL;
-static bool chmaskv[896][384];
-static float tposoverc[896][384];
+static bool chmaskv[nplanefd][ncellfd];
+static float tposoverc[nplanefd][ncellfd];
 
 static int gDet = caf::kUNKNOWN;
 
@@ -208,7 +214,6 @@ struct mhit{
 
 typedef std::vector<mhit *> sncluster;
 
-// Minimal slice information, distilled from rb::Cluster
 struct mslice{
   // Number of tracks in this slice.  I only plan to use this to check
   // if it is zero, in which case the slice is going to be treated with
@@ -829,8 +834,8 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
 
   art::ServiceHandle<geo::Geometry> geo;
 
-  for(int i = 0; i < 896; i++)
-   for(int j = 0; j < 384; j++){
+  for(int i = 0; i < nplanefd; i++)
+   for(int j = 0; j < ncellfd; j++){
      chmaskv[i][j] = chmask->GetBinContent(i, j);
 
      // Really lazy way of handling the ND.  Try all possible
@@ -1363,8 +1368,8 @@ static void trueposition(int16_t & trueplane, int16_t & truecellx,
   // I don't know why, but I get truecelly = 32690 in a small fraction
   // of cases. Protect against this. No apparent trouble with truecellx,
   // but protect it too.
-  if(truecellx > 384) truecellx = -1;
-  if(truecelly > 384) truecelly = -1;
+  if(truecellx > ncellfd) truecellx = -1;
+  if(truecelly > ncellfd) truecelly = -1;
 }
 
 static void tosince(double & oldsince, double & oldto,
