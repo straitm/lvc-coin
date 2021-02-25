@@ -67,8 +67,8 @@ static const double cellw = (63.455+0.048)/16.;
 static double gwevent_unix_double_time = 0;
 static long long window_size_s = 1000;
 
-// XXX Wait, shouldn't I allow these to participate in clusters so
-// then I can reject the cluster because they are there? Probably.
+// Unsliced hits above these ADC levels are treated like slices instead
+// of being allowed to be parts of supernova-like candidate clusters.
 static const int16_t fd_high_adc = 1500;
 static const int16_t nd_high_adc = 2500;
 
@@ -780,7 +780,8 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
   // Backhouse says "you can introspect what the fcl configuration
   // was for other modules in the path (see CAFMaker for an example
   // of trying to dig out genie settings) so maybe you can get at the
-  // InputSource config (which is where that value goes)". So TODO.
+  // InputSource config (which is where that value goes)". But I don't
+  // think it's worth the effort to make this work.
   auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
 
   if(rfb == NULL){
