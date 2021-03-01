@@ -19,6 +19,7 @@
 #include "RawData/RawTrigger.h"
 
 #include "Geometry/Geometry.h"
+#include "GeometryObjects/CellGeo.h"
 #include "StandardRecord/SREnums.h"
 #include "RecoBase/Track.h"
 #include "MCCheater/BackTracker.h"
@@ -1438,18 +1439,43 @@ static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
     h.plane = plane;
     h.cell  = cell;
     h.isx   = hit->View() == geo::kX;
+    h.tns = hit->TNS();
 
-    static TRandom3 randfortiming;
+    // Smear out MC timing as per my study in doc-45041.
+    //
+    // Use a tolerable approximation (smear between 17.1ns and 43.4ns,
+    // depending on position) that takes into account that the
+    // data looks worse compared to the MC for the dim side of FD
+    // modules.
+    //
+    // TODO: I haven't studied the ND at all, but just assume it is
+    // the same as the FD as a function of distance to readout.
+    if(hit->IsMC()){
+      art::ServiceHandle<cheat::BackTracker> bt;
+      std::vector<sim::FLSHit> flshits = bt->HitToFLSHit(hit);
 
-    // Smear out MC timing as per my study in doc-45041. The smearing
-    // could be more sophisticated than this because it appears to be a
-    // function of position. But we need to know w to smear correctly,
-    // which we don't have until we make a cluster, so this code would
-    // need to get substantially more complex to implement it.
-    const float tns = hit->TNS()
-      + (hit->IsMC()?randfortiming.Gaus()*23.:0);
+      double true_w = 0;
+      if(!flshits.empty()){
+        const double loc[3] = { flshits[0].GetXAverage(),
+                                flshits[0].GetYAverage(),
+                                flshits[0].GetZAverage() };
+        double wor[3] = { 0 };
+        art::ServiceHandle<geo::Geometry> geo;
+        geo->Plane(flshits[0].GetPlaneID())
+           ->Cell (flshits[0].GetCellID())
+           ->LocalToWorld(loc, wor);
+        true_w = h.isx? wor[1]: wor[0];
+      }
 
-    h.tns   = tns;
+      const double extrulen = gDet == caf::kFARDET?1549.4:399.28;
+
+      const double true_d = true_w + extrulen/2;
+
+      static TRandom3 randfortiming;
+      h.tns += randfortiming.Gaus() * (17.1 + true_d*0.017);
+      printf("true_d %f, smear %f\n", true_d, 17.1 + true_d*0.017);
+    }
+
     h.adc   = hit->ADC();
     h.tposoverc = tposoverc[plane][cell];
 
