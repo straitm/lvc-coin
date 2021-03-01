@@ -52,7 +52,7 @@ static const int US_PER_MICROSLICE = 50; // I hope this is always true
 // 16.9cm/ns. So the mean speed is 17.9cm/ns. PhotonTransport adds a
 // time from a histogram to the time gotten from the index. Does that
 // model the angular effect?
-static const float lightspeed = 17.; // cm/ns
+static const float lightspeed = 17.9; // cm/ns
 static const float invlightspeed = 1/lightspeed; // ns/cm
 
 // z extent of a plane (slightly wrong at block boundaries, but for
