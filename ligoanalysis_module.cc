@@ -173,27 +173,24 @@ struct mhit{
   int16_t truecellx;
   int16_t truecelly;
 
-  // The minimum time to the next nearby track end
+  // The minimum time to the next/previous nearby track end
   double totrkend_s;
-  // The time since the previous nearby track end
   double sincetrkend_s;
 
-  // The minimum time to the next not-so-nearby track end
+  // The minimum time to the next/previous not-so-nearby track end
   double tofartrkend_s;
-  // The time since the previous not-so-nearby track end
   double sincefartrkend_s;
 
-  // The minimum time to the next projected-forward track wedge
+  // The minimum time to the next/previous projected-forward track wedge
   double totrkproj_s;
-  // The time since the previous projected-forward track wedge
   double sincetrkproj_s;
 
+  // Same, for a region defined as a distance to any hit
   double toshapeslc_s;
   double sinceshapeslc_s;
 
-  // The minimum time to the next slice overlapping this hit in space.
+  // The minimum time to the next/previous slice overlapping this hit in space
   double tonearslc_s;
-  // The time since the previous slice overlapping this hit in space.
   double sincenearslc_s;
 
   // Same, but for a bigger box around slices
@@ -206,7 +203,6 @@ struct mhit{
 
   // The minimum time to the next slice anywhere
   double toanyslice_s;
-  // The time since the previous slice anywhere
   double sinceanyslice_s;
 
   // The time since the previous big shower *anywhere*
@@ -1683,7 +1679,8 @@ static bool does_cluster(const sncluster & clu, const mhit & h)
   }
   else{
     // These hits are in different views, so for each, use the other's
-    // transverse position to correct the time;
+    // transverse position to correct the time.
+    // TODO XXX: Add pigtail correction
     const float
       time_1st_corr = clu[0]->tns +       h.tposoverc,
       time_new_corr =       h.tns + clu[0]->tposoverc;
@@ -2114,6 +2111,8 @@ static float time_ext_ns(float &mingap, float & maxgap,
     if(c[0]->plane%2 == h->plane%2)
       deltat = c[0]->tns - h->tns;
     else{
+      // TODO XXX: Add pigtail correction
+      // XXX: maybe reduce code duplication with does_cluster()
       const float
         time_1st_corr = c[0]->tns +    h->tposoverc,
         time_oth_corr =    h->tns + c[0]->tposoverc;
@@ -2253,19 +2252,19 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.sincetrkproj_s = since_trkproj(c);
   sninfo.   totrkproj_s =    to_trkproj(c);
 
-  sninfo.toshapeslc_s = to_shapeslc(c);
+  sninfo.   toshapeslc_s = to_shapeslc(c);
   sninfo.sinceshapeslc_s = since_shapeslc(c);
 
-  sninfo.tonearslc_s = to_nearslc(c);
+  sninfo.   tonearslc_s =    to_nearslc(c);
   sninfo.sincenearslc_s = since_nearslc(c);
 
-  sninfo.totlslc_s = to_tlslc(c);
+  sninfo.   totlslc_s =    to_tlslc(c);
   sninfo.sincetlslc_s = since_tlslc(c);
 
-  sninfo.tofarslc_s = to_farslc(c);
+  sninfo.   tofarslc_s =    to_farslc(c);
   sninfo.sincefarslc_s = since_farslc(c);
 
-  sninfo.toanyslice_s = to_anyslice(c);
+  sninfo.   toanyslice_s =    to_anyslice(c);
   sninfo.sinceanyslice_s = since_anyslice(c);
 
   sninfo.sincebigshower_s = since_last_big_shower(c);
