@@ -349,20 +349,6 @@ static bool uniquedata_tdc(const double livetime, const int32_t tdc)
   return tdc >= 0 && tdc < 5000 * TDC_PER_US;
 }
 
-// Same as uniquedata_tns but for a floating point time. This is for
-// deciding whether to keep tracks and clusters, and is necessarily
-// sloppier than hit timing. But probably slices and tracks are
-// reconstructed exactly the same way most of the time regardless of
-// adjacent microslices, so we should accept them exactly once. It's
-// probably possible to end up accepting the same track twice (or zero
-// times), though, in unlucky cases.
-__attribute__((unused)) static bool uniquedata_tns(const double livetime,
-                                                   const double tns)
-{
-  if(livetime < 0.005) return true;
-  return tns >= 0 && tns < 5e6;
-}
-
 static int trigger(
   const art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger)
 {
@@ -402,18 +388,16 @@ static bool is_complete_event(
   return !raw.getHeader()->isEventIncomplete();
 }
 
-/*
-  Get the length of the event in TDC ticks, typically 550*64, and
-  "delta_tdc", the time between the trigger time and the time the event
-  starts. You can subtract this off of the time that the offline gives
-  each hit to get the time since the beginning of the readout, and with
-  the event length, the time until the end of the readout.
-
-  delta_tdc is a signed 64 bit integer, even though it should always be
-  a small positive number, just in case. Ditto for the event length.
-
-  Returns whether this information was successfully extracted.
-*/
+// Get the length of the event in TDC ticks, typically 550*64, and
+// "delta_tdc", the time between the trigger time and the time the event
+// starts. You can subtract this off of the time that the offline gives
+// each hit to get the time since the beginning of the readout, and with
+// the event length, the time until the end of the readout.
+//
+// delta_tdc is a signed 64 bit integer, even though it should always be
+// a small positive number, just in case. Ditto for the event length.
+//
+// Returns whether this information was successfully extracted.
 static bool delta_and_length(int64_t & event_length_tdc,
   int64_t & delta_tdc,
   const art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
@@ -1415,12 +1399,10 @@ static bool hitinbox(const int lowplane, const int highplane,
   else                return inside(lowcelly, highcelly, cell);
 }
 
-
 static bool compare_plane(const mhit & a, const mhit & b)
 {
   return a.plane < b.plane;
 }
-
 
 // Helper function for supernova(). Selects hits that are candidates to
 // be put into supernova clusters.
@@ -2493,12 +2475,10 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
-  const std::vector<mtrack> trackinfo =
-  fAnalysisClass == Blind?
+  const std::vector<mtrack> trackinfo = fAnalysisClass == Blind?
     std::vector<mtrack>():make_trackinfo_list(evt, slice);
 
-  const std::vector<mslice> sliceinfo =
-    fAnalysisClass == Blind?
+  const std::vector<mslice> sliceinfo = fAnalysisClass == Blind?
       std::vector<mslice>():make_sliceinfo_list(evt, slice, trackinfo);
 
   // For holding tracks and slices from the previous trigger so (in the
