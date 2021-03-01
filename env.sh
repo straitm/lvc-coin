@@ -10,8 +10,6 @@ else
     tag=
   fi
 
-  outhistdir=/pnfs/nova/persistent/users/mstrait/ligo${tag}-$GWNAME/
-  outhadddir=/nova/ana/users/mstrait/ligo${tag}results-$GWNAME/
   spilldir=/pnfs/nova/users/mstrait/spills
 
   # O1 and O2
@@ -209,8 +207,6 @@ else
   gwunixtime=$intgwunixtime.$(echo $realgweventtime | sed -e 's/.*\.//' -e s/Z//)
   nddef=strait-ligo-coincidence-artdaq-$gwunixtime-neardet-ligo
   fddef=strait-ligo-coincidence-artdaq-$gwunixtime-fardet-ligo
-
-  mkdir -p $outhistdir $outhadddir
 
   if ! echo $PATH | grep -qE "$SRT_PRIVATE_CONTEXT/ligo([:/]|$)"; then
     PATH+=:$SRT_PRIVATE_CONTEXT/ligo
