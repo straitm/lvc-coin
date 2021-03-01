@@ -56,6 +56,26 @@ static const int US_PER_MICROSLICE = 50; // I hope this is always true
 static const float lightspeed = 17.9; // cm/ns
 static const float invlightspeed = 1/lightspeed; // ns/cm
 
+// Copied from GeometryBase so I can get pigtails with less overhead
+static const double pigtailtimes[32] = {
+   34.5738/lightspeed,   38.4379/lightspeed,
+   42.3020/lightspeed,   46.1660/lightspeed,
+   50.0301/lightspeed,   53.8942/lightspeed,
+   57.7582/lightspeed,   61.6223/lightspeed,
+   64.7504/lightspeed,   68.6144/lightspeed,
+   72.4785/lightspeed,   76.3426/lightspeed,
+   80.2067/lightspeed,   84.0707/lightspeed,
+   87.9348/lightspeed,   91.0790/lightspeed,
+   95.3301/lightspeed,   99.1941/lightspeed,
+  103.058 /lightspeed,  106.922 /lightspeed,
+  110.786 /lightspeed,  114.650 /lightspeed,
+  118.514 /lightspeed,  122.379 /lightspeed,
+  125.507 /lightspeed,  129.371 /lightspeed,
+  133.235 /lightspeed,  137.099 /lightspeed,
+  140.963 /lightspeed,  144.827 /lightspeed,
+  148.691 /lightspeed,  150.751 /lightspeed
+};
+
 // z extent of a plane (slightly wrong at block boundaries, but for
 // my purposes, it doesn't matter).  In cm.
 static const double plnz = 6.6479;
@@ -1435,7 +1455,12 @@ static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
     h.plane = plane;
     h.cell  = cell;
     h.isx   = hit->View() == geo::kX;
-    h.tns = hit->TNS();
+
+    // CellHit::TNS() does *not* have pigtail corrections, it is just
+    // the raw time that the electronics registered the hit. Correct
+    // the time so it is as though the electronics were right at the
+    // end of the module for all cells.
+    h.tns = hit->TNS() - pigtailtimes[h.cell%32];
 
     // Smear out MC timing as per my study in doc-45041.
     //
@@ -1680,7 +1705,6 @@ static bool does_cluster(const sncluster & clu, const mhit & h)
   else{
     // These hits are in different views, so for each, use the other's
     // transverse position to correct the time.
-    // TODO XXX: Add pigtail correction
     const float
       time_1st_corr = clu[0]->tns +       h.tposoverc,
       time_new_corr =       h.tns + clu[0]->tposoverc;
@@ -2111,8 +2135,6 @@ static float time_ext_ns(float &mingap, float & maxgap,
     if(c[0]->plane%2 == h->plane%2)
       deltat = c[0]->tns - h->tns;
     else{
-      // TODO XXX: Add pigtail correction
-      // XXX: maybe reduce code duplication with does_cluster()
       const float
         time_1st_corr = c[0]->tns +    h->tposoverc,
         time_oth_corr =    h->tns + c[0]->tposoverc;
