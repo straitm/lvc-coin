@@ -48,11 +48,10 @@ static const int US_PER_MICROSLICE = 50; // I hope this is always true
 
 // Rough effective light speed in fiber
 //
-// Note: PhotonTransport uses an index of 1.59 -> 18.9cm/ns. But for
-// rays at just the critical angle (see doc-2665), it is effectively
-// 16.9cm/ns. So the mean speed is 17.9cm/ns. PhotonTransport adds a
-// time from a histogram to the time gotten from the index. Does that
-// model the angular effect?
+// PhotonTransport uses n=1.59 -> 18.9cm/ns. But for rays at just the
+// critical angle (see doc-2665), it is effectively 16.9cm/ns. So the
+// mean is 17.9cm/ns. PhotonTransport adds a time from a histogram to
+// that gotten from the index. Does that model the angular effect?
 static const float lightspeed = 17.9; // cm/ns
 static const float invlightspeed = 1/lightspeed; // ns/cm
 
@@ -105,29 +104,16 @@ static const int16_t FD_MINSINGLETONADC = SHRT_MAX;
 static const int16_t ND_MINSINGLETONADC = SHRT_MAX;
 
 
-// Should we allow non-adjacent planes to get neutron hit clusters?
-// Yes, it seems so. It looks like 2.6% of FD neutrons do the golden
-// thing of having hits in adjacent planes, but another 3.8% have hits
-// in two (or more) non-adjacent planes. Unfortunately, they're spread
-// out over many planes, with 1.1% two planes separated, 0.4% three
-// planes, 0.7% four planes, 0.3% five planes, etc. (I think even is
-// favored over odd because then both are either on the bright side or
-// the dark side instead of being random.)
+// At least at the ND, want to allow non-adjacent cells and planes. This
+// makes it easier to accept neutrons, and also helps with positrons.
 //
-// What's the risk of accepting hits too far away from each other? (1)
-// Lots background making huge file sizes that will just have to be
-// cut later (2) Spoiling signal hits by attaching them to background
-// hits. Well, tests indicate that it about triples the file size. Since
-// it also doubles the potential signal, that seems tolerable.
-// We'll just have to see about (2).
+// What's wrong with attaching hits too far away from each other? (1)
+// Lots background making huge file sizes that will just have to be cut
+// later (2) Spoiling signal hits by attaching them to background hits.
+// At the FD, the second motivates requiring hits to be adjacent.
 //
-// Value overwritten by fcl parameter.
+// Values overwritten by fcl parameter.
 static int MaxPlaneDist = 10;
-
-// Should be fairly large to admit neutron clusters, which are made
-// out of gammas with mean free path ~25cm
-//
-// Value overwritten by fcl parameter.
 static int MaxCellDist = 16;
 
 // Generous box for regular Michel rejection. The first is mostly useful
@@ -1691,6 +1677,14 @@ static bool does_cluster(const sncluster & clu, const mhit & h)
       break;
     }
 
+  // TODO: When hits are in the same view in different planes, the
+  // notion of cell distance is complicated. In the idealized version of
+  // the detectors, each plane in a view is staggered half a cell width
+  // from the next. So probably we should count in half-cells. On the
+  // other hand, in the real detector, the plane-to-plane alignment is
+  // only good to about half a cell width, so it's not clear how much it
+  // matters.
+
   for(unsigned int i = 0; i < clu.size(); i++)
     if(h.isx == clu[i]->isx &&
        abs(h.cell - clu[i]->cell) <= MaxCellDist){
@@ -1704,8 +1698,7 @@ static bool does_cluster(const sncluster & clu, const mhit & h)
 }
 
 // For the given supernova cluster, return the energy of the particle that
-// contributed the most PE-weighted hits.  Ignore hits with no truth
-// information.
+// contributed the most PE-weighted hits.  Ignore hits with no truth.
 static float plurality_of_E(const sncluster & c)
 {
   if(c.empty()) return 0;
@@ -2380,8 +2373,7 @@ static void count_livetime(const art::Event & evt)
   if(bin < 0) bin = 0;
   if(bin > livetimehist->GetNbinsX()+1) bin = livetimehist->GetNbinsX()+1;
 
-  // Use SetBinContent instead of Fill(x, weight) to avoid having to look up
-  // the bin number twice.
+  // Use SetBinContent instead of Fill(x, weight) to skip one bin lookup
   livetimehist->SetBinContent(bin, livetimehist->GetBinContent(bin)
                                    + livetime);
 }
@@ -2391,8 +2383,7 @@ void ligoanalysis::produce(art::Event & evt)
   {
     static unsigned int n = 0;
     if(n == 0) printf("Processing first event\n");
-    // Start at 1 because the first event takes forever as everything
-    // is initialized.
+    // Start at 1 because 1st event takes forever to initialize everything
     if(n == 1) initprogressindicator(eventsinfile-1, 3);
     if(n > 0) progressindicator(n - 1);
     n++;
