@@ -590,44 +590,44 @@ struct sninfo_t{
 
   // The time in seconds until and since the last track end near this
   // cluster.
-  double totrkend_s;
-  double sincetrkend_s;
+  double x_totrkend_s, y_totrkend_s;
+  double x_sincetrkend_s, y_sincetrkend_s;
 
   // The time in seconds until and since the last track end not-so-near this
   // cluster.
-  double tofartrkend_s;
-  double sincefartrkend_s;
+  double x_tofartrkend_s, y_tofartrkend_s;
+  double x_sincefartrkend_s, y_sincefartrkend_s;
 
   // The time in seconds until and since the last time a wedge projected
   // a long way forward from a track end included this cluster.
-  double totrkproj_s;
-  double sincetrkproj_s;
+  double x_totrkproj_s, y_totrkproj_s;
+  double x_sincetrkproj_s, y_sincetrkproj_s;
 
-  double toshapeslc_s;
-  double sinceshapeslc_s;
+  double x_toshapeslc_s, y_toshapeslc_s;
+  double x_sinceshapeslc_s, y_sinceshapeslc_s;
 
   // The time until and since the last slice that overlaps this cluster
   // in space, plus a buffer of several cells and planes.  If this
   // hit is during such a slice, both are zero.  If there is no such
   // slice for one or the other case, that one is set to 1e9.
-  double tonearslc_s;
-  double sincenearslc_s;
+  double x_tonearslc_s, y_tonearslc_s;
+  double x_sincenearslc_s, y_sincenearslc_s;
 
   // Same, but only for slices with no tracks in them, which probably
   // actually do contain muons that are nearly aligned with the planes.
   // This uses a smaller spatial buffer.
-  double totlslc_s;
-  double sincetlslc_s;
+  double x_totlslc_s, y_totlslc_s;
+  double x_sincetlslc_s, y_sincetlslc_s;
 
   // Same, larger buffer.
-  double tofarslc_s;
-  double sincefarslc_s;
+  double x_tofarslc_s, y_tofarslc_s;
+  double x_sincefarslc_s, y_sincefarslc_s;
 
   // The time until and since the last slice anywhere. If this cluster is
   // during such a slice, both are zero. If there is no such slice for
   // one or the other case, that one is set to 1e9.
-  double toanyslice_s;
-  double sinceanyslice_s;
+  double x_toanyslice_s, y_toanyslice_s;
+  double x_sinceanyslice_s, y_sinceanyslice_s;
 
   // Time in seconds since the last "big" cosmic ray shower. This is
   // of interest because big showers can dump many (thousands) of
@@ -694,22 +694,40 @@ static void init_supernova()
   BRN(tdc_toend,        I);
   BRN(time_s,           i);
   BRN(time_ns,          i);
-  BRN(totrkend_s,       D);
-  BRN(sincetrkend_s,    D);
-  BRN(tofartrkend_s,    D);
-  BRN(sincefartrkend_s, D);
-  BRN(totrkproj_s,      D);
-  BRN(sincetrkproj_s,   D);
-  BRN(toshapeslc_s,     D);
-  BRN(sinceshapeslc_s,  D);
-  BRN(tonearslc_s,      D);
-  BRN(sincenearslc_s,   D);
-  BRN(totlslc_s,        D);
-  BRN(sincetlslc_s,     D);
-  BRN(tofarslc_s,       D);
-  BRN(sincefarslc_s,    D);
-  BRN(toanyslice_s,     D);
-  BRN(sinceanyslice_s,  D);
+
+  BRN(x_totrkend_s,       D);
+  BRN(y_totrkend_s,       D);
+  BRN(x_sincetrkend_s,    D);
+  BRN(y_sincetrkend_s,    D);
+  BRN(x_tofartrkend_s,    D);
+  BRN(y_tofartrkend_s,    D);
+  BRN(x_sincefartrkend_s, D);
+  BRN(y_sincefartrkend_s, D);
+  BRN(x_totrkproj_s,      D);
+  BRN(y_totrkproj_s,      D);
+  BRN(x_sincetrkproj_s,   D);
+  BRN(y_sincetrkproj_s,   D);
+  BRN(x_toshapeslc_s,     D);
+  BRN(y_toshapeslc_s,     D);
+  BRN(x_sinceshapeslc_s,  D);
+  BRN(y_sinceshapeslc_s,  D);
+  BRN(x_tonearslc_s,      D);
+  BRN(y_tonearslc_s,      D);
+  BRN(x_sincenearslc_s,   D);
+  BRN(y_sincenearslc_s,   D);
+  BRN(x_totlslc_s,        D);
+  BRN(y_totlslc_s,        D);
+  BRN(x_sincetlslc_s,     D);
+  BRN(y_sincetlslc_s,     D);
+  BRN(x_tofarslc_s,       D);
+  BRN(y_tofarslc_s,       D);
+  BRN(x_sincefarslc_s,    D);
+  BRN(y_sincefarslc_s,    D);
+  BRN(x_toanyslice_s,     D);
+  BRN(y_toanyslice_s,     D);
+  BRN(x_sinceanyslice_s,  D);
+  BRN(y_sinceanyslice_s,  D);
+
   BRN(sincebigshower_s, D);
   BRN(pex,              F);
   BRN(pey,              F);
@@ -1442,7 +1460,6 @@ static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
 
       static TRandom3 randfortiming;
       h.tns += randfortiming.Gaus() * (17.1 + true_d*0.017);
-      printf("true_d %f, smear %f\n", true_d, 17.1 + true_d*0.017);
     }
 
     h.adc   = hit->ADC();
@@ -1480,6 +1497,7 @@ static void fill_in_hit(mhit & h,
   const int view  = hit->View();
 
   h.sincelastbigshower_s = 1e9;
+
   h.sincetrkend_s = 1e9;
   h.totrkend_s = 1e9;
   h.sincefartrkend_s = 1e9;
@@ -1899,7 +1917,7 @@ static int max_cell(const sncluster & c, const bool x)
   return ans;
 }
 
-static double to_trkend(const sncluster & c)
+static double to_trkend(const sncluster & c, const bool x)
 {
   // Previously used the mean instead of the smallest. That's dumb,
   // because one of the hits could be right on top of a trkend, but if
@@ -1907,142 +1925,142 @@ static double to_trkend(const sncluster & c)
   // dilute away that information.
   double least = 1e9;
   for(const auto h : c)
-    if(h->totrkend_s < least)
+    if((h->isx ^ !x) && h->totrkend_s < least)
       least = h->totrkend_s;
   return least;
 }
 
-static double since_trkend(const sncluster & c)
+static double since_trkend(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sincetrkend_s < least)
+    if((h->isx ^ !x) && h->sincetrkend_s < least)
       least = h->sincetrkend_s;
   return least;
 }
 
-static double to_fartrkend(const sncluster & c)
+static double to_fartrkend(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->tofartrkend_s < least)
+    if((h->isx ^ !x) && h->tofartrkend_s < least)
       least = h->tofartrkend_s;
   return least;
 }
 
-static double since_fartrkend(const sncluster & c)
+static double since_fartrkend(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sincefartrkend_s < least)
+    if((h->isx ^ !x) && h->sincefartrkend_s < least)
       least = h->sincefartrkend_s;
   return least;
 }
 
-static double to_trkproj(const sncluster & c)
+static double to_trkproj(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->totrkproj_s < least)
+    if((h->isx ^ !x) && h->totrkproj_s < least)
       least = h->totrkproj_s;
   return least;
 }
 
-static double since_trkproj(const sncluster & c)
+static double since_trkproj(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sincetrkproj_s < least)
+    if((h->isx ^ !x) && h->sincetrkproj_s < least)
       least = h->sincetrkproj_s;
   return least;
 }
 
-static double to_shapeslc(const sncluster & c)
+static double to_shapeslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->toshapeslc_s < least)
+    if((h->isx ^ !x) && h->toshapeslc_s < least)
       least = h->toshapeslc_s;
   return least;
 }
 
-static double since_shapeslc(const sncluster & c)
+static double since_shapeslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sinceshapeslc_s < least)
+    if((h->isx ^ !x) && h->sinceshapeslc_s < least)
       least = h->sinceshapeslc_s;
   return least;
 }
 
-static double to_nearslc(const sncluster & c)
+static double to_nearslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->tonearslc_s < least)
+    if((h->isx ^ !x) && h->tonearslc_s < least)
       least = h->tonearslc_s;
   return least;
 }
 
-static double since_nearslc(const sncluster & c)
+static double since_nearslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sincenearslc_s < least)
+    if((h->isx ^ !x) && h->sincenearslc_s < least)
       least = h->sincenearslc_s;
   return least;
 }
 
-static double to_tlslc(const sncluster & c)
+static double to_tlslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->totlslc_s < least)
+    if((h->isx ^ !x) && h->totlslc_s < least)
       least = h->totlslc_s;
   return least;
 }
 
-static double since_tlslc(const sncluster & c)
+static double since_tlslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sincetlslc_s < least)
+    if((h->isx ^ !x) && h->sincetlslc_s < least)
       least = h->sincetlslc_s;
   return least;
 }
 
-static double to_farslc(const sncluster & c)
+static double to_farslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->tofarslc_s < least)
+    if((h->isx ^ !x) && h->tofarslc_s < least)
       least = h->tofarslc_s;
   return least;
 }
 
-static double since_farslc(const sncluster & c)
+static double since_farslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sincefarslc_s < least)
+    if((h->isx ^ !x) && h->sincefarslc_s < least)
       least = h->sincefarslc_s;
   return least;
 }
 
-static double to_anyslice(const sncluster & c)
+static double to_anyslice(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->toanyslice_s < least)
+    if((h->isx ^ !x) && h->toanyslice_s < least)
       least = h->toanyslice_s;
   return least;
 }
 
-static double since_anyslice(const sncluster & c)
+static double since_anyslice(const sncluster & c, const bool x)
 {
   double least = 1e9;
   for(const auto h : c)
-    if(h->sinceanyslice_s < least)
+    if((h->isx ^ !x) && h->sinceanyslice_s < least)
       least = h->sinceanyslice_s;
   return least;
 }
@@ -2220,29 +2238,45 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.cellyextent = sninfo.maxcelly == -1? -1:
                        sninfo.maxcelly - sninfo.mincelly + 1;
 
-  sninfo.sincetrkend_s = since_trkend(c);
-  sninfo.   totrkend_s =    to_trkend(c);
+  sninfo.x_sincetrkend_s = since_trkend(c, true);
+  sninfo.y_sincetrkend_s = since_trkend(c, false);
+  sninfo.   x_totrkend_s =    to_trkend(c, true);
+  sninfo.   y_totrkend_s =    to_trkend(c, false);
 
-  sninfo.sincefartrkend_s = since_fartrkend(c);
-  sninfo.   tofartrkend_s =    to_fartrkend(c);
+  sninfo.x_sincefartrkend_s = since_fartrkend(c, true);
+  sninfo.y_sincefartrkend_s = since_fartrkend(c, false);
+  sninfo.   x_tofartrkend_s =    to_fartrkend(c, true);
+  sninfo.   y_tofartrkend_s =    to_fartrkend(c, false);
 
-  sninfo.sincetrkproj_s = since_trkproj(c);
-  sninfo.   totrkproj_s =    to_trkproj(c);
+  sninfo.x_sincetrkproj_s = since_trkproj(c, true);
+  sninfo.y_sincetrkproj_s = since_trkproj(c, false);
+  sninfo.   x_totrkproj_s =    to_trkproj(c, true);
+  sninfo.   y_totrkproj_s =    to_trkproj(c, false);
 
-  sninfo.   toshapeslc_s = to_shapeslc(c);
-  sninfo.sinceshapeslc_s = since_shapeslc(c);
+  sninfo.x_sinceshapeslc_s = since_shapeslc(c, true);
+  sninfo.y_sinceshapeslc_s = since_shapeslc(c, false);
+  sninfo.   x_toshapeslc_s = to_shapeslc(c, true);
+  sninfo.   y_toshapeslc_s = to_shapeslc(c, false);
 
-  sninfo.   tonearslc_s =    to_nearslc(c);
-  sninfo.sincenearslc_s = since_nearslc(c);
+  sninfo.x_sincenearslc_s = since_nearslc(c, true);
+  sninfo.y_sincenearslc_s = since_nearslc(c, false);
+  sninfo.   x_tonearslc_s =    to_nearslc(c, true);
+  sninfo.   y_tonearslc_s =    to_nearslc(c, false);
 
-  sninfo.   totlslc_s =    to_tlslc(c);
-  sninfo.sincetlslc_s = since_tlslc(c);
+  sninfo.x_sincetlslc_s = since_tlslc(c, true);
+  sninfo.y_sincetlslc_s = since_tlslc(c, false);
+  sninfo.   x_totlslc_s =    to_tlslc(c, true);
+  sninfo.   y_totlslc_s =    to_tlslc(c, false);
 
-  sninfo.   tofarslc_s =    to_farslc(c);
-  sninfo.sincefarslc_s = since_farslc(c);
+  sninfo.x_sincefarslc_s = since_farslc(c, true);
+  sninfo.y_sincefarslc_s = since_farslc(c, false);
+  sninfo.   x_tofarslc_s =    to_farslc(c, true);
+  sninfo.   y_tofarslc_s =    to_farslc(c, false);
 
-  sninfo.   toanyslice_s =    to_anyslice(c);
-  sninfo.sinceanyslice_s = since_anyslice(c);
+  sninfo.x_sinceanyslice_s = since_anyslice(c, true);
+  sninfo.y_sinceanyslice_s = since_anyslice(c, false);
+  sninfo.   x_toanyslice_s =    to_anyslice(c, true);
+  sninfo.   y_toanyslice_s =    to_anyslice(c, false);
 
   sninfo.sincebigshower_s = since_last_big_shower(c);
 
