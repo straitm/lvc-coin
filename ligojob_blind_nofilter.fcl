@@ -16,7 +16,7 @@ source:
 }
 
 this_here_ligoanalysis: @local::standard_ligoanalysis
-this_here_ligoanalysis.AnalysisClass: Blind
+this_here_ligoanalysis.Blind: true
 
 # Only matters if you need the histogram to show the time distribution
 this_here_ligoanalysis.GWEventTime: "2020-01-01T00:00:00.000000Z"

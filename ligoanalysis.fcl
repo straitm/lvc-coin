@@ -13,13 +13,8 @@ standard_ligoanalysis:
   # time to each side of the absolute time given above.  Must be an integer.
   WindowSize: 1000
 
-  # Which class of file we are processing.  One of:
-  # SNonlyFD: supernova-like event search at the FD
-  # SNonlyND: supernova-like event search at the ND
-  # Blind:    Just report livetime
-  # (There used to be other types, but they have been removed for lack
-  # of interest.)
-  AnalysisClass: MinBiasFD
+  # If true, just report livetime instead of examining data
+  Blind: false
 
   # Largest number of planes away a hit can be to be clustered. This
   # default appears ok for the ND, but too big for the FD (so I set it

@@ -38,7 +38,6 @@ source:
 }
 
 this_here_ligoanalysis: @local::standard_ligoanalysis
-this_here_ligoanalysis.AnalysisClass: SNonlyND
 
 physics:
 {

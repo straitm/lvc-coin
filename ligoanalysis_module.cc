@@ -86,7 +86,7 @@ static const double cellw = (63.455+0.048)/16.;
 
 // Set from the FCL parameters
 static double gwevent_unix_double_time = 0;
-static long long window_size_s = 1000;
+static long long WindowSize = 1000;
 
 // Unsliced hits above these ADC levels are treated like slices instead
 // of being allowed to be parts of supernova-like candidate clusters.
@@ -169,11 +169,6 @@ static bool chmaskv[nplanefd][ncellfd];
 static float tposoverc[nplanefd][ncellfd];
 
 static int gDet = caf::kUNKNOWN;
-
-// Types of analysis, dependent on which trigger we're looking at
-enum analysis_class_t {
-  SNonlyFD, SNonlyND, Blind, MAX_ANALYSIS_CLASS
-} static analysis_class = MAX_ANALYSIS_CLASS;
 
 // Hit information, distilled from CellHit, plus more info
 struct mhit{
@@ -293,10 +288,8 @@ class ligoanalysis : public art::EDProducer {
   // Used to get the number of events in the file
   void respondToOpenInputFile(art::FileBlock const &fb);
 
-  /// \brief User-supplied type of trigger being examined.
-  ///
-  /// Which histograms we make depends on this.
-  analysis_class_t fAnalysisClass;
+  /// \brief If true, only report livetime withot examining data.
+  bool fBlind;
 
   /// \brief The user-supplied time of the gravitational wave burst, or
   /// whatever time you want to center the search on.
@@ -388,11 +381,11 @@ static bool is_complete_event(
   return !raw.getHeader()->isEventIncomplete();
 }
 
-// Get the length of the event in TDC ticks, typically 550*64, and
-// "delta_tdc", the time between the trigger time and the time the event
-// starts. You can subtract this off of the time that the offline gives
-// each hit to get the time since the beginning of the readout, and with
-// the event length, the time until the end of the readout.
+// Get the length of the event in TDC ticks, and "delta_tdc", the time
+// between the trigger time and the time the event starts. You can
+// subtract this off of the time that the offline gives each hit to
+// get the time since the beginning of the readout, and with the event
+// length, the time until the end of the readout.
 //
 // delta_tdc is a signed 64 bit integer, even though it should always be
 // a small positive number, just in case. Ditto for the event length.
@@ -702,7 +695,7 @@ static void init_supernova()
 
   // These reduce the nonsense of typos that goes with TTree:Branch()
   #define Q(x) #x
-  #define BRN(x, t) sntree    ->Branch(Q(x), &sninfo.x, Q(x/t))
+  #define BRN(x, t) sntree->Branch(Q(x), &sninfo.x, Q(x/t))
   BRN(nhit,             I);
   BRN(truefrac,         F);
   BRN(truepdg,          I);
@@ -786,7 +779,7 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
   auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
 
   if(rfb == NULL){
-    eventsinfile = fAnalysisClass == SNonlyND? 9060: 275;
+    eventsinfile = 275;
     printf("Can't get event count. Probably raw input. Assuming %lu.\n",
            eventsinfile);
   }
@@ -797,7 +790,7 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
 
 void ligoanalysis::beginSubRun(art::SubRun& subrun)
 {
-  if(fAnalysisClass == Blind) return;
+  if(fBlind) return;
 
   const int run = subrun.run(), sr = subrun.subRun();
 
@@ -849,37 +842,24 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
 }
 
 ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
+  fBlind(pset.get<bool>("Blind")),
   fGWEventTime(pset.get<std::string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize")),
   fMaxPlaneDist(pset.get<int>("MaxPlaneDist")),
   fMaxCellDist(pset.get<int>("MaxCellDist"))
 {
-  const std::string analysis_class_string(
-    pset.get<std::string>("AnalysisClass"));
-
-  if     (analysis_class_string == "SNonlyFD") fAnalysisClass = SNonlyFD;
-  else if(analysis_class_string == "SNonlyND") fAnalysisClass = SNonlyND;
-  else if(analysis_class_string == "Blind")    fAnalysisClass = Blind;
-  else{
-    fprintf(stderr, "Unknown AnalysisClass \"%s\" in job fcl. See list "
-            "in ligoanalysis.fcl.\n", analysis_class_string.c_str());
-    exit(1);
-  }
-
   // expose to static functions
-  analysis_class = fAnalysisClass;
   MaxPlaneDist = fMaxPlaneDist;
   MaxCellDist = fMaxCellDist;
-
+  WindowSize = fWindowSize;
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
-  window_size_s = fWindowSize;
 
   art::ServiceHandle<art::TFileService> t;
 
   livetimehist = t->make<TH1D>("blindlive", "",
-    window_size_s, -window_size_s/2, window_size_s/2);
+    WindowSize, -WindowSize/2, WindowSize/2);
 
-  if(fAnalysisClass != Blind) init_supernova();
+  if(!fBlind) init_supernova();
 }
 
 // Get the FlatDAQData, either from "minbias", in the case of supernova MC
@@ -965,7 +945,7 @@ static int timebin(const art::Event & evt, const bool verbose = false)
   if(verbose) printf("Accepted delta = %f seconds\n", delta);
 #endif
 
-  return floor(delta) + window_size_s/2
+  return floor(delta) + WindowSize/2
          + 1; // stupid ROOT 1-based numbering!
 }
 
@@ -2460,26 +2440,27 @@ void ligoanalysis::produce(art::Event & evt)
     }
   }
 
+  count_livetime(evt);
+
+  if(fBlind) return;
+
   art::Handle< std::vector<rb::Cluster> > slice;
-  if(fAnalysisClass != Blind){
-    art::ServiceHandle<geo::Geometry> geo;
-    gDet = geo->DetId();
 
-    evt.getByLabel("slicer", slice);
-    // Event probably filtered out in reco file
-    if(slice.failedToGet()) return;
+  art::ServiceHandle<geo::Geometry> geo;
+  gDet = geo->DetId();
 
-    if(slice->empty()){
-      fprintf(stderr, "Unexpected event with zero slices!\n");
-      return;
-    }
+  evt.getByLabel("slicer", slice);
+  // Event probably filtered out in reco file
+  if(slice.failedToGet()) return;
+
+  if(slice->empty()){
+    fprintf(stderr, "Unexpected event with zero slices!\n");
+    return;
   }
 
-  const std::vector<mtrack> trackinfo = fAnalysisClass == Blind?
-    std::vector<mtrack>():make_trackinfo_list(evt, slice);
-
-  const std::vector<mslice> sliceinfo = fAnalysisClass == Blind?
-      std::vector<mslice>():make_sliceinfo_list(evt, slice, trackinfo);
+  const std::vector<mtrack> trackinfo = make_trackinfo_list(evt, slice);
+  const std::vector<mslice> sliceinfo = make_sliceinfo_list(evt, slice,
+                                                            trackinfo);
 
   // For holding tracks and slices from the previous trigger so (in the
   // rare case that triggers are 5 and not 5.05ms and therefore have no
@@ -2497,9 +2478,7 @@ void ligoanalysis::produce(art::Event & evt)
   sliceinfo_wprev.insert(sliceinfo_wprev.end(),
                          sliceinfo.begin(), sliceinfo.end());
 
-  if(fAnalysisClass != Blind)
-    supernova(evt, sliceinfo_wprev, trackinfo_wprev);
-  count_livetime(evt);
+  supernova(evt, sliceinfo_wprev, trackinfo_wprev);
 
   // Translate times for the next event, 5ms later. This ONLY makes
   // sense for long readouts, and is wrong if a trigger is dropped. If

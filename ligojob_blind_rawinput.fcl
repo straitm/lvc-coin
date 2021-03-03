@@ -22,7 +22,7 @@ source:
 this_here_ligofilter: @local::standard_ligofilter
 
 this_here_ligoanalysis: @local::standard_ligoanalysis
-this_here_ligoanalysis.AnalysisClass: Blind
+this_here_ligoanalysis.Blind: true
 
 # Should be the same
 this_here_ligofilter.GWEventTime:   "2020-01-01T00:00:00.000000Z"
