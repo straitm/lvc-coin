@@ -770,39 +770,34 @@ static void init_supernova()
 
 /*************************** End tree stuff **************************/
 
-static int64_t eventsinfile = 0;
+// If we can't get the real number, this is roughly right for some FD files
+static int64_t eventsinfile = 275;
 
 void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
 {
-  // Get the number of events as soon as the file opens. This looks
-  // really fragile. It gets the number of entries in *some* tree, which
-  // at the moment that I'm testing this turns out to be the right one,
-  // but EDProducer::respondToOpenInputFile is totally undocumented as
-  // far as I can see.
+  // Get the number of events as soon as the file opens. Really
+  // fragile. We get the number of entries in *some* tree,
+  // which at the moment turns out to be the right one, but
+  // EDProducer::respondToOpenInputFile is totally undocumented as far
+  // as I can see. But if it's wrong, it only affects the progress
+  // indicator.
   //
-  // Anyway, if this is the wrong number, it just means that the
-  // progress indicator will be wrong. If the job has more than one
-  // file, we don't know that until the second one triggers this
-  // function. This will also just make the progress indicator wrong.
+  // If the job has more than one file, we don't know that until the
+  // second one triggers this function. This will also just make the
+  // progress indicator wrong.
   //
-  // If the user gave -n on the command line to limit the number of
-  // events, we don't pick that up either, so the status bar will just
-  // stop increasing when we stop reading without reaching 100%. Chris
-  // Backhouse says "you can introspect what the fcl configuration
-  // was for other modules in the path (see CAFMaker for an example
-  // of trying to dig out genie settings) so maybe you can get at the
-  // InputSource config (which is where that value goes)". But I don't
-  // think it's worth the effort to make this work.
+  // If the user gave -n and/or --nskip to limit the number of events,
+  // we don't pick those up either. Chris Backhouse says "you can
+  // introspect what the fcl configuration was for other modules in
+  // the path (see CAFMaker for an example of trying to dig out genie
+  // settings) so maybe you can get at the InputSource config". But I
+  // don't think it's worth the effort.
   auto const* rfb = dynamic_cast<art::RootFileBlock const*>(&fb);
 
-  if(rfb == NULL){
-    eventsinfile = 275;
-    printf("Can't get event count. Probably raw input. Assuming %lu.\n",
-           eventsinfile);
-  }
-  else{
+  if(rfb == NULL)
+    printf("Can't get event count. Raw input? Assuming %lu.\n", eventsinfile);
+  else
     eventsinfile = rfb->tree()->GetEntries();
-  }
 }
 
 void ligoanalysis::beginSubRun(art::SubRun& subrun)
