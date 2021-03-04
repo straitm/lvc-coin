@@ -150,8 +150,8 @@ const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
 static const int nplanefd = 896;
 static const int ncellfd  = 384;
 
-static TH2C * chmask = NULL;
 static bool chmaskv[nplanefd][ncellfd];
+static bool noiseratesv[nplanefd][ncellfd];
 static float tposoverc[nplanefd][ncellfd];
 
 static int gDet = caf::kUNKNOWN;
@@ -208,6 +208,14 @@ struct mhit{
 
   // The time since the previous big shower *anywhere*
   double sincelastbigshower_s;
+
+  // Roughly how noisy the channel with this hit is, where 1.0 is the
+  // median noisiness. Really it is the channel's hit rate relative to
+  // the median channel's hit rate, which of course is higher for some
+  // channels because they have more real hits. Also for most input
+  // files, it is the mean of that number over several subruns, which is
+  // a slightly strange object, but probably meaningful enough.
+  float noiselevel;
 };
 
 typedef std::vector<mhit *> sncluster;
@@ -672,6 +680,10 @@ struct sninfo_t{
   // It's the index of the hit in the noise slice, because CellHit::ID()
   // seems to always return zero.
   unsigned int hitid;
+
+  // The maximum noiselevel of any hit in this cluster.  See definition
+  // of noiselevel in struct mhit.
+  float maxnoise;
 } sninfo;
 
 static void init_supernova()
@@ -753,6 +765,7 @@ static void init_supernova()
   BRN(subrun,           i);
   BRN(event,            i);
   BRN(hitid,            i);
+  BRN(maxnoise,         F);
 }
 
 /*************************** End tree stuff **************************/
@@ -824,9 +837,16 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
     _exit(1);
   }
 
-  chmask = dynamic_cast<TH2C*>(noisy->Get("noisychannels/chmask"));
+  TH2C * chmask = dynamic_cast<TH2C*>(noisy->Get("noisychannels/chmask"));
   if(chmask == NULL){
-    fprintf(stderr, "Could not get noisychannels histogram from "
+    fprintf(stderr, "Could not get chmask histogram from "
+            "noisychannels_r%08d_s%02d.root", run, sr);
+    _exit(1);
+  }
+
+  TH2D * noiserates = dynamic_cast<TH2D*>(noisy->Get("noisychannels/rates"));
+  if(noiserates == NULL){
+    fprintf(stderr, "Could not get rates histogram from "
             "noisychannels_r%08d_s%02d.root", run, sr);
     _exit(1);
   }
@@ -836,6 +856,7 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
   for(int i = 0; i < nplanefd; i++)
    for(int j = 0; j < ncellfd; j++){
      chmaskv[i][j] = chmask->GetBinContent(i, j);
+     noiseratesv[i][j] = noiserates->GetBinContent(i, j);
 
      // Really lazy way of handling the ND.  Try all possible
      // channels, and ignore it when it doesn't work.
@@ -1496,6 +1517,8 @@ static void fill_in_hit(mhit & h,
 
   const int view  = hit->View();
 
+  h.noiselevel = noiseratesv[h.plane][h.cell];
+
   h.sincelastbigshower_s = 1e9;
 
   h.sincetrkend_s = 1e9;
@@ -2095,6 +2118,13 @@ static int16_t max_hit_adc(const sncluster & c)
   return ans;
 }
 
+static int16_t max_noise(const sncluster & c)
+{
+  int16_t ans = 0;
+  for(const auto h : c) if(h->noiselevel > ans) ans = h->noiselevel;
+  return ans;
+}
+
 static float time_ext_ns(float &mingap, float & maxgap,
                          const sncluster & c)
 {
@@ -2284,6 +2314,8 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.subrun = evt.subRun();
   sninfo.event = evt.event();
   sninfo.hitid = c[0]->hitid;
+
+  sninfo.maxnoise = max_noise(c);
 
   calibrate(sninfo); // set unattpe
 
