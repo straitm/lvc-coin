@@ -51,7 +51,8 @@ static const unsigned int nplane = 32*28, ncell = 12*32;
 
 static uint64_t counts[nplane][ncell] = { 0 };
 static uint64_t hicounts[nplane][ncell] = { 0 };
-static TH2C * result = NULL;
+static TH2C * chmask = NULL;
+static TH2D * hrates = NULL, * hhirates = NULL;
 
 class noisychannels : public art::EDAnalyzer {
   public:
@@ -72,8 +73,9 @@ void noisychannels::beginJob()
 {
   art::ServiceHandle<art::TFileService> t;
 
-  result = t->make<TH2C>("chmask", "",
-    nplane, 0, nplane, ncell, 0, ncell);
+  chmask = t->make<TH2C>("chmask",  "", nplane, 0, nplane, ncell, 0, ncell);
+  hrates = t->make<TH2D>("rates",   "", nplane, 0, nplane, ncell, 0, ncell);
+  hhirates=t->make<TH2D>("hirates", "", nplane, 0, nplane, ncell, 0, ncell);
 }
 
 void noisychannels::endJob()
@@ -115,8 +117,10 @@ void noisychannels::endJob()
     for(unsigned int j = 0; j < ncell; j++){
       // We're operating entirely with bin numbers and not bin ranges,
       // so this is not an off-by-one error.
-      if(counts[i][j] > threshold) result->SetBinContent(i, j, 1);
-      if(hicounts[i][j] > hithreshold) result->SetBinContent(i, j, 1);
+      if(counts[i][j] > threshold) chmask->SetBinContent(i, j, 1);
+      if(hicounts[i][j] > hithreshold) chmask->SetBinContent(i, j, 1);
+      hrates  ->SetBinContent(i, j, counts  [i][j]/median);
+      hhirates->SetBinContent(i, j, hicounts[i][j]/himedian);
     }
   }
 }
