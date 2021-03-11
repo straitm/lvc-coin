@@ -195,6 +195,9 @@ else
   elif [ $gwbase == snews20201120 ]; then realgweventtime="2020-11-20T14:29:01.350000Z"
   elif [ $gwbase == snews20201121 ]; then realgweventtime="2020-11-21T14:29:01.350000Z"
 
+  # We think we sucessfully change the offset to -5 minutes in March 2021
+  elif [ $gwbase == snews20210308 ]; then realgweventtime="2021-03-08T14:25:00.0Z"
+
 
   else
     echo I do not know when $gwbase was.  Edit env.sh
