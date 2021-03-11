@@ -151,7 +151,7 @@ static const int nplanefd = 896;
 static const int ncellfd  = 384;
 
 static bool chmaskv[nplanefd][ncellfd];
-static bool noiseratesv[nplanefd][ncellfd];
+static float noiseratesv[nplanefd][ncellfd];
 static float tposoverc[nplanefd][ncellfd];
 
 static int gDet = caf::kUNKNOWN;
@@ -2113,9 +2113,9 @@ static int16_t max_hit_adc(const sncluster & c)
   return ans;
 }
 
-static int16_t max_noise(const sncluster & c)
+static float max_noise(const sncluster & c)
 {
-  int16_t ans = 0;
+  float ans = 0;
   for(const auto h : c) if(h->noiselevel > ans) ans = h->noiselevel;
   return ans;
 }
