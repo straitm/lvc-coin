@@ -92,18 +92,6 @@ static long long WindowSize = 1000;
 static const int16_t fd_high_adc = 1500;
 static const int16_t nd_high_adc = 2500;
 
-// Smallest ADC to save a single hit as a cluster. Without a cut here,
-// the output is extremely large.
-//
-// About 2/3 of the FD signal with any hits has only one hit. 70% of
-// that is above 65 ADC.
-//
-// Not clear what the best value is here.  At the moment, I'm not
-// using single hits at all, so effectively disable it.
-static const int16_t FD_MINSINGLETONADC = SHRT_MAX;
-static const int16_t ND_MINSINGLETONADC = SHRT_MAX;
-
-
 // At least at the ND, want to allow non-adjacent cells and planes. This
 // makes it easier to accept neutrons, and also helps with positrons.
 //
@@ -1502,6 +1490,8 @@ static bool hitinshape(const mslice & slc, const int16_t plane,
   return false;
 }
 
+// Fill in the details of this hit, mostly (but not exclusively) its
+// proximity to cosmics.
 static void fill_in_hit(mhit & h,
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
   const std::vector<mtrack> & trackinfo)
@@ -2390,23 +2380,23 @@ static void supernova(const art::Event & evt,
       }
     }while(!done);
 
-    if((clu.size() >= 2 && clu.size() <= 7) ||
-       (clu.size() == 1 &&
-        clu[0]->adc >= (gDet == caf::kFARDET? FD_MINSINGLETONADC
-                                            : ND_MINSINGLETONADC))){
+    // Perhaps consider allowing single-hit clusters at some later date
+    if(clu.size() < 2 || clu.size() > 7) continue;
 
-      // Some preselection here to save time calculating slice
-      // distance variables.  This is a massive time savings.
-      if(gDet == caf::kFARDET &&
-         clu.size() == 2 &&
-         clu[0]->adc + clu[1]->adc <= 110) continue;
-
-      // Now that we're going to keep it, do the hard work
-      for(unsigned int j = 0; j < clu.size(); j++)
-        fill_in_hit(*clu[j], (*slice)[0], sliceinfo, trackinfo);
-
-      snclusters.push_back(clu);
+    // Some preselection here to save time calculating slice
+    // distance variables.  This is a massive time savings.
+    if(gDet == caf::kFARDET){
+      if(clu.size() == 2){
+        if(clu[0]->adc + clu[1]->adc <= 110) continue;
+        if(std::min(clu[0]->adc, clu[1]->adc) <= 50) continue;
+      }
     }
+
+    // Now that we're going to keep it, do the hard work
+    for(unsigned int j = 0; j < clu.size(); j++)
+      fill_in_hit(*clu[j], (*slice)[0], sliceinfo, trackinfo);
+
+    snclusters.push_back(clu);
   }
 
   std::sort(snclusters.begin(), snclusters.end(), comparebytime);
