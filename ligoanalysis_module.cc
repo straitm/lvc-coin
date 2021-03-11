@@ -771,7 +771,7 @@ static void init_supernova()
 /*************************** End tree stuff **************************/
 
 // If we can't get the real number, this is roughly right for some FD files
-static int64_t eventsinfile = 275;
+static int64_t eventsinfile = 237;
 
 void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
 {

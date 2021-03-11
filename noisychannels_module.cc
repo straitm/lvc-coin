@@ -134,8 +134,8 @@ void noisychannels::analyze(const art::Event & evt)
     if(n == 1){
       // art provides no way of knowing how much events we will process,
       // and its own progress indicator is of limited use.
-      printf("For progress indicator, assuming a 2000 event long readout\n");
-      initprogressindicator(2000-1, 3);
+      printf("For progress indicator, assuming a 237 event long readout\n");
+      initprogressindicator(237-1, 3);
     }
     else if(n > 1){
       progressindicator(n - 1);
