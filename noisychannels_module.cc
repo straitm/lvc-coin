@@ -1,26 +1,9 @@
 ////////////////////////////////////////////////////////////////////////
-/// \brief The noisychannels module looks for noisy channels
+/// \brief The noisychannels module looks for noisy channels so that they
+/// and be excluded and/or looked-at-askance by the supernova analysis.
 ///
 /// \author M. Strait
 ////////////////////////////////////////////////////////////////////////
-
-#include "art/Framework/Services/Optional/TFileService.h"
-#include "art/Framework/Core/ModuleMacros.h"
-#include "art/Framework/Core/EDAnalyzer.h"
-
-#include "DAQDataFormats/RawTriggerTime.h"
-#include "DAQDataFormats/RawEvent.h"
-#include "DAQDataFormats/RawTrigger.h"
-#include "DAQDataFormats/RawTriggerMask.h"
-#include "DAQDataFormats/RawDataBlock.h"
-#include "StandardRecord/SREnums.h"
-
-#include "RawData/FlatDAQData.h"
-#include "ChannelInfo/BadChanList.h"
-#include "RawData/RawDigit.h"
-#include "RawData/RawTrigger.h"
-
-#include "RecoBase/Track.h"
 
 #include "TH2.h"
 #include "TTree.h"
@@ -32,25 +15,22 @@
 
 #include "progress.cpp"
 
-#include "art/Framework/Core/EDProducer.h"
-#include "art/Framework/Principal/Run.h"
-#include "art/Framework/Principal/SubRun.h"
+#include "art/Framework/Services/Optional/TFileService.h"
+#include "art/Framework/Core/ModuleMacros.h"
+#include "art/Framework/Core/EDAnalyzer.h"
 #include "art/Framework/Principal/Event.h"
 #include "art/Framework/Services/Registry/ServiceHandle.h"
 #include "art/Framework/Principal/Handle.h"
-#include "art/Framework/Core/ModuleMacros.h"
 
-#include "Calibrator/Calibrator.h"
-#include "ChannelInfo/BadChanList.h"
+#include "Calibrator/Calibrator.h" // For CMap
 #include "RawData/RawDigit.h"
-#include "RecoBase/CellHit.h"
-#include "RunHistory/service/RunHistoryService.h"
 
 // Always make it FD size and sometimes don't use the whole thing
 static const unsigned int nplane = 32*28, ncell = 12*32;
 
 static uint64_t counts[nplane][ncell] = { 0 };
 static uint64_t hicounts[nplane][ncell] = { 0 };
+static TH1D * events = NULL;
 static TH2C * chmask = NULL;
 static TH2D * hrates = NULL, * hhirates = NULL;
 
@@ -73,6 +53,7 @@ void noisychannels::beginJob()
 {
   art::ServiceHandle<art::TFileService> t;
 
+  events = t->make<TH1D>("events",  "", 1, 0, 1);
   chmask = t->make<TH2C>("chmask",  "", nplane, 0, nplane, ncell, 0, ncell);
   hrates = t->make<TH2D>("rates",   "", nplane, 0, nplane, ncell, 0, ncell);
   hhirates=t->make<TH2D>("hirates", "", nplane, 0, nplane, ncell, 0, ncell);
@@ -141,6 +122,7 @@ void noisychannels::analyze(const art::Event & evt)
       progressindicator(n - 1);
     }
     n++;
+    events->Fill(0);
   }
 
   // Must be called on every event to prevent SIGPIPE loops.
