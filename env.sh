@@ -88,20 +88,20 @@ else
   elif [ $gwbase == S200316bj ]; then realgweventtime="2020-03-16T21:57:56.157221Z"
 
   # #!/bin/bash
-  # 
+  #
   # in=$1
-  # 
+  #
   # year=20${in:2:2}
   # month=${in:4:2}
   # day=${in:6:2}
   # hour=${in:9:2}
   # minute=${in:11:2}
   # second=${in:13:2}
-  # 
+  #
   # echo 'elif [ '\$gwbase' == '$in' ]; then realgweventtime="'$year-$month-${day}T$hour:$minute:${second}.0Z\"
 
   # Ok, I didn't realize that fractional seconds were available for these because the
-  # paper doesn't list them.  But they are there at 
+  # paper doesn't list them.  But they are there at
   # https://www.gw-openscience.org/eventapi/html/GWTC/
   # Since I already processed all of them except GW190909_114149 with no fractional
   # part, I think it violates blindness to go back and redo them.  But I missed GW190909_114149,
@@ -166,6 +166,11 @@ else
 
   elif [ $gwbase == snews20201015 ]; then realgweventtime="2020-10-15T13:29:01.350000Z"
 
+  # These three for testing 3rdpaper
+  elif [ $gwbase == snews20201016 ]; then realgweventtime="2020-10-16T13:29:01.350000Z"
+  elif [ $gwbase == snews20201017 ]; then realgweventtime="2020-10-17T13:29:01.350000Z"
+  elif [ $gwbase == snews20201018 ]; then realgweventtime="2020-10-18T13:29:01.350000Z"
+
   # DST ended on Nov 1, 2020
 
   elif [ $gwbase == snews20201101 ]; then realgweventtime="2020-11-01T14:29:01.350000Z"
@@ -195,25 +200,82 @@ else
   elif [ $gwbase == snews20201120 ]; then realgweventtime="2020-11-20T14:29:01.350000Z"
   elif [ $gwbase == snews20201121 ]; then realgweventtime="2020-11-21T14:29:01.350000Z"
 
-  # We think we sucessfully change the offset to -5 minutes in March 2021
-  elif [ $gwbase == snews20210308 ]; then realgweventtime="2021-03-08T14:25:00.0Z"
+  # We think we sucessfully changed the offset to -5 minutes in March 2021
+  # Yes, we did, although at the level of a few seconds, the offset is still weird
+  # March 9-29 used for training
+  elif [ $gwbase == snews20210309 ]; then realgweventtime="2021-03-09T14:25:00.0Z"
+  elif [ $gwbase == snews20210310 ]; then realgweventtime="2021-03-10T14:25:00.0Z"
+  elif [ $gwbase == snews20210311 ]; then realgweventtime="2021-03-11T14:25:00.0Z"
+  elif [ $gwbase == snews20210312 ]; then realgweventtime="2021-03-12T14:25:00.0Z"
+  elif [ $gwbase == snews20210313 ]; then realgweventtime="2021-03-13T14:25:00.0Z"
+
+  # DST
+  elif [ $gwbase == snews20210314 ]; then realgweventtime="2021-03-14T13:25:00.0Z"
+  elif [ $gwbase == snews20210315 ]; then realgweventtime="2021-03-15T13:25:00.0Z"
+  elif [ $gwbase == snews20210316 ]; then realgweventtime="2021-03-16T13:25:00.0Z"
+  elif [ $gwbase == snews20210317 ]; then realgweventtime="2021-03-17T13:25:00.0Z"
+  elif [ $gwbase == snews20210318 ]; then realgweventtime="2021-03-18T13:25:00.0Z"
+  elif [ $gwbase == snews20210319 ]; then realgweventtime="2021-03-19T13:25:00.0Z"
+  elif [ $gwbase == snews20210320 ]; then realgweventtime="2021-03-20T13:25:00.0Z"
+  elif [ $gwbase == snews20210321 ]; then realgweventtime="2021-03-21T13:25:00.0Z"
+  elif [ $gwbase == snews20210322 ]; then realgweventtime="2021-03-22T13:25:00.0Z"
+  elif [ $gwbase == snews20210323 ]; then realgweventtime="2021-03-23T13:25:00.0Z"
+  elif [ $gwbase == snews20210324 ]; then realgweventtime="2021-03-24T13:25:00.0Z"
+  elif [ $gwbase == snews20210325 ]; then realgweventtime="2021-03-25T13:25:00.0Z"
+  elif [ $gwbase == snews20210326 ]; then realgweventtime="2021-03-26T13:25:00.0Z"
+  elif [ $gwbase == snews20210327 ]; then realgweventtime="2021-03-27T13:25:00.0Z"
+  elif [ $gwbase == snews20210328 ]; then realgweventtime="2021-03-28T13:25:00.0Z"
+  elif [ $gwbase == snews20210329 ]; then realgweventtime="2021-03-29T13:25:00.0Z"
+
+  # These three for testing 3rdpaper
+  elif [ $gwbase == snews20210330 ]; then realgweventtime="2021-03-30T13:25:00.0Z"
+  elif [ $gwbase == snews20210331 ]; then realgweventtime="2021-03-31T13:25:00.0Z"
+  elif [ $gwbase == snews20210401 ]; then realgweventtime="2021-04-01T13:25:00.0Z"
+
+  # Back to training
+  elif [ $gwbase == snews20210402 ]; then realgweventtime="2021-04-02T13:25:00.0Z"
+  elif [ $gwbase == snews20210403 ]; then realgweventtime="2021-04-03T13:25:00.0Z"
+  elif [ $gwbase == snews20210404 ]; then realgweventtime="2021-04-04T13:25:00.0Z"
+  elif [ $gwbase == snews20210405 ]; then realgweventtime="2021-04-05T13:25:00.0Z"
+
+  # For training sample with events distributed flat in time
+  elif [ $gwbase == snews20210406 ]; then realgweventtime="2021-04-06T13:25:00.0Z"
+  elif [ $gwbase == snews20210407 ]; then realgweventtime="2021-04-07T13:25:00.0Z"
+  elif [ $gwbase == snews20210408 ]; then realgweventtime="2021-04-08T13:25:00.0Z"
+  elif [ $gwbase == snews20210409 ]; then realgweventtime="2021-04-09T13:25:00.0Z"
+  elif [ $gwbase == snews20210410 ]; then realgweventtime="2021-04-10T13:25:00.0Z"
+  elif [ $gwbase == snews20210411 ]; then realgweventtime="2021-04-11T13:25:00.0Z"
 
 
   else
     echo I do not know when $gwbase was.  Edit env.sh
+    unset realgweventtime
+    unset intgwunixtime
+    unset gwunixtime
+    unset nddef
+    unset fddef
+    unset nddefsnews
+    unset fddefsnews
+    unset gwnovatime
+
     if ! [ "$PS1" ]; then
       exit 1
     fi
   fi
 
-  intgwunixtime=$(TZ=UTC date +%s -d "$(echo $realgweventtime | sed -e 's/\..*//' -e 's/T/ /')")
-  gwunixtime=$intgwunixtime.$(echo $realgweventtime | sed -e 's/.*\.//' -e s/Z//)
-  nddef=strait-ligo-coincidence-artdaq-$gwunixtime-neardet-ligo
-  fddef=strait-ligo-coincidence-artdaq-$gwunixtime-fardet-ligo
+  if [ $realgweventtime ]; then
 
-  if ! echo $PATH | grep -qE "$SRT_PRIVATE_CONTEXT/ligo([:/]|$)"; then
-    PATH+=:$SRT_PRIVATE_CONTEXT/ligo
+    intgwunixtime=$(TZ=UTC date +%s -d "$(echo $realgweventtime | sed -e 's/\..*//' -e 's/T/ /')")
+    gwunixtime=$intgwunixtime.$(echo $realgweventtime | sed -e 's/.*\.//' -e s/Z//)
+    nddef=strait-ligo-coincidence-artdaq-$gwunixtime-neardet-ligo
+    fddef=strait-ligo-coincidence-artdaq-$gwunixtime-fardet-ligo
+    nddefsnews=${nddef/neardet-ligo/neardet-ddsnews}
+    fddefsnews=${fddef/fardet-ligo/fardet-ddsnews}
+
+    if ! echo $PATH | grep -qE "$SRT_PRIVATE_CONTEXT/ligo([:/]|$)"; then
+      PATH+=:$SRT_PRIVATE_CONTEXT/ligo
+    fi
+
+    export gwnovatime=$(NovaTimeConvert "$(echo $realgweventtime | sed -e 's/T/ /' -e 's/Z/ UTC/')" | grep "base time" | awk '{print $6}')
   fi
-
-  export gwnovatime=$(NovaTimeConvert "$(echo $realgweventtime | sed -e 's/T/ /' -e 's/Z/ UTC/')" | grep "base time" | awk '{print $6}')
 fi
