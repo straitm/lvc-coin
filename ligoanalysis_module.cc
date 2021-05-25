@@ -131,8 +131,7 @@ const double cos_trkproj_ang_buf = cos(trkproj_ang_buf*M_PI/180);
 // "shape" variables.
 const float shape_pln_buf = 24.;
 
-// Boxes to put around each slice for determining if we are near it.
-const int near_slc_pln_buf = 24, near_slc_cel_buf = 48;
+// Box to put around each slice for determining if we are somewhere near it.
 const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
 
 static const int nplanefd = 896;
@@ -178,11 +177,8 @@ struct mhit{
   double toshapeslc_s;
   double sinceshapeslc_s;
 
-  // The minimum time to the next/previous slice overlapping this hit in space
-  double tonearslc_s;
-  double sincenearslc_s;
-
-  // Same, but for a bigger box around slices
+  // The minimum time to the next/previous slice that's
+  // overlapping this hit in space, with a big buffer
   double tofarslc_s;
   double sincefarslc_s;
 
@@ -193,9 +189,6 @@ struct mhit{
   // The minimum time to the next slice anywhere
   double toanyslice_s;
   double sinceanyslice_s;
-
-  // The time since the previous big shower *anywhere*
-  double sincelastbigshower_s;
 
   // Roughly how noisy the channel with this hit is, where 1.0 is the
   // median noisiness. Really it is the channel's hit rate relative to
@@ -220,18 +213,10 @@ struct mslice{
   int16_t minplane, maxplane;
   int16_t mincellx, maxcellx, mincelly, maxcelly;
 
-  // Extents with buffers, which might save time. These "nears" and
-  // "fars" aren't the two detectors, but the size of the box around the
-  // slice. (Maybe they should have been "close" and "distant"?)
-  int16_t bminplane_near, bmaxplane_near;
-  int16_t bmincellx_near, bmaxcellx_near, bmincelly_near, bmaxcelly_near;
+  // Extents with buffers, which might save time. This "far" isn't the Far
+  // Detector, but the size of the box around the slice.
   int16_t bminplane_far, bmaxplane_far;
   int16_t bmincellx_far, bmaxcellx_far, bmincelly_far, bmaxcelly_far;
-
-  float sliceduration;
-
-  // Used as a proxy for "big shower"
-  bool longslice;
 
   // Time in integer seconds and nanoseconds since Jan 1, 1970
   uint32_t time_s;
@@ -602,20 +587,16 @@ struct sninfo_t{
   double x_toshapeslc_s, y_toshapeslc_s;
   double x_sinceshapeslc_s, y_sinceshapeslc_s;
 
-  // The time until and since the last slice that overlaps this cluster
-  // in space, plus a buffer of several cells and planes.  If this
-  // hit is during such a slice, both are zero.  If there is no such
-  // slice for one or the other case, that one is set to 1e9.
-  double x_tonearslc_s, y_tonearslc_s;
-  double x_sincenearslc_s, y_sincenearslc_s;
-
   // Same, but only for slices with no tracks in them, which probably
   // actually do contain muons that are nearly aligned with the planes.
   // This uses a smaller spatial buffer.
   double x_totlslc_s, y_totlslc_s;
   double x_sincetlslc_s, y_sincetlslc_s;
 
-  // Same, larger buffer.
+  // The time until and since the last slice that overlaps this cluster
+  // in space, plus a big buffer of several cells and planes.  If this
+  // hit is during such a slice, both are zero.  If there is no such
+  // slice for one or the other case, that one is set to 1e9.
   double x_tofarslc_s, y_tofarslc_s;
   double x_sincefarslc_s, y_sincefarslc_s;
 
@@ -624,34 +605,6 @@ struct sninfo_t{
   // one or the other case, that one is set to 1e9.
   double x_toanyslice_s, y_toanyslice_s;
   double x_sinceanyslice_s, y_sinceanyslice_s;
-
-  // Time in seconds since the last "big" cosmic ray shower. This is
-  // of interest because big showers can dump many (thousands) of
-  // neutrons into the detector, which subsequently capture over the
-  // following 100s of microseconds. It's not clear which, if any of the
-  // following are relevant to NOvA, but they can also produce (1) B-12
-  // and N-12, high energy beta decay isotopes with lifetimes in the
-  // 10s of milliseconds (2) cosmogenic isotopes such as Li-9 that have
-  // decays that mimic supernova IBDs and have lifetimes in the 100s
-  // of milliseconds (3) other isotopes with lower energy simple beta
-  // decays, but even longer lifetimes.
-  //
-  // A "big" shower is defined as one with a length over 2 microseconds.
-  // This works, but is probably not so much a physical time duration as
-  // it is using the fact that large energy depositions cause "flasher"
-  // hits over the next few microseconds, a detector artifact.  It may also
-  // be connecting the beginning of the wave of neutron captures or muons
-  // truly separated in time by up to ~1-2 microseconds.
-  //
-  // If there was no previous big shower, this is set to the number of
-  // seconds between the cluster and the Unix Epoch (~2e9).
-  //
-  // In my short tests so far, it looks like this variable does not
-  // help identify background events that have not already been cut by
-  // removing hits spatially close to big showers for 200 microseconds.
-  // We could play with the definitions of "big shower" and the size of
-  // this hard cut.
-  double sincebigshower_s;
 
   // The NOvA run number
   unsigned int run;
@@ -711,10 +664,6 @@ static void init_supernova()
   BRN(y_toshapeslc_s,     D);
   BRN(x_sinceshapeslc_s,  D);
   BRN(y_sinceshapeslc_s,  D);
-  BRN(x_tonearslc_s,      D);
-  BRN(y_tonearslc_s,      D);
-  BRN(x_sincenearslc_s,   D);
-  BRN(y_sincenearslc_s,   D);
   BRN(x_totlslc_s,        D);
   BRN(y_totlslc_s,        D);
   BRN(x_sincetlslc_s,     D);
@@ -728,7 +677,6 @@ static void init_supernova()
   BRN(x_sinceanyslice_s,  D);
   BRN(y_sinceanyslice_s,  D);
 
-  BRN(sincebigshower_s, D);
   BRN(pex,              F);
   BRN(pey,              F);
   BRN(unattpe,          F);
@@ -1207,10 +1155,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.mintns = (*slice)[i].MinTNS();
     slc.maxtns = (*slice)[i].MaxTNS();
 
-    const double LONGSLICEDURATION = 2000;
-    slc.sliceduration = slc.maxtns - slc.mintns;
-    slc.longslice = slc.sliceduration > LONGSLICEDURATION;
-
     slc.time_s = art_time_plus_some_ns(evt.time().value(),
                       (*slice)[i].MeanTNS()).first;
     slc.time_ns = art_time_plus_some_ns(evt.time().value(),
@@ -1219,8 +1163,6 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     slc.minplane = (*slice)[i].MinPlane();
     slc.maxplane = (*slice)[i].MaxPlane();
 
-    slc.bminplane_near = (*slice)[i].MinPlane() - near_slc_pln_buf;
-    slc.bmaxplane_near = (*slice)[i].MaxPlane() + near_slc_pln_buf;
     slc.bminplane_far = (*slice)[i].MinPlane() - far_slc_pln_buf;
     slc.bmaxplane_far = (*slice)[i].MaxPlane() + far_slc_pln_buf;
 
@@ -1229,16 +1171,12 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     if((*slice)[i].NCell(geo::kX) > 0){
       slc.mincellx = (*slice)[i].MinCell(geo::kX);
       slc.maxcellx = (*slice)[i].MaxCell(geo::kX);
-      slc.bmincellx_near = (*slice)[i].MinCell(geo::kX) - near_slc_cel_buf;
-      slc.bmaxcellx_near = (*slice)[i].MaxCell(geo::kX) + near_slc_cel_buf;
       slc.bmincellx_far = (*slice)[i].MinCell(geo::kX) - far_slc_cel_buf;
       slc.bmaxcellx_far = (*slice)[i].MaxCell(geo::kX) + far_slc_cel_buf;
     }
     if((*slice)[i].NCell(geo::kY) > 0){
       slc.mincelly = (*slice)[i].MinCell(geo::kY);
       slc.maxcelly = (*slice)[i].MaxCell(geo::kY);
-      slc.bmincelly_near = (*slice)[i].MinCell(geo::kY) - near_slc_cel_buf;
-      slc.bmaxcelly_near = (*slice)[i].MaxCell(geo::kY) + near_slc_cel_buf;
       slc.bmincelly_far = (*slice)[i].MinCell(geo::kY) - far_slc_cel_buf;
       slc.bmaxcelly_far = (*slice)[i].MaxCell(geo::kY) + far_slc_cel_buf;
     }
@@ -1268,27 +1206,19 @@ static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
     mslice slc;
     memset(&slc, 0, sizeof(mslice));
     slc.mintns = slc.maxtns = hit->TNS();
-    slc.sliceduration = 0;
-    slc.longslice = false;
 
     slc.time_s =art_time_plus_some_ns(evt.time().value(), slc.mintns).first;
     slc.time_ns=art_time_plus_some_ns(evt.time().value(), slc.mintns).second;
 
-    slc.bminplane_near = plane - near_slc_pln_buf;
-    slc.bmaxplane_near = plane + near_slc_pln_buf;
     slc.bminplane_far = plane - far_slc_pln_buf;
     slc.bmaxplane_far = plane + far_slc_pln_buf;
 
     // In the view the slice isn't in, we will only exclude plane 0, cell 0.
     if(hit->View() == geo::kX){
-      slc.bmincellx_near = cell - near_slc_cel_buf;
-      slc.bmaxcellx_near = cell + near_slc_cel_buf;
       slc.bmincellx_far = cell - far_slc_cel_buf;
       slc.bmaxcellx_far = cell + far_slc_cel_buf;
     }
     else{ // Y-view
-      slc.bmincelly_near = cell - near_slc_cel_buf;
-      slc.bmaxcelly_near = cell + near_slc_cel_buf;
       slc.bmincelly_far = cell - far_slc_cel_buf;
       slc.bmaxcelly_far = cell + far_slc_cel_buf;
     }
@@ -1491,8 +1421,10 @@ static bool hitinshape(const mslice & slc, const int16_t plane,
 }
 
 // Fill in the details of this hit, mostly (but not exclusively) its
-// proximity to cosmics.
-static void fill_in_hit(mhit & h,
+// proximity to cosmics.  Return false if the hit's characteristics
+// should make the cluster fail preselection.  In this case, we probably
+// haven't filled in everything about the hit.
+static bool fill_in_hit(mhit & h,
   const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
   const std::vector<mtrack> & trackinfo)
 {
@@ -1504,8 +1436,6 @@ static void fill_in_hit(mhit & h,
 
   h.noiselevel = noiseratesv[h.plane][h.cell];
 
-  h.sincelastbigshower_s = 1e9;
-
   h.sincetrkend_s = 1e9;
   h.totrkend_s = 1e9;
   h.sincefartrkend_s = 1e9;
@@ -1514,27 +1444,12 @@ static void fill_in_hit(mhit & h,
   h.totrkproj_s = 1e9;
   h.sinceshapeslc_s = 1e9;
   h.toshapeslc_s = 1e9;
-  h.sincenearslc_s = 1e9;
-  h.tonearslc_s = 1e9;
   h.sincetlslc_s = 1e9;
   h.totlslc_s = 1e9;
   h.sincefarslc_s = 1e9;
   h.tofarslc_s = 1e9;
   h.sinceanyslice_s = 1e9;
   h.toanyslice_s = 1e9;
-
-  // How long since the last "big shower" (a.k.a. long slice) anywhere.
-  // This looks back at least ~500us since we're looking at all slices
-  // from this trigger and the previous one.
-  //
-  // Construct measures of how close we are to slices. Start at 0 because
-  // we have not included the "noise" slice in sliceinfo.
-  for(unsigned int j = 0; j < nslice; j++){
-    if(!sliceinfo[j].longslice) continue;
-    const double timesince_s = (h.tns - sliceinfo[j].maxtns)*1e-9;
-    if(timesince_s > 0 && timesince_s < h.sincelastbigshower_s)
-      h.sincelastbigshower_s = timesince_s;
-  }
 
   for(unsigned int j = 0; j < nslice; j++){
     const mslice & slc = sliceinfo[j];
@@ -1546,19 +1461,16 @@ static void fill_in_hit(mhit & h,
     if(hitinshape(slc, h.plane, h.cell, view))
       tosince(h.sinceshapeslc_s, h.toshapeslc_s, timesince_s, timeto_s);
 
+    // Preselections
+    if(h.toshapeslc_s    <= 2e-6) return false;
+    if(h.sinceshapeslc_s <= 6e-6) return false;
+
     // Now with "far" spatial restriction
     if(hitinbox(slc.bminplane_far, slc.bmaxplane_far,
                 slc.bmincellx_far, slc.bmaxcellx_far,
                 slc.bmincelly_far, slc.bmaxcelly_far,
                 h.plane, h.cell, view))
       tosince(h.sincefarslc_s, h.tofarslc_s, timesince_s, timeto_s);
-
-    // Now with "near" spatial restriction
-    if(hitinbox(slc.bminplane_near, slc.bmaxplane_near,
-                slc.bmincellx_near, slc.bmaxcellx_near,
-                slc.bmincelly_near, slc.bmaxcelly_near,
-                h.plane, h.cell, view))
-      tosince(h.sincenearslc_s, h.tonearslc_s, timesince_s, timeto_s);
 
     // Now cast special suspicion on trackless slices.  Treat them as though
     // they are made entirely of track ends.
@@ -1582,6 +1494,11 @@ static void fill_in_hit(mhit & h,
                 trk.endcelly - trk_cel_buf, trk.endcelly + trk_cel_buf,
                 h.plane, h.cell, view))
       tosince(h.sincetrkend_s, h.totrkend_s, since_s, to_s);
+
+    // Preselections
+    if(h.totrkend_s    <=  2e-6) return false;
+    if(h.sincetrkend_s <= 20e-6) return false;
+
     if(hitinbox(trk.endplane - big_trk_pln_buf,
                 trk.endplane + big_trk_pln_buf,
                 trk.endcellx - big_trk_cel_buf,
@@ -1658,6 +1575,8 @@ static void fill_in_hit(mhit & h,
     h.truecellx = -1;
     h.truecelly = -1;
   }
+
+  return true;
 }
 
 // Return true iff this hit does cluster with the existing cluster.
@@ -1669,8 +1588,9 @@ static bool does_cluster(const sncluster & clu, const mhit & h)
   // is good enough.
 
   // Used to be 250, but then I discovered that I never wanted clusters
-  // with a greater total extent than 100ns.
-  const float timewindow = 100; // ns
+  // with a greater total extent than 100ns.  But wait, with a better
+  // analysis, I can accept more.  150ns seems close to optimal for now
+  const float timewindow = 150; // ns
 
   if(clu[0]->isx == h.isx){
     // These hits are in the same view, so the times can be compared directly
@@ -2001,24 +1921,6 @@ static double since_shapeslc(const sncluster & c, const bool x)
   return least;
 }
 
-static double to_nearslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->tonearslc_s < least)
-      least = h->tonearslc_s;
-  return least;
-}
-
-static double since_nearslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sincenearslc_s < least)
-      least = h->sincenearslc_s;
-  return least;
-}
-
 static double to_tlslc(const sncluster & c, const bool x)
 {
   double least = 1e9;
@@ -2070,15 +1972,6 @@ static double since_anyslice(const sncluster & c, const bool x)
   for(const auto h : c)
     if((h->isx ^ !x) && h->sinceanyslice_s < least)
       least = h->sinceanyslice_s;
-  return least;
-}
-
-static double since_last_big_shower(const sncluster & c)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if(h->sincelastbigshower_s < least)
-      least = h->sincelastbigshower_s;
   return least;
 }
 
@@ -2218,6 +2111,31 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   int64_t event_length_tdc, delta_tdc;
   delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger);
 
+  sninfo.pex = sum_pe(c).first;
+  sninfo.pey = sum_pe(c).second;
+
+  sninfo.mincellx = min_cell(c, true);
+  sninfo.maxcellx = max_cell(c, true);
+  sninfo.mincelly = min_cell(c, false);
+  sninfo.maxcelly = max_cell(c, false);
+
+  calibrate(sninfo); // set unattpe
+
+  sninfo.minhitadc  = min_hit_adc(c);
+
+  // Preselection
+  {
+    if(sninfo.unattpe < 0){
+      const double sumpe = sninfo.pex + sninfo.pey;
+      if(sumpe <= 50 || sumpe >= 250) return;
+    }
+    else{
+      if(sninfo.unattpe <= 500 || sninfo.unattpe >= 2500) return;
+    }
+
+    if(sninfo.minhitadc <= 40) return;
+  }
+
   sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truth(c);
@@ -2232,9 +2150,6 @@ static void savecluster(const art::Event & evt, const sncluster & c)
                     mean_tns(c)).first;
   sninfo.time_ns = art_time_plus_some_ns(evt.time().value(),
                     mean_tns(c)).second;
-  sninfo.pex = sum_pe(c).first;
-  sninfo.pey = sum_pe(c).second;
-  sninfo.minhitadc  = min_hit_adc(c);
   sninfo.maxhitadc  = max_hit_adc(c);
   sninfo.timeext_ns = time_ext_ns(sninfo.mintimegap_ns,
                                   sninfo.maxtimegap_ns, c);
@@ -2242,13 +2157,9 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.maxplane = max_plane(c);
   sninfo.planegap = plane_gap(c);
   sninfo.planeextent = sninfo.maxplane - sninfo.minplane + 1;
-  sninfo.mincellx = min_cell(c, true);
-  sninfo.maxcellx = max_cell(c, true);
   sninfo.cellxgap = cell_gap(c, true);
   sninfo.cellxextent = sninfo.maxcellx == -1? -1:
                        sninfo.maxcellx - sninfo.mincellx + 1;
-  sninfo.mincelly = min_cell(c, false);
-  sninfo.maxcelly = max_cell(c, false);
   sninfo.cellygap = cell_gap(c, false);
   sninfo.cellyextent = sninfo.maxcelly == -1? -1:
                        sninfo.maxcelly - sninfo.mincelly + 1;
@@ -2273,11 +2184,6 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.   x_toshapeslc_s = to_shapeslc(c, true);
   sninfo.   y_toshapeslc_s = to_shapeslc(c, false);
 
-  sninfo.x_sincenearslc_s = since_nearslc(c, true);
-  sninfo.y_sincenearslc_s = since_nearslc(c, false);
-  sninfo.   x_tonearslc_s =    to_nearslc(c, true);
-  sninfo.   y_tonearslc_s =    to_nearslc(c, false);
-
   sninfo.x_sincetlslc_s = since_tlslc(c, true);
   sninfo.y_sincetlslc_s = since_tlslc(c, false);
   sninfo.   x_totlslc_s =    to_tlslc(c, true);
@@ -2293,16 +2199,12 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.   x_toanyslice_s =    to_anyslice(c, true);
   sninfo.   y_toanyslice_s =    to_anyslice(c, false);
 
-  sninfo.sincebigshower_s = since_last_big_shower(c);
-
   sninfo.run = evt.run();
   sninfo.subrun = evt.subRun();
   sninfo.event = evt.event();
   sninfo.hitid = c[0]->hitid;
 
   sninfo.maxnoise = max_noise(c);
-
-  calibrate(sninfo); // set unattpe
 
   sntree->Fill();
 }
@@ -2380,21 +2282,56 @@ static void supernova(const art::Event & evt,
       }
     }while(!done);
 
-    // Perhaps consider allowing single-hit clusters at some later date
     if(clu.size() < 2 || clu.size() > 7) continue;
 
     // Some preselection here to save time calculating slice
     // distance variables.  This is a massive time savings.
     if(gDet == caf::kFARDET){
       if(clu.size() == 2){
-        if(clu[0]->adc + clu[1]->adc <= 110) continue;
+        if(clu[0]->adc + clu[1]->adc <= 160) continue;
         if(std::min(clu[0]->adc, clu[1]->adc) <= 50) continue;
       }
+
+      bool passfid = true;
+
+      for(auto h : clu)
+        if(h->plane <= 4 || h->plane >= 876)
+          passfid = false;
+
+      if(!passfid) continue;
+
+      bool hasx = false, hasy = false;
+
+      for(auto h : clu){
+        if(h->isx) hasx = true;
+        else       hasy = true;
+      }
+
+      // Fail events that are near x edge regardless of 2D or 3D
+      if(hasx)
+        for(auto h : clu)
+          if( h->isx && (h->cell <=  8 || h->cell >= 383 - 8))
+            passfid = false;
+
+      // Fail events near the top or bottom for y-only 2D events.
+      if(!hasx && hasy)
+        for(auto h : clu)
+          if(!h->isx && (h->cell <= 15 || h->cell >= 350))
+            passfid = false;
+
+      if(!passfid) continue;
     }
 
     // Now that we're going to keep it, do the hard work
-    for(unsigned int j = 0; j < clu.size(); j++)
-      fill_in_hit(*clu[j], (*slice)[0], sliceinfo, trackinfo);
+    bool passpresel = true;
+    for(unsigned int j = 0; j < clu.size(); j++){
+      if(!fill_in_hit(*clu[j], (*slice)[0], sliceinfo, trackinfo)){
+        passpresel = false;
+        break;
+      }
+    }
+
+    if(!passpresel) continue;
 
     snclusters.push_back(clu);
   }
