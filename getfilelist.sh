@@ -1,47 +1,5 @@
 #!/bin/bash
 
-if ! [ $2 ]; then
-  echo Give event name and trigger stream
-  exit 1
-fi
-
-export GWNAME=$1
-
-echo Using $GWNAME
-
-. $SRT_PRIVATE_CONTEXT/ligo/env.sh
-
-fracsec=$(cut -d. -f 2 -s <<< $gwunixtime)
-intsec=$(cut -d. -f 1 <<< $gwunixtime)
-rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
-trigger=$2
-
-if [ $trigger == neardet-ddsnews ]; then
-  filepattern='neardet.*_DDsnews.raw'
-elif [ $trigger == fardet-ddsnews ]; then
-  filepattern='fardet.*_DDsnews.raw'
-elif [ $trigger == neardet-ligo ]; then
-  filepattern='neardet.*_ligo.raw'
-elif [ $trigger == fardet-ligo ]; then
-  filepattern='fardet.*_ligo.raw'
-elif [ $trigger == fardet-ddsn ]; then
-  filepattern='fardet.*ddsn'
-elif [ $trigger == neardet-ddsn ]; then
-  filepattern='neardet.*ddsn'
-elif [ $trigger == fardet-t02 ]; then
-  filepattern='fardet.*_t02_.*data.artdaq'
-elif [ $trigger == neardet-t00 ]; then
-  filepattern='neardet.*_t00_.*data.artdaq'
-else
-  echo unknown trigger \"$trigger\"
-  exit 1
-fi
-
-defbase=strait-ligo-coincidence-artdaq-$gwunixtime
-recodefbase=strait-ligo-coincidence-reco-$gwunixtime
-rawdef=$defbase-$trigger
-recodef=$recodefbase-$trigger-$gwbase
-
 nsamlistsrunning()
 {
   ps f -u mstrait | grep -v grep | grep samweb.py\ list | wc -l
@@ -67,8 +25,6 @@ blocksam()
 
 havedef()
 {
-  tmplist=/tmp/samlist.$$
-
   def=$1
   if samweb describe-definition $def &> /dev/null &&
      ! [ "$(samweb list-files defname: $def)" ]; then
@@ -78,92 +34,12 @@ havedef()
 
   if samweb describe-definition $def &> /dev/null; then
     echo SAM definition $def exists for $gwunixtime
-
-    samweb list-files defname: $def > $tmplist
-    for f in $(cat $tmplist); do
-      if samweb locate-file $f | grep -q persistent &&
-         ! [ -e $(samweb locate-file $f | sed s/dcache://)/$f ]; then
-        echo $f in reco def does not exist.  Removing definition.
-        samweb delete-definition $recodef
-        rm -f $tmplist
-        return 1
-      fi
-    done
-    rm -f $tmplist
     return 0
   else
     echo No SAM definition yet for $def
     return 1
   fi
 }
-
-makerecodef()
-{
-  # These are the only trigger streams for which we might want to read
-  # reco files
-  if [ $trigger != fardet-t02 ] &&
-     [ $trigger != fardet-ddsnews ]; then
-    return 1
-  fi
-
-  tmplist=/tmp/tmplist.$$
-  tmprecolist=/tmp/recolist.$$
-  rm -f $tmprecolist
-
-  if ! havedef $rawdef > /dev/null; then
-    echo Will make the raw definition before making reco def
-    makerawdef
-  fi
-
-  blocksam
-  samweb list-files defname: $rawdef > $tmplist
-  echo Looking for $(cat $tmplist | wc -l) reco file'(s)'...
-  for raw in $(cat $tmplist); do
-    base=$(printf $raw | cut -d_ -f 1-4 | cut -d. -f 1 | sed s/DDsnews/ddsnews/)
-    f=$(dirname $outhistdir)/*/*-$trigger/*${base}_*.reco.root
-    echo Looking for "$f"
-    if ls $f &> /dev/null; then
-      found=0
-      for one in $(ls $f); do
-        rfctimeonfile=$(basename $(dirname $one) | cut -dZ -f 1)Z
-        rfctimeonfile=${rfctimeonfile//-/:} #repairing...
-        rfctimeonfile=${rfctimeonfile/:/-}
-        rfctimeonfile=${rfctimeonfile/:/-}
-        if [ $rfctime == $rfctimeonfile ]; then
-          ls $one >> $tmprecolist
-          echo Found $one
-          found=1
-          break
-        else
-          echo Incompatible timestamp on already-filtered reco file $one
-        fi
-      done
-      if [ $found -ne 1 ]; then
-        echo No acceptable reco file found
-        rm -f $tmplist $tmprecolist
-        return 1
-      fi
-    else
-      echo No reco file found
-      rm -f $tmplist $tmprecolist
-      return 1
-    fi
-  done
-
-  if [ -e $tmprecolist ]; then
-    for f in $(cat $tmprecolist); do # ???
-      samweb retire-file $(basename $f) &> /dev/null
-    done
-    sam_add_dataset -n $recodef -f $tmprecolist
-  else
-    return 1
-  fi
-
-  rm -f $tmplist $tmprecolist
-}
-
-metadir=/nova/ana/users/mstrait/ligometalog
-mkdir -p $metadir
 
 makerawdef()
 {
@@ -186,10 +62,14 @@ makerawdef()
 
   # Some subruns have a start time of zero in the metadata.  In this case,
   # Look at the run start time.  If the run start time isn't there, don't
-  # select.  I don't know if this happens. Might there be other problems?
+  # select.  I don't know if this happens.  This seems to cover all of the
+  # strange cases that happen.
+  #
+  # Require more than 3 events because that's typically how many SNEWS or
+  # GCN (LVC) slow beats there are in files that have no triggered data.
   blocksam
   samweb list-files \
-         'Online.SubRunEndTime   > '$((intgwunixtime-550))\
+         'Online.TotalEvents > 3 and Online.SubRunEndTime   > '$((intgwunixtime-550))\
     ' and ( '\
     ' ( Online.SubRunStartTime > 0 and Online.SubRunStartTime < '$((intgwunixtime+2000))\
     ' ) or '\
@@ -237,6 +117,51 @@ makerawdef()
   fi
 }
 
+########################################################################
+
+if ! [ $2 ]; then
+  echo Give event name and trigger stream
+  exit 1
+fi
+
+export GWNAME=$1
+
+echo Using $GWNAME
+
+. $SRT_PRIVATE_CONTEXT/ligo/env.sh
+
+fracsec=$(cut -d. -f 2 -s <<< $gwunixtime)
+intsec=$(cut -d. -f 1 <<< $gwunixtime)
+rfctime=$(TZ=UTC date "+%Y-%m-%dT%H:%M:%S" -d @$intsec).${fracsec}Z
+trigger=$2
+
+if [ $trigger == neardet-ddsnews ]; then
+  filepattern='neardet.*_DDsnews.raw'
+elif [ $trigger == fardet-ddsnews ]; then
+  filepattern='fardet.*_DDsnews.raw'
+elif [ $trigger == neardet-ligo ]; then
+  filepattern='neardet.*_ligo.raw'
+elif [ $trigger == fardet-ligo ]; then
+  filepattern='fardet.*_ligo.raw'
+elif [ $trigger == fardet-ddsn ]; then
+  filepattern='fardet.*ddsn'
+elif [ $trigger == neardet-ddsn ]; then
+  filepattern='neardet.*ddsn'
+elif [ $trigger == fardet-t02 ]; then
+  filepattern='fardet.*_t02_.*data.artdaq'
+elif [ $trigger == neardet-t00 ]; then
+  filepattern='neardet.*_t00_.*data.artdaq'
+else
+  echo unknown trigger \"$trigger\"
+  exit 1
+fi
+
+defbase=strait-ligo-coincidence-artdaq-$gwunixtime
+rawdef=$defbase-$trigger
+
+metadir=/nova/ana/users/mstrait/ligometalog
+mkdir -p $metadir
+
 echo Running setup_fnal_security.  Will hang if it needs a password.
 setup_fnal_security &> /dev/null
 echo Ok, it did not hang
@@ -245,21 +170,7 @@ echo Ok, it did not hang
 # *too* much racing.
 if ! [ $REDOFAST ]; then sleep $((RANDOM%16 + 1)); fi
 
-# These get messed up too easily.  For now, regenerate each time.
-samweb delete-definition $recodef
-
-if havedef $rawdef; then
-  if true; then # XXX
-    echo Use artdaq regardless because broken
-    def=$rawdef
-  elif makerecodef; then
-    echo Made reco SAM definition
-    def=$recodef
-  else
-    echo Reco files not available. Have raw SAM definition. Doing no queries.
-    def=$rawdef
-  fi
-else
+if ! havedef $rawdef; then
   echo Making raw SAM definition
   makerawdef
   def=$rawdef

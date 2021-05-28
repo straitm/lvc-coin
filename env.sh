@@ -246,6 +246,16 @@ else
   elif [ $gwbase == snews20210410 ]; then realgweventtime="2021-04-10T13:25:00.0Z"
   elif [ $gwbase == snews20210411 ]; then realgweventtime="2021-04-11T13:25:00.0Z"
 
+  # More than I haven't used as of 2021-05-28
+  elif [ $gwbase == snews20210412 ]; then realgweventtime="2021-04-12T13:25:00.0Z"
+  elif [ $gwbase == snews20210413 ]; then realgweventtime="2021-04-13T13:25:00.0Z"
+  elif [ $gwbase == snews20210414 ]; then realgweventtime="2021-04-14T13:25:00.0Z"
+  elif [ $gwbase == snews20210415 ]; then realgweventtime="2021-04-15T13:25:00.0Z"
+  elif [ $gwbase == snews20210416 ]; then realgweventtime="2021-04-16T13:25:00.0Z"
+  elif [ $gwbase == snews20210417 ]; then realgweventtime="2021-04-17T13:25:00.0Z"
+  elif [ $gwbase == snews20210418 ]; then realgweventtime="2021-04-18T13:25:00.0Z"
+  elif [ $gwbase == snews20210419 ]; then realgweventtime="2021-04-19T13:25:00.0Z"
+
 
   else
     echo I do not know when $gwbase was.  Edit env.sh
