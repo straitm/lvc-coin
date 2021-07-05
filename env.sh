@@ -256,6 +256,17 @@ else
   elif [ $gwbase == snews20210418 ]; then realgweventtime="2021-04-18T13:25:00.0Z"
   elif [ $gwbase == snews20210419 ]; then realgweventtime="2021-04-19T13:25:00.0Z"
 
+  # Used for final test sample
+  elif [ $gwbase == snews20210618 ]; then realgweventtime="2021-06-18T13:25:00.0Z"
+  elif [ $gwbase == snews20210619 ]; then realgweventtime="2021-06-19T13:25:00.0Z"
+  elif [ $gwbase == snews20210620 ]; then realgweventtime="2021-06-20T13:25:00.0Z"
+  elif [ $gwbase == snews20210621 ]; then realgweventtime="2021-06-21T13:25:00.0Z"
+  elif [ $gwbase == snews20210622 ]; then realgweventtime="2021-06-22T13:25:00.0Z"
+  elif [ $gwbase == snews20210623 ]; then realgweventtime="2021-06-23T13:25:00.0Z"
+
+  # Used for display plots demonstrating whole 3rdpaper selection
+  elif [ $gwbase == snews20210624 ]; then realgweventtime="2021-06-24T13:25:00.0Z"
+
 
   else
     echo I do not know when $gwbase was.  Edit env.sh
