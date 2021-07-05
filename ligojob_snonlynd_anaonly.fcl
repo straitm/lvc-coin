@@ -41,7 +41,7 @@ this_here_ligoanalysis: @local::standard_ligoanalysis
 
 physics:
 {
-  producers:
+  analyzers:
   {
     snanalysis: @local::this_here_ligoanalysis
   }

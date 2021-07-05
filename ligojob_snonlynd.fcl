@@ -43,6 +43,9 @@ physics:
     calhit: @local::standard_calhit
     slicer: @local::standard_slicer4d
     windowtrack: @local::window_cosmictrack
+  }
+  analyzers:
+  {
     snanalysis: @local::standard_ligoanalysis
   }
 

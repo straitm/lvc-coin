@@ -10,7 +10,7 @@
 
 #include "art/Framework/Services/Optional/TFileService.h"
 #include "art/Framework/Core/ModuleMacros.h"
-#include "art/Framework/Core/EDProducer.h"
+#include "art/Framework/Core/EDAnalyzer.h"
 
 #include "DAQDataFormats/RawEvent.h"
 #include "DAQDataFormats/RawTriggerMask.h"
@@ -244,13 +244,13 @@ struct mtrack{
   float tns;
 };
 
-class ligoanalysis : public art::EDProducer {
+class ligoanalysis : public art::EDAnalyzer {
   public:
   explicit ligoanalysis(fhicl::ParameterSet const& pset);
   virtual ~ligoanalysis() { }; // compiles, but does not run, without this
-  void produce(art::Event& evt);
+  void analyze(const art::Event& evt);
 
-  void beginSubRun(art::SubRun& subrun);
+  void beginSubRun(const art::SubRun& subrun);
 
   // Used to get the number of events in the file
   void respondToOpenInputFile(art::FileBlock const &fb);
@@ -709,12 +709,12 @@ static void init_supernova()
 // If we can't get the real number, this is roughly right for some FD files
 static int64_t eventsinfile = 237;
 
-void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
+void ligoanalysis::respondToOpenInputFile(const art::FileBlock &fb)
 {
   // Get the number of events as soon as the file opens. Really
   // fragile. We get the number of entries in *some* tree,
   // which at the moment turns out to be the right one, but
-  // EDProducer::respondToOpenInputFile is totally undocumented as far
+  // EDAnalyzer::respondToOpenInputFile is totally undocumented as far
   // as I can see. But if it's wrong, it only affects the progress
   // indicator.
   //
@@ -736,7 +736,7 @@ void ligoanalysis::respondToOpenInputFile(art::FileBlock const &fb)
     eventsinfile = rfb->tree()->GetEntries();
 }
 
-void ligoanalysis::beginSubRun(art::SubRun& subrun)
+void ligoanalysis::beginSubRun(const art::SubRun& subrun)
 {
   if(fBlind) return;
 
@@ -797,7 +797,7 @@ void ligoanalysis::beginSubRun(art::SubRun& subrun)
    }
 }
 
-ligoanalysis::ligoanalysis(fhicl::ParameterSet const& pset) : EDProducer(),
+ligoanalysis::ligoanalysis(const fhicl::ParameterSet & pset) : EDAnalyzer(pset),
   fBlind(pset.get<bool>("Blind")),
   fGWEventTime(pset.get<std::string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize")),
@@ -2366,7 +2366,7 @@ static void count_livetime(const art::Event & evt)
                                    + livetime);
 }
 
-void ligoanalysis::produce(art::Event & evt)
+void ligoanalysis::analyze(const art::Event & evt)
 {
   {
     static unsigned int n = 0;

@@ -47,7 +47,7 @@ this_here_ligoanalysis.MaxCellDist: 1
 
 physics:
 {
-  producers:
+  analyzers:
   {
     snanalysis: @local::this_here_ligoanalysis
   }

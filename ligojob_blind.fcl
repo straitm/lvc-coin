@@ -33,7 +33,7 @@ physics:
     ligofilter: @local::this_here_ligofilter
   }
 
-  producers:
+  analyzers:
   {
     snanalysis: @local::this_here_ligoanalysis
   }
