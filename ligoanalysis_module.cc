@@ -336,7 +336,7 @@ static bool longtriggertype(const int trigger)
   return false;
 }
 
-static bool is_complete_event(
+__attribute__((unused)) static bool is_complete_event(
   const art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq)
 {
   daqdataformats::RawEvent raw;
@@ -824,27 +824,27 @@ static void getflatdaq(
   art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
   const art::Event & evt)
 {
-  evt.getByLabel("minbias", flatdaq);
+  evt.getByLabel("daq", flatdaq);
   if(flatdaq.failedToGet())
-    evt.getByLabel("daq", flatdaq);
+    evt.getByLabel("minbias", flatdaq);
 }
 
 static void getrawtrigger(
   art::Handle< std::vector<rawdata::RawTrigger> > & trg,
   const art::Event & evt)
 {
-  evt.getByLabel("minbias", trg);
+  evt.getByLabel("daq", trg);
   if(trg.failedToGet())
-    evt.getByLabel("daq", trg);
+    evt.getByLabel("minbias", trg);
 }
 
 static void getrawdigits(
   art::Handle< std::vector<rawdata::RawDigit> > & digits,
   const art::Event & evt)
 {
-  evt.getByLabel("minbias", digits);
+  evt.getByLabel("daq", digits);
   if(digits.failedToGet())
-    evt.getByLabel("daq", digits);
+    evt.getByLabel("minbias", digits);
 }
 
 // Return the livetime in this event in seconds, as it is relevant for
@@ -2389,9 +2389,14 @@ void ligoanalysis::analyze(const art::Event & evt)
   {
     art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
     getflatdaq(flatdaq, evt);
+
+    // All this ever does is print a message, so disable unless we want to
+    // investigate "incomplete" events.
+    #if 0
     if(!flatdaq.failedToGet() && !is_complete_event(flatdaq)){
       printf("WARNING: Incomplete event, but assuming can trust livetime\n");
     }
+    #endif
 
     if(is_long_trigger){
       int64_t event_length_tdc, delta_tdc;
