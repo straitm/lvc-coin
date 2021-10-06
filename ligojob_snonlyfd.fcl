@@ -48,7 +48,11 @@ physics:
     snanalysis: @local::this_here_ligoanalysis
   }
 
-  reco: [ calhit, slicer, windowtrack, snanalysis ]
+  reco: [ calhit, slicer, windowtrack ]
+  ana: [ snanalysis ]
+
+  trigger_paths: [ reco ]
+  end_paths: [ ana ]
 }
 
 # Never want CAFs, so avoid prod4/prod5 CAF structure change problem
