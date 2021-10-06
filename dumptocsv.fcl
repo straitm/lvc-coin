@@ -1,0 +1,8 @@
+BEGIN_PROLOG
+
+standard_dumptocsv:
+{
+  module_type: dumptocsv
+}
+
+END_PROLOG
