@@ -8,7 +8,7 @@ process_name: dumptocsv
 services:
 {
   TFileService: { fileName: "histos.root" }
-  scheduler:    { wantTracer: false wantSummary: true }
+  scheduler:    { wantSummary: true }
   TimeTracker:  { printSummary: true }
   message:      @local::standard_out
   @table::standard_services

@@ -11,7 +11,7 @@ process_name: ligosnonlyndrawin
 services:
 {
   TFileService: { fileName: "histos.root" }
-  scheduler:    { wantTracer: false wantSummary: true }
+  scheduler:    { wantSummary: true }
   TimeTracker:  { printSummary: true }
   message:      { debugModules: ["*"] destinations: { debugmsg:{type: "cout" threshold: "WARNING"} } }
   @table::standard_services

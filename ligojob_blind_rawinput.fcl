@@ -7,7 +7,7 @@ process_name: ligoblindrawinput
 services:
 {
   TFileService: { fileName: "histos.root" }
-  scheduler:    { wantTracer: false wantSummary: true }
+  scheduler:    { wantSummary: true }
   TimeTracker:  { printSummary: true }
   message:      @local::standard_out
 }

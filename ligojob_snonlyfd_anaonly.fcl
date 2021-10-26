@@ -8,7 +8,7 @@ services:
 {
   TFileService: { fileName: "histos.root" }
 
-  scheduler:    { wantTracer: false wantSummary: true }
+  scheduler:    { wantSummary: true }
   TimeTracker:  { printSummary: true }
 
   # Load the services we need instead of @local::standard_services to save time
