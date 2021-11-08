@@ -182,41 +182,46 @@ struct mhit{
   int16_t truecelly;
 
   // The minimum time to the next/previous nearby track end
-  double totrkend_s;
-  double sincetrkend_s;
+  double to_trkend_s;
+  double since_trkend_s;
 
   // The minimum time to the next/previous not-so-nearby track end
-  double tofartrkend_s;
-  double sincefartrkend_s;
+  double to_fartrkend_s;
+  double since_fartrkend_s;
 
   // The minimum time to the next/previous projected-forward track wedge
-  double totrkproj_s;
-  double sincetrkproj_s;
+  double to_trkproj_s;
+  double since_trkproj_s;
 
   // Same, for a region defined as a distance to any hit
-  double toshapeslc_s;
-  double sinceshapeslc_s;
-  double tosmallshapeslc_s;
-  double sincesmallshapeslc_s;
-  double tofootnotesizeshapeslc_s;
-  double sincefootnotesizeshapeslc_s;
-  double toscriptsizeshapeslc_s;
-  double sincescriptsizeshapeslc_s;
-  double totinyshapeslc_s;
-  double sincetinyshapeslc_s;
+  double to_shapeslc_s;
+  double since_shapeslc_s;
+
+  // Same, with a smaller distance, etc.
+  double to_small_shapeslc_s;
+  double since_small_shapeslc_s;
+
+  double to_footnotesize_shapeslc_s;
+  double since_footnotesize_shapeslc_s;
+
+  double to_scriptsize_shapeslc_s;
+  double since_scriptsize_shapeslc_s;
+
+  double to_tiny_shapeslc_s;
+  double since_tiny_shapeslc_s;
 
   // The minimum time to the next/previous slice that's
   // overlapping this hit in space, with a big buffer
-  double tofarslc_s;
-  double sincefarslc_s;
+  double to_farslc_s;
+  double since_farslc_s;
 
   // Same, but special for trackless slices
-  double totlslc_s;
-  double sincetlslc_s;
+  double to_tlslc_s;
+  double since_tlslc_s;
 
   // The minimum time to the next slice anywhere
-  double toanyslice_s;
-  double sinceanyslice_s;
+  double to_anyslc_s;
+  double since_anyslc_s;
 
   // Roughly how noisy the channel with this hit is, where 1.0 is the
   // median noisiness. Really it is the channel's hit rate relative to
@@ -642,52 +647,55 @@ struct sninfo_t{
 
   // The time in seconds until and since the last track end near this
   // cluster.
-  double x_totrkend_s, y_totrkend_s;
-  double x_sincetrkend_s, y_sincetrkend_s;
+  double x_to_trkend_s, y_to_trkend_s;
+  double x_since_trkend_s, y_since_trkend_s;
 
   // The time in seconds until and since the last track end not-so-near this
   // cluster.
-  double x_tofartrkend_s, y_tofartrkend_s;
-  double x_sincefartrkend_s, y_sincefartrkend_s;
+  double x_to_fartrkend_s, y_to_fartrkend_s;
+  double x_since_fartrkend_s, y_since_fartrkend_s;
 
   // The time in seconds until and since the last time a wedge projected
   // a long way forward from a track end included this cluster.
-  double x_totrkproj_s, y_totrkproj_s;
-  double x_sincetrkproj_s, y_sincetrkproj_s;
+  double x_to_trkproj_s, y_to_trkproj_s;
+  double x_since_trkproj_s, y_since_trkproj_s;
 
-  double x_toshapeslc_s, y_toshapeslc_s;
-  double x_sinceshapeslc_s, y_sinceshapeslc_s;
+  // The time in seconds until and since a region defined by a particular distance
+  // to any hit in the slice
+  double x_to_shapeslc_s, y_to_shapeslc_s;
+  double x_since_shapeslc_s, y_since_shapeslc_s;
 
-  double x_tosmallshapeslc_s, y_tosmallshapeslc_s;
-  double x_sincesmallshapeslc_s, y_sincesmallshapeslc_s;
+  // Same for a smaller distance, etc.
+  double x_to_small_shapeslc_s, y_to_small_shapeslc_s;
+  double x_since_small_shapeslc_s, y_since_small_shapeslc_s;
 
-  double x_tofootnotesizeshapeslc_s, y_tofootnotesizeshapeslc_s;
-  double x_sincefootnotesizeshapeslc_s, y_sincefootnotesizeshapeslc_s;
+  double x_to_footnotesize_shapeslc_s, y_to_footnotesize_shapeslc_s;
+  double x_since_footnotesize_shapeslc_s, y_since_footnotesize_shapeslc_s;
 
-  double x_toscriptsizeshapeslc_s, y_toscriptsizeshapeslc_s;
-  double x_sincescriptsizeshapeslc_s, y_sincescriptsizeshapeslc_s;
+  double x_to_scriptsize_shapeslc_s, y_to_scriptsize_shapeslc_s;
+  double x_since_scriptsize_shapeslc_s, y_since_scriptsize_shapeslc_s;
 
-  double x_totinyshapeslc_s, y_totinyshapeslc_s;
-  double x_sincetinyshapeslc_s, y_sincetinyshapeslc_s;
+  double x_to_tiny_shapeslc_s, y_to_tiny_shapeslc_s;
+  double x_since_tiny_shapeslc_s, y_since_tiny_shapeslc_s;
 
   // Same, but only for slices with no tracks in them, which probably
   // actually do contain muons that are nearly aligned with the planes.
   // This uses a smaller spatial buffer.
-  double x_totlslc_s, y_totlslc_s;
-  double x_sincetlslc_s, y_sincetlslc_s;
+  double x_to_tlslc_s, y_to_tlslc_s;
+  double x_since_tlslc_s, y_since_tlslc_s;
 
   // The time until and since the last slice that overlaps this cluster
   // in space, plus a big buffer of several cells and planes.  If this
   // hit is during such a slice, both are zero.  If there is no such
   // slice for one or the other case, that one is set to 1e9.
-  double x_tofarslc_s, y_tofarslc_s;
-  double x_sincefarslc_s, y_sincefarslc_s;
+  double x_to_farslc_s, y_to_farslc_s;
+  double x_since_farslc_s, y_since_farslc_s;
 
   // The time until and since the last slice anywhere. If this cluster is
   // during such a slice, both are zero. If there is no such slice for
   // one or the other case, that one is set to 1e9.
-  double x_toanyslice_s, y_toanyslice_s;
-  double x_sinceanyslice_s, y_sinceanyslice_s;
+  double x_to_anyslc_s, y_to_anyslc_s;
+  double x_since_anyslc_s, y_since_anyslc_s;
 
   // The NOvA run number
   unsigned int run;
@@ -739,50 +747,50 @@ static void init_supernova()
   BRN(time_s,           i);
   BRN(time_ns,          i);
 
-  BRN(x_totrkend_s,       D);
-  BRN(y_totrkend_s,       D);
-  BRN(x_sincetrkend_s,    D);
-  BRN(y_sincetrkend_s,    D);
-  BRN(x_tofartrkend_s,    D);
-  BRN(y_tofartrkend_s,    D);
-  BRN(x_sincefartrkend_s, D);
-  BRN(y_sincefartrkend_s, D);
-  BRN(x_totrkproj_s,      D);
-  BRN(y_totrkproj_s,      D);
-  BRN(x_sincetrkproj_s,   D);
-  BRN(y_sincetrkproj_s,   D);
-  BRN(x_toshapeslc_s,     D);
-  BRN(y_toshapeslc_s,     D);
-  BRN(x_sinceshapeslc_s,  D);
-  BRN(y_sinceshapeslc_s,  D);
-  BRN(x_tosmallshapeslc_s,    D);
-  BRN(y_tosmallshapeslc_s,    D);
-  BRN(x_sincesmallshapeslc_s, D);
-  BRN(y_sincesmallshapeslc_s, D);
-  BRN(x_tofootnotesizeshapeslc_s,    D);
-  BRN(y_tofootnotesizeshapeslc_s,    D);
-  BRN(x_sincefootnotesizeshapeslc_s, D);
-  BRN(y_sincefootnotesizeshapeslc_s, D);
-  BRN(x_toscriptsizeshapeslc_s,    D);
-  BRN(y_toscriptsizeshapeslc_s,    D);
-  BRN(x_sincescriptsizeshapeslc_s, D);
-  BRN(y_sincescriptsizeshapeslc_s, D);
-  BRN(x_totinyshapeslc_s,    D);
-  BRN(y_totinyshapeslc_s,    D);
-  BRN(x_sincetinyshapeslc_s, D);
-  BRN(y_sincetinyshapeslc_s, D);
-  BRN(x_totlslc_s,        D);
-  BRN(y_totlslc_s,        D);
-  BRN(x_sincetlslc_s,     D);
-  BRN(y_sincetlslc_s,     D);
-  BRN(x_tofarslc_s,       D);
-  BRN(y_tofarslc_s,       D);
-  BRN(x_sincefarslc_s,    D);
-  BRN(y_sincefarslc_s,    D);
-  BRN(x_toanyslice_s,     D);
-  BRN(y_toanyslice_s,     D);
-  BRN(x_sinceanyslice_s,  D);
-  BRN(y_sinceanyslice_s,  D);
+  BRN(x_to_trkend_s,       D);
+  BRN(y_to_trkend_s,       D);
+  BRN(x_since_trkend_s,    D);
+  BRN(y_since_trkend_s,    D);
+  BRN(x_to_fartrkend_s,    D);
+  BRN(y_to_fartrkend_s,    D);
+  BRN(x_since_fartrkend_s, D);
+  BRN(y_since_fartrkend_s, D);
+  BRN(x_to_trkproj_s,      D);
+  BRN(y_to_trkproj_s,      D);
+  BRN(x_since_trkproj_s,   D);
+  BRN(y_since_trkproj_s,   D);
+  BRN(x_to_shapeslc_s,     D);
+  BRN(y_to_shapeslc_s,     D);
+  BRN(x_since_shapeslc_s,  D);
+  BRN(y_since_shapeslc_s,  D);
+  BRN(x_to_small_shapeslc_s,    D);
+  BRN(y_to_small_shapeslc_s,    D);
+  BRN(x_since_small_shapeslc_s, D);
+  BRN(y_since_small_shapeslc_s, D);
+  BRN(x_to_footnotesize_shapeslc_s,    D);
+  BRN(y_to_footnotesize_shapeslc_s,    D);
+  BRN(x_since_footnotesize_shapeslc_s, D);
+  BRN(y_since_footnotesize_shapeslc_s, D);
+  BRN(x_to_scriptsize_shapeslc_s,    D);
+  BRN(y_to_scriptsize_shapeslc_s,    D);
+  BRN(x_since_scriptsize_shapeslc_s, D);
+  BRN(y_since_scriptsize_shapeslc_s, D);
+  BRN(x_to_tiny_shapeslc_s,    D);
+  BRN(y_to_tiny_shapeslc_s,    D);
+  BRN(x_since_tiny_shapeslc_s, D);
+  BRN(y_since_tiny_shapeslc_s, D);
+  BRN(x_to_tlslc_s,        D);
+  BRN(y_to_tlslc_s,        D);
+  BRN(x_since_tlslc_s,     D);
+  BRN(y_since_tlslc_s,     D);
+  BRN(x_to_farslc_s,       D);
+  BRN(y_to_farslc_s,       D);
+  BRN(x_since_farslc_s,    D);
+  BRN(y_since_farslc_s,    D);
+  BRN(x_to_anyslc_s,     D);
+  BRN(y_to_anyslc_s,     D);
+  BRN(x_since_anyslc_s,  D);
+  BRN(y_since_anyslc_s,  D);
 
   BRN(pex,              F);
   BRN(pey,              F);
@@ -1591,61 +1599,61 @@ static bool fill_in_hit(mhit & h,
 
   h.noiselevel = noiseratesv[h.plane][h.cell];
 
-  h.sincetrkend_s = 1e9;
-  h.totrkend_s = 1e9;
-  h.sincefartrkend_s = 1e9;
-  h.tofartrkend_s = 1e9;
-  h.sincetrkproj_s = 1e9;
-  h.totrkproj_s = 1e9;
-  h.sinceshapeslc_s = 1e9;
-  h.toshapeslc_s = 1e9;
-  h.sincesmallshapeslc_s = 1e9;
-  h.tosmallshapeslc_s = 1e9;
-  h.sincefootnotesizeshapeslc_s = 1e9;
-  h.tofootnotesizeshapeslc_s = 1e9;
-  h.sincescriptsizeshapeslc_s = 1e9;
-  h.toscriptsizeshapeslc_s = 1e9;
-  h.sincetinyshapeslc_s = 1e9;
-  h.totinyshapeslc_s = 1e9;
-  h.sincetlslc_s = 1e9;
-  h.totlslc_s = 1e9;
-  h.sincefarslc_s = 1e9;
-  h.tofarslc_s = 1e9;
-  h.sinceanyslice_s = 1e9;
-  h.toanyslice_s = 1e9;
+  h.since_trkend_s = 1e9;
+  h.to_trkend_s = 1e9;
+  h.since_fartrkend_s = 1e9;
+  h.to_fartrkend_s = 1e9;
+  h.since_trkproj_s = 1e9;
+  h.to_trkproj_s = 1e9;
+  h.since_shapeslc_s = 1e9;
+  h.to_shapeslc_s = 1e9;
+  h.since_small_shapeslc_s = 1e9;
+  h.to_small_shapeslc_s = 1e9;
+  h.since_footnotesize_shapeslc_s = 1e9;
+  h.to_footnotesize_shapeslc_s = 1e9;
+  h.since_scriptsize_shapeslc_s = 1e9;
+  h.to_scriptsize_shapeslc_s = 1e9;
+  h.since_tiny_shapeslc_s = 1e9;
+  h.to_tiny_shapeslc_s = 1e9;
+  h.since_tlslc_s = 1e9;
+  h.to_tlslc_s = 1e9;
+  h.since_farslc_s = 1e9;
+  h.to_farslc_s = 1e9;
+  h.since_anyslc_s = 1e9;
+  h.to_anyslc_s = 1e9;
 
   for(unsigned int j = 0; j < nslice; j++){
     const mslice & slc = sliceinfo[j];
     const double timesince_s = (h.tns - slc.maxtns)*1e-9;
     const double timeto_s    = (slc.mintns - h.tns)*1e-9;
 
-    tosince(h.sinceanyslice_s, h.toanyslice_s, timesince_s, timeto_s);
+    tosince(h.since_anyslc_s, h.to_anyslc_s, timesince_s, timeto_s);
 
     if(hitinshape(slc, h.plane, h.cell, view, shape_pln_buf))
-      tosince(h.sinceshapeslc_s, h.toshapeslc_s, timesince_s, timeto_s);
+      tosince(h.since_shapeslc_s, h.to_shapeslc_s, timesince_s, timeto_s);
     if(hitinshape(slc, h.plane, h.cell, view, small_shape_pln_buf))
-      tosince(h.sincesmallshapeslc_s, h.tosmallshapeslc_s,
+      tosince(h.since_small_shapeslc_s, h.to_small_shapeslc_s,
               timesince_s, timeto_s);
     if(hitinshape(slc, h.plane, h.cell, view, footnotesize_shape_pln_buf))
-      tosince(h.sincefootnotesizeshapeslc_s, h.tofootnotesizeshapeslc_s,
+      tosince(h.since_footnotesize_shapeslc_s, h.to_footnotesize_shapeslc_s,
               timesince_s, timeto_s);
     if(hitinshape(slc, h.plane, h.cell, view, scriptsize_shape_pln_buf))
-      tosince(h.sincescriptsizeshapeslc_s, h.toscriptsizeshapeslc_s,
+      tosince(h.since_scriptsize_shapeslc_s, h.to_scriptsize_shapeslc_s,
               timesince_s, timeto_s);
     if(hitinshape(slc, h.plane, h.cell, view, tiny_shape_pln_buf))
-      tosince(h.sincetinyshapeslc_s, h.totinyshapeslc_s,
+      tosince(h.since_tiny_shapeslc_s, h.to_tiny_shapeslc_s,
               timesince_s, timeto_s);
 
     // Preselections
-    if(h.toshapeslc_s    <= MinToShapeSlc) return false;
-    if(h.sinceshapeslc_s <= MinSinceShapeSlc) return false;
+    if(h.to_shapeslc_s    <= MinToShapeSlc) return false;
+    if(h.since_shapeslc_s <= MinSinceShapeSlc) return false;
 
     // Now with "far" spatial restriction
     if(hitinbox(slc.bminplane_far, slc.bmaxplane_far,
                 slc.bmincellx_far, slc.bmaxcellx_far,
                 slc.bmincelly_far, slc.bmaxcelly_far,
                 h.plane, h.cell, view))
-      tosince(h.sincefarslc_s, h.tofarslc_s, timesince_s, timeto_s);
+      tosince(h.since_farslc_s, h.to_farslc_s, timesince_s, timeto_s);
 
     // Now cast special suspicion on trackless slices.  Treat them as though
     // they are made entirely of track ends.
@@ -1654,7 +1662,7 @@ static bool fill_in_hit(mhit & h,
                 slc.mincellx - trk_cel_buf, slc.maxcellx + trk_cel_buf,
                 slc.mincelly - trk_cel_buf, slc.maxcelly + trk_cel_buf,
                 h.plane, h.cell, view))
-      tosince(h.sincetlslc_s, h.totlslc_s, timesince_s, timeto_s);
+      tosince(h.since_tlslc_s, h.to_tlslc_s, timesince_s, timeto_s);
   }
 
   // Construct measures of how close we are to track ends
@@ -1668,11 +1676,11 @@ static bool fill_in_hit(mhit & h,
                 trk.endcellx - trk_cel_buf, trk.endcellx + trk_cel_buf,
                 trk.endcelly - trk_cel_buf, trk.endcelly + trk_cel_buf,
                 h.plane, h.cell, view))
-      tosince(h.sincetrkend_s, h.totrkend_s, since_s, to_s);
+      tosince(h.since_trkend_s, h.to_trkend_s, since_s, to_s);
 
     // Preselections
-    if(h.totrkend_s    <= MinToTrkEnd) return false;
-    if(h.sincetrkend_s <= MinSinceTrkEnd) return false;
+    if(h.to_trkend_s    <= MinToTrkEnd) return false;
+    if(h.since_trkend_s <= MinSinceTrkEnd) return false;
 
     if(hitinbox(trk.endplane - big_trk_pln_buf,
                 trk.endplane + big_trk_pln_buf,
@@ -1681,7 +1689,7 @@ static bool fill_in_hit(mhit & h,
                 trk.endcelly - big_trk_cel_buf,
                 trk.endcelly + big_trk_cel_buf,
                 h.plane, h.cell, view))
-      tosince(h.sincefartrkend_s, h.tofartrkend_s, since_s, to_s);
+      tosince(h.since_fartrkend_s, h.to_fartrkend_s, since_s, to_s);
 
     // forward cone (well, really just a wedge (not a biggs))
     const double trkend2hit_z_pln = h.plane - trk.endplane;
@@ -1708,7 +1716,7 @@ static bool fill_in_hit(mhit & h,
           const double cosdtheta = dotprod/dist_cm;
 
           if(cosdtheta > cos_trkproj_ang_buf)
-            tosince(h.sincetrkproj_s, h.totrkproj_s, since_s, to_s);
+            tosince(h.since_trkproj_s, h.to_trkproj_s, since_s, to_s);
         }
       }
     }
@@ -2051,161 +2059,39 @@ static int max_cell(const sncluster & c, const bool x)
   return ans;
 }
 
-static double to_trkend(const sncluster & c, const bool x)
-{
-  // Previously used the mean instead of the smallest. That's dumb,
-  // because one of the hits could be right on top of a trkend, but if
-  // the other one is too far away in space to see that trkend, it will
-  // dilute away that information.
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->totrkend_s < least)
-      least = h->totrkend_s;
-  return least;
-}
-
-// XXX This section is completely out of hand.  Should use #defines
-// or something.
-
-static double since_trkend(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sincetrkend_s < least)
-      least = h->sincetrkend_s;
-  return least;
-}
-
-static double to_fartrkend(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->tofartrkend_s < least)
-      least = h->tofartrkend_s;
-  return least;
-}
-
-static double since_fartrkend(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sincefartrkend_s < least)
-      least = h->sincefartrkend_s;
-  return least;
-}
-
-static double to_trkproj(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->totrkproj_s < least)
-      least = h->totrkproj_s;
-  return least;
-}
-
-static double since_trkproj(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sincetrkproj_s < least)
-      least = h->sincetrkproj_s;
-  return least;
-}
-
-static double to_shapeslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->toshapeslc_s < least)
-      least = h->toshapeslc_s;
-  return least;
-}
-
-static double since_shapeslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sinceshapeslc_s < least)
-      least = h->sinceshapeslc_s;
-  return least;
-}
-
-#define TOSHAPESLC(x) \
-static double to_##x##shapeslc(const sncluster & c, const bool x) \
+#define TOSINCE(what) \
+static double to_##what(const sncluster & c, const bool x) \
 { \
+  /* Previously used the mean instead of the smallest. That's dumb,
+     because one of the hits could be right on top of a trkend, but if
+     the other one is too far away in space to see that trkend, it will
+     dilute away that information. */ \
   double least = 1e9; \
   for(const auto h : c) \
-    if((h->isx ^ !x) && h->to##x##shapeslc_s < least) \
-      least = h->to##x##shapeslc_s; \
+    if((h->isx ^ !x) && h->to_##what##_s < least) \
+      least = h->to_##what##_s; \
   return least; \
 } \
-static double since_##x##shapeslc(const sncluster & c, const bool x) \
+static double since_##what(const sncluster & c, const bool x) \
 { \
   double least = 1e9; \
   for(const auto h : c) \
-    if((h->isx ^ !x) && h->since##x##shapeslc_s < least) \
-      least = h->since##x##shapeslc_s; \
+    if((h->isx ^ !x) && h->since_##what##_s < least) \
+      least = h->since_##what##_s; \
   return least; \
 }
 
-TOSHAPESLC(small)
-TOSHAPESLC(footnotesize)
-TOSHAPESLC(scriptsize)
-TOSHAPESLC(tiny)
-
-static double to_tlslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->totlslc_s < least)
-      least = h->totlslc_s;
-  return least;
-}
-
-static double since_tlslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sincetlslc_s < least)
-      least = h->sincetlslc_s;
-  return least;
-}
-
-static double to_farslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->tofarslc_s < least)
-      least = h->tofarslc_s;
-  return least;
-}
-
-static double since_farslc(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sincefarslc_s < least)
-      least = h->sincefarslc_s;
-  return least;
-}
-
-static double to_anyslice(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->toanyslice_s < least)
-      least = h->toanyslice_s;
-  return least;
-}
-
-static double since_anyslice(const sncluster & c, const bool x)
-{
-  double least = 1e9;
-  for(const auto h : c)
-    if((h->isx ^ !x) && h->sinceanyslice_s < least)
-      least = h->sinceanyslice_s;
-  return least;
-}
+TOSINCE(trkend)
+TOSINCE(fartrkend)
+TOSINCE(trkproj)
+TOSINCE(shapeslc)
+TOSINCE(small_shapeslc)
+TOSINCE(footnotesize_shapeslc)
+TOSINCE(scriptsize_shapeslc)
+TOSINCE(tiny_shapeslc)
+TOSINCE(tlslc)
+TOSINCE(farslc)
+TOSINCE(anyslc)
 
 static int32_t first_tdc(const sncluster & c)
 {
@@ -2438,60 +2324,23 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.cellyextent = sninfo.maxcelly == -1? -1:
                        sninfo.maxcelly - sninfo.mincelly + 1;
 
-  sninfo.x_sincetrkend_s = since_trkend(c, true);
-  sninfo.y_sincetrkend_s = since_trkend(c, false);
-  sninfo.   x_totrkend_s =    to_trkend(c, true);
-  sninfo.   y_totrkend_s =    to_trkend(c, false);
+  #define FILLTOSINCE(what)  \
+  sninfo.x_since_##what##_s = since_##what(c, true); \
+  sninfo.y_since_##what##_s = since_##what(c, false); \
+  sninfo.   x_to_##what##_s =    to_##what(c, true); \
+  sninfo.   y_to_##what##_s =    to_##what(c, false);
 
-  sninfo.x_sincefartrkend_s = since_fartrkend(c, true);
-  sninfo.y_sincefartrkend_s = since_fartrkend(c, false);
-  sninfo.   x_tofartrkend_s =    to_fartrkend(c, true);
-  sninfo.   y_tofartrkend_s =    to_fartrkend(c, false);
-
-  sninfo.x_sincetrkproj_s = since_trkproj(c, true);
-  sninfo.y_sincetrkproj_s = since_trkproj(c, false);
-  sninfo.   x_totrkproj_s =    to_trkproj(c, true);
-  sninfo.   y_totrkproj_s =    to_trkproj(c, false);
-
-  sninfo.x_sinceshapeslc_s = since_shapeslc(c, true);
-  sninfo.y_sinceshapeslc_s = since_shapeslc(c, false);
-  sninfo.   x_toshapeslc_s = to_shapeslc(c, true);
-  sninfo.   y_toshapeslc_s = to_shapeslc(c, false);
-
-  sninfo.x_sincesmallshapeslc_s = since_smallshapeslc(c, true);
-  sninfo.y_sincesmallshapeslc_s = since_smallshapeslc(c, false);
-  sninfo.   x_tosmallshapeslc_s = to_smallshapeslc(c, true);
-  sninfo.   y_tosmallshapeslc_s = to_smallshapeslc(c, false);
-
-  sninfo.x_sincefootnotesizeshapeslc_s = since_footnotesizeshapeslc(c, true);
-  sninfo.y_sincefootnotesizeshapeslc_s = since_footnotesizeshapeslc(c, false);
-  sninfo.   x_tofootnotesizeshapeslc_s = to_footnotesizeshapeslc(c, true);
-  sninfo.   y_tofootnotesizeshapeslc_s = to_footnotesizeshapeslc(c, false);
-
-  sninfo.x_sincescriptsizeshapeslc_s = since_scriptsizeshapeslc(c, true);
-  sninfo.y_sincescriptsizeshapeslc_s = since_scriptsizeshapeslc(c, false);
-  sninfo.   x_toscriptsizeshapeslc_s = to_scriptsizeshapeslc(c, true);
-  sninfo.   y_toscriptsizeshapeslc_s = to_scriptsizeshapeslc(c, false);
-
-  sninfo.x_sincetinyshapeslc_s = since_tinyshapeslc(c, true);
-  sninfo.y_sincetinyshapeslc_s = since_tinyshapeslc(c, false);
-  sninfo.   x_totinyshapeslc_s = to_tinyshapeslc(c, true);
-  sninfo.   y_totinyshapeslc_s = to_tinyshapeslc(c, false);
-
-  sninfo.x_sincetlslc_s = since_tlslc(c, true);
-  sninfo.y_sincetlslc_s = since_tlslc(c, false);
-  sninfo.   x_totlslc_s =    to_tlslc(c, true);
-  sninfo.   y_totlslc_s =    to_tlslc(c, false);
-
-  sninfo.x_sincefarslc_s = since_farslc(c, true);
-  sninfo.y_sincefarslc_s = since_farslc(c, false);
-  sninfo.   x_tofarslc_s =    to_farslc(c, true);
-  sninfo.   y_tofarslc_s =    to_farslc(c, false);
-
-  sninfo.x_sinceanyslice_s = since_anyslice(c, true);
-  sninfo.y_sinceanyslice_s = since_anyslice(c, false);
-  sninfo.   x_toanyslice_s =    to_anyslice(c, true);
-  sninfo.   y_toanyslice_s =    to_anyslice(c, false);
+  FILLTOSINCE(trkend)
+  FILLTOSINCE(fartrkend)
+  FILLTOSINCE(trkproj)
+  FILLTOSINCE(shapeslc)
+  FILLTOSINCE(small_shapeslc)
+  FILLTOSINCE(footnotesize_shapeslc)
+  FILLTOSINCE(scriptsize_shapeslc)
+  FILLTOSINCE(tiny_shapeslc)
+  FILLTOSINCE(tlslc)
+  FILLTOSINCE(farslc)
+  FILLTOSINCE(anyslc)
 
   sninfo.run = evt.run();
   sninfo.subrun = evt.subRun();
@@ -2742,7 +2591,7 @@ void ligoanalysis::analyze(const art::Event & evt)
 
   // For holding tracks and slices from the previous trigger so (in the
   // rare case that triggers are 5 and not 5.05ms and therefore have no
-  // overlaps) we can flag Michels, etc at very beginning of the trigger.
+  // overlaps) we can flag Michels, etc. at very beginning of the trigger.
   static std::vector<mtrack> prev_trackinfo;
   static std::vector<mslice> prev_sliceinfo;
 
