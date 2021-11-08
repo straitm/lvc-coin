@@ -1,0 +1,69 @@
+#include "ligoanalysis.fcl"
+#include "CalHit.fcl"
+#include "Slicer4D.fcl"
+#include "TDSlicer.fcl"
+#include "services.fcl"
+#include "BackTracker.fcl"
+#include "CosmicTrack.fcl"
+
+#include "MultiHoughT.fcl"
+#include "ElasticArmsHS.fcl"
+#include "FuzzyKVertex.fcl"
+#include "BreakPoint.fcl"
+
+#include "KalmanTrack.fcl"
+#include "KalmanTrackMerge.fcl"
+
+
+process_name: ligosnonlynd
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantSummary: true }
+  TimeTracker:  { printSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+
+  # Suppress "Begin processing the nth record" messages
+  message: { destinations: { debugmsg:{ type: "cout" threshold: "WARNING"} } }
+}
+
+services.BackTracker: @local::standard_backtracker
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+physics:
+{
+  producers:
+  {
+    calhit: @local::standard_calhit
+    slicer: @local::standard_td
+    multihough:   @local::standard_multihough
+    elasticarmshs: @local::standard_elasticarmshs
+    fuzzykvertex: @local::standard_fuzzykvertex
+    breakpoint: @local::standard_breakpoint
+    kalmantrack: @local::standard_kalmantrack
+    kalmantrackmerge: @local::standard_kalmantrackmerge
+  }
+  analyzers:
+  {
+    snanalysis: @local::vmm_ligoanalysis
+  }
+
+  reco: [ calhit, slicer,
+          #multihough, elasticarmshs, fuzzykvertex, breakpoint,
+          kalmantrack, kalmantrackmerge ]
+  ana: [ snanalysis ]
+
+  trigger_paths: [ reco ]
+  end_paths: [ ana ]
+}
+
+# Never want CAFs, so avoid prod4/prod5 CAF structure change problem
+# by just not looking at the CAF structure
+source.inputCommands: [ "keep *", "drop *_*caf*_*_*" ]

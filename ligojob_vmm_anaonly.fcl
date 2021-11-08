@@ -1,0 +1,41 @@
+#include "ligoanalysis.fcl"
+#include "services.fcl"
+#include "BackTracker.fcl"
+
+process_name: ligosnonlynd
+
+services:
+{
+  TFileService: { fileName: "histos.root" }
+  scheduler:    { wantSummary: true }
+  TimeTracker:  { printSummary: true }
+  message:      @local::standard_out
+  @table::standard_services
+
+  # Suppress "Begin processing the nth record" messages
+  message: { destinations: { debugmsg:{ type: "cout" threshold: "WARNING"} } }
+}
+
+services.BackTracker: @local::standard_backtracker
+
+source:
+{
+  module_type: RootInput
+  maxEvents: -1
+}
+
+physics:
+{
+  analyzers:
+  {
+    snanalysis: @local::vmm_ligoanalysis
+  }
+
+  ana: [ snanalysis ]
+
+  end_paths: [ ana ]
+}
+
+# Never want CAFs, so avoid prod4/prod5 CAF structure change problem
+# by just not looking at the CAF structure
+source.inputCommands: [ "keep *", "drop *_*caf*_*_*" ]

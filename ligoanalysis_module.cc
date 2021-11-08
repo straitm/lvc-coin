@@ -104,6 +104,18 @@ static const int16_t nd_high_adc = 2500;
 static int MaxPlaneDist = 10;
 static int MaxCellDist = 16;
 
+// Values overwritten by fcl parameter.
+static float MinSumPE = 0;
+static float MaxSumPE = 0;
+static float MinUnattPE = 0;
+static float MaxUnattPE = 0;
+static unsigned int MinClusterSize = 0;
+static unsigned int MaxClusterSize = 0;
+static float MinToShapeSlc = 0;
+static float MinSinceShapeSlc = 0;
+static float MinToTrkEnd = 0;
+static float MinSinceTrkEnd = 0;
+
 // Generous box for regular Michel rejection. The first is mostly useful
 // for doing a simple cut to reject most of the background. The second
 // is for tricky cases that end up being important when all the easy stuff
@@ -129,7 +141,11 @@ const double cos_trkproj_ang_buf = cos(trkproj_ang_buf*M_PI/180);
 // in the slice and the candidate supernova hit. This defines how far,
 // in units of plane widths, counts as being close to a slice for the
 // "shape" variables.
-const float shape_pln_buf = 24.;
+const float shape_pln_buf = 24.; // Used by supernova analysis; don't change
+const float small_shape_pln_buf = 10.;
+const float footnotesize_shape_pln_buf = 5.;
+const float scriptsize_shape_pln_buf = 2.;
+const float tiny_shape_pln_buf = 1.;
 
 // Box to put around each slice for determining if we are somewhere near it.
 const int far_slc_pln_buf  = 48, far_slc_cel_buf  = 96;
@@ -156,6 +172,10 @@ struct mhit{
   int cell;
   bool used; // has this hit been used in a cluster yet?
   int truepdg; // For MC, what the truth is
+  int truetrackid; // Index into the MC track array
+  int truepdgparent1; // MC true 1st generation parent particle PDG ID
+  int truepdgparent2; // MC true grandparent particle PDG ID
+  int truepdgparent3; // MC true great-grandparent particle PDG ID
   float trueE; // for MC, what the true initial particle kinetic energy is
   int16_t trueplane;
   int16_t truecellx;
@@ -176,6 +196,14 @@ struct mhit{
   // Same, for a region defined as a distance to any hit
   double toshapeslc_s;
   double sinceshapeslc_s;
+  double tosmallshapeslc_s;
+  double sincesmallshapeslc_s;
+  double tofootnotesizeshapeslc_s;
+  double sincefootnotesizeshapeslc_s;
+  double toscriptsizeshapeslc_s;
+  double sincescriptsizeshapeslc_s;
+  double totinyshapeslc_s;
+  double sincetinyshapeslc_s;
 
   // The minimum time to the next/previous slice that's
   // overlapping this hit in space, with a big buffer
@@ -280,6 +308,44 @@ class ligoanalysis : public art::EDAnalyzer {
   /// If set to 1, cells must be contiguous.  Note that this applies across
   /// planes, and cells are staggered, so the definition is a little odd.
   int fMaxCellDist;
+
+  // In the case of 3D clusters, the minimum accepted unattenuated
+  // summed PE
+  float fMinUnattPE;
+
+  // In the case of 3D clusters, the maximum accepted unattenuated
+  // summed PE
+  float fMaxUnattPE;
+
+  // In the case of 2D clusters, the minimum accepted summed raw PE
+  float fMinSumPE;
+
+  // In the case of 2D clusters, the maximum accepted summed raw PE
+  float fMaxSumPE;
+
+  // Minimum cluster size.  Typically reject 1-hit clusters because
+  // there's too much background.
+  unsigned int fMinClusterSize;
+
+  // Maximum cluster size.  There are a vanishingly small number of
+  // supernova eventst hat make eight or more hits.
+  unsigned int fMaxClusterSize;
+
+  // Minimim time until the location of this cluster is inside of a
+  // "close-slice", a.k.a. shapeslc, in seconds
+  float fMinToShapeSlc;
+
+  // Minimim time since the location of this cluster was inside of a
+  // "close-slice", a.k.a. shapeslc, in seconds
+  float fMinSinceShapeSlc;
+
+  // Minimum time until the location of this cluster is inside a small
+  // box around the end of a track, in seconds
+  float fMinToTrkEnd;
+
+  // Minimum time since the location of this cluster was inside a small
+  // box around the end of a track, in seconds
+  float fMinSinceTrkEnd;
 };
 
 static TH1D * livetimehist = NULL;
@@ -461,6 +527,11 @@ struct sninfo_t{
   // gamma -> electron). Currently there's no way to distinguish between
   // gammas resulting from different processes, but that would be nice.
   int truepdg;
+  int truetrackid;
+
+  int truepdgparent1;
+  int truepdgparent2;
+  int truepdgparent3;
 
   // For Monte Carlo, the true initial kinetic energy, in MeV, of the
   // particle making the plurality of the cluster. This isn't the energy
@@ -587,6 +658,18 @@ struct sninfo_t{
   double x_toshapeslc_s, y_toshapeslc_s;
   double x_sinceshapeslc_s, y_sinceshapeslc_s;
 
+  double x_tosmallshapeslc_s, y_tosmallshapeslc_s;
+  double x_sincesmallshapeslc_s, y_sincesmallshapeslc_s;
+
+  double x_tofootnotesizeshapeslc_s, y_tofootnotesizeshapeslc_s;
+  double x_sincefootnotesizeshapeslc_s, y_sincefootnotesizeshapeslc_s;
+
+  double x_toscriptsizeshapeslc_s, y_toscriptsizeshapeslc_s;
+  double x_sincescriptsizeshapeslc_s, y_sincescriptsizeshapeslc_s;
+
+  double x_totinyshapeslc_s, y_totinyshapeslc_s;
+  double x_sincetinyshapeslc_s, y_sincetinyshapeslc_s;
+
   // Same, but only for slices with no tracks in them, which probably
   // actually do contain muons that are nearly aligned with the planes.
   // This uses a smaller spatial buffer.
@@ -625,6 +708,10 @@ struct sninfo_t{
   // The maximum noiselevel of any hit in this cluster.  See definition
   // of noiselevel in struct mhit.
   float maxnoise;
+
+  // Number of hits in the noise slice that are in time with the
+  // cluster, but not in the cluster. In time = within 150ns.
+  int ncoinhits;
 } sninfo;
 
 static void init_supernova()
@@ -638,6 +725,10 @@ static void init_supernova()
   BRN(nhit,             I);
   BRN(truefrac,         F);
   BRN(truepdg,          I);
+  BRN(truetrackid,      I);
+  BRN(truepdgparent1,   I);
+  BRN(truepdgparent2,   I);
+  BRN(truepdgparent3,   I);
   BRN(trueE,            F);
   BRN(trueplane,        S);
   BRN(truecellx,        S);
@@ -664,6 +755,22 @@ static void init_supernova()
   BRN(y_toshapeslc_s,     D);
   BRN(x_sinceshapeslc_s,  D);
   BRN(y_sinceshapeslc_s,  D);
+  BRN(x_tosmallshapeslc_s,    D);
+  BRN(y_tosmallshapeslc_s,    D);
+  BRN(x_sincesmallshapeslc_s, D);
+  BRN(y_sincesmallshapeslc_s, D);
+  BRN(x_tofootnotesizeshapeslc_s,    D);
+  BRN(y_tofootnotesizeshapeslc_s,    D);
+  BRN(x_sincefootnotesizeshapeslc_s, D);
+  BRN(y_sincefootnotesizeshapeslc_s, D);
+  BRN(x_toscriptsizeshapeslc_s,    D);
+  BRN(y_toscriptsizeshapeslc_s,    D);
+  BRN(x_sincescriptsizeshapeslc_s, D);
+  BRN(y_sincescriptsizeshapeslc_s, D);
+  BRN(x_totinyshapeslc_s,    D);
+  BRN(y_totinyshapeslc_s,    D);
+  BRN(x_sincetinyshapeslc_s, D);
+  BRN(y_sincetinyshapeslc_s, D);
   BRN(x_totlslc_s,        D);
   BRN(y_totlslc_s,        D);
   BRN(x_sincetlslc_s,     D);
@@ -702,6 +809,7 @@ static void init_supernova()
   BRN(event,            i);
   BRN(hitid,            i);
   BRN(maxnoise,         F);
+  BRN(ncoinhits,        I);
 }
 
 /*************************** End tree stuff **************************/
@@ -740,6 +848,18 @@ void ligoanalysis::beginSubRun(const art::SubRun& subrun)
 {
   if(fBlind) return;
 
+  art::ServiceHandle<geo::Geometry> geo;
+
+  // Really lazy way of handling the ND.  Try all possible
+  // channels, and ignore it when it doesn't work.
+  for(int i = 0; i < nplanefd; i++){
+    for(int j = 0; j < ncellfd; j++){
+      try{
+        tposoverc[i][j] = geo->CellTpos(i, j) * invlightspeed;
+      }catch(...){}
+    }
+  }
+
   const int run = subrun.run(), sr = subrun.subRun();
 
   TFile * noisy = NULL;
@@ -758,14 +878,32 @@ void ligoanalysis::beginSubRun(const art::SubRun& subrun)
     }catch(...){}
   }
 
+  #define NONFATAL_LACK_OF_NOISE
+
   if(noisy == NULL || noisy->IsZombie()){
-    fprintf(stderr, "Could not open noisychannels_r%08d_s%02d.root\n"
-                    "or noisychannels.root. "
-                    "Need this for low-energy analysis.\n"
-                    "Try nova -c noisychannelsjob.fcl inputfile.root -T "
-                    "noisychannels_r%08d_s%02d.root\n",
-                    run, sr, run, sr);
-    _exit(1);
+    fprintf(stderr,
+      "Warning: Could not open noisychannels_r%08d_s%02d.root\n"
+      "or noisychannels.root. "
+      "Try nova -c noisychannelsjob.fcl inputfile.root -T "
+      "noisychannels_r%08d_s%02d.root\n"
+      #ifdef NONFATAL_LACK_OF_NOISE
+        "Will continue, but noise levels will be unknown!\n\n",
+      #else
+        "If you want this to be nonfatal, #define NONFATAL_LACK_OF_NOISE\n\n",
+      #endif
+      run, sr, run, sr);
+
+    #ifndef NONFATAL_LACK_OF_NOISE
+      _exit(1);
+    #endif
+
+    for(int i = 0; i < nplanefd; i++){
+      for(int j = 0; j < ncellfd; j++){
+        chmaskv[i][j] = 0;
+        noiseratesv[i][j] = 1;
+      }
+    }
+    return;
   }
 
   TH2C * chmask = dynamic_cast<TH2C*>(noisy->Get("noisychannels/chmask"));
@@ -782,19 +920,12 @@ void ligoanalysis::beginSubRun(const art::SubRun& subrun)
     _exit(1);
   }
 
-  art::ServiceHandle<geo::Geometry> geo;
-
-  for(int i = 0; i < nplanefd; i++)
-   for(int j = 0; j < ncellfd; j++){
-     chmaskv[i][j] = chmask->GetBinContent(i, j);
-     noiseratesv[i][j] = noiserates->GetBinContent(i, j);
-
-     // Really lazy way of handling the ND.  Try all possible
-     // channels, and ignore it when it doesn't work.
-     try{
-       tposoverc[i][j] = geo->CellTpos(i, j) * invlightspeed;
-     }catch(...){}
-   }
+  for(int i = 0; i < nplanefd; i++){
+    for(int j = 0; j < ncellfd; j++){
+      chmaskv[i][j] = chmask->GetBinContent(i, j);
+      noiseratesv[i][j] = noiserates->GetBinContent(i, j);
+    }
+  }
 }
 
 ligoanalysis::ligoanalysis(const fhicl::ParameterSet & pset) : EDAnalyzer(pset),
@@ -802,12 +933,35 @@ ligoanalysis::ligoanalysis(const fhicl::ParameterSet & pset) : EDAnalyzer(pset),
   fGWEventTime(pset.get<std::string>("GWEventTime")),
   fWindowSize(pset.get<unsigned long long>("WindowSize")),
   fMaxPlaneDist(pset.get<int>("MaxPlaneDist")),
-  fMaxCellDist(pset.get<int>("MaxCellDist"))
+  fMaxCellDist(pset.get<int>("MaxCellDist")),
+  fMinUnattPE(pset.get<float>("MinUnattPE")),
+  fMaxUnattPE(pset.get<float>("MaxUnattPE")),
+  fMinSumPE(pset.get<float>("MinSumPE")),
+  fMaxSumPE(pset.get<float>("MaxSumPE")),
+  fMinClusterSize(pset.get<unsigned int>("MinClusterSize")),
+  fMaxClusterSize(pset.get<unsigned int>("MaxClusterSize")),
+  fMinToShapeSlc(pset.get<float>("MinToShapeSlc")),
+  fMinSinceShapeSlc(pset.get<float>("MinSinceShapeSlc")),
+  fMinToTrkEnd(pset.get<float>("MinToTrkEnd")),
+  fMinSinceTrkEnd(pset.get<float>("MinSinceTrkEnd"))
 {
   // expose to static functions
   MaxPlaneDist = fMaxPlaneDist;
   MaxCellDist = fMaxCellDist;
   WindowSize = fWindowSize;
+  MinSumPE = fMinSumPE;
+  MaxSumPE = fMaxSumPE;
+  MinUnattPE = fMinUnattPE;
+  MaxUnattPE = fMaxUnattPE;
+
+  MinClusterSize = fMinClusterSize;
+  MaxClusterSize = fMaxClusterSize;
+
+  MinToShapeSlc = fMinToShapeSlc;
+  MinSinceShapeSlc = fMinSinceShapeSlc;
+  MinToTrkEnd = fMinToTrkEnd;
+  MinSinceTrkEnd = fMinSinceTrkEnd;
+
   gwevent_unix_double_time = rfc3339_to_unix_double(fGWEventTime);
 
   art::ServiceHandle<art::TFileService> t;
@@ -974,9 +1128,9 @@ static std::vector<mtrack> make_trackinfo_list(const art::Event & evt,
   art::ServiceHandle<geo::Geometry> geo;
 
   art::Handle< std::vector<rb::Track> > tracks;
-  evt.getByLabel("windowtrack", tracks);
+  evt.getByLabel("kalmantrackmerge", tracks);
   if(tracks->empty() && gDet == caf::kFARDET)
-    fprintf(stderr, "Unexpected empty windowtrack vector\n");
+    fprintf(stderr, "Unexpected empty kalmantrackmerge vector\n");
 
   // Don't assume input tracks are stored in time order. Process them
   // all, sort, and write out in time order.
@@ -1406,15 +1560,16 @@ static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
 }
 
 static bool hitinshape(const mslice & slc, const int16_t plane,
-                       const int cell, const int view)
+                       const int cell, const int view,
+                       const float buf)
 {
   const auto & hits = view == geo::kX? slc.xhits: slc.yhits;
   for(const auto & slchit : hits){
-    if(abs(plane - slchit.first) > shape_pln_buf) continue;
-    if(fabs((cell -  slchit.second)*cellw/plnz) > shape_pln_buf) continue;
+    if(abs(plane - slchit.first) > buf) continue;
+    if(fabs((cell -  slchit.second)*cellw/plnz) > buf) continue;
     const float dist = hypot(plane - slchit.first,
                              (cell -  slchit.second)*cellw/plnz);
-    if(dist < shape_pln_buf) return true;
+    if(dist < buf) return true;
   }
 
   return false;
@@ -1444,6 +1599,14 @@ static bool fill_in_hit(mhit & h,
   h.totrkproj_s = 1e9;
   h.sinceshapeslc_s = 1e9;
   h.toshapeslc_s = 1e9;
+  h.sincesmallshapeslc_s = 1e9;
+  h.tosmallshapeslc_s = 1e9;
+  h.sincefootnotesizeshapeslc_s = 1e9;
+  h.tofootnotesizeshapeslc_s = 1e9;
+  h.sincescriptsizeshapeslc_s = 1e9;
+  h.toscriptsizeshapeslc_s = 1e9;
+  h.sincetinyshapeslc_s = 1e9;
+  h.totinyshapeslc_s = 1e9;
   h.sincetlslc_s = 1e9;
   h.totlslc_s = 1e9;
   h.sincefarslc_s = 1e9;
@@ -1458,12 +1621,24 @@ static bool fill_in_hit(mhit & h,
 
     tosince(h.sinceanyslice_s, h.toanyslice_s, timesince_s, timeto_s);
 
-    if(hitinshape(slc, h.plane, h.cell, view))
+    if(hitinshape(slc, h.plane, h.cell, view, shape_pln_buf))
       tosince(h.sinceshapeslc_s, h.toshapeslc_s, timesince_s, timeto_s);
+    if(hitinshape(slc, h.plane, h.cell, view, small_shape_pln_buf))
+      tosince(h.sincesmallshapeslc_s, h.tosmallshapeslc_s,
+              timesince_s, timeto_s);
+    if(hitinshape(slc, h.plane, h.cell, view, footnotesize_shape_pln_buf))
+      tosince(h.sincefootnotesizeshapeslc_s, h.tofootnotesizeshapeslc_s,
+              timesince_s, timeto_s);
+    if(hitinshape(slc, h.plane, h.cell, view, scriptsize_shape_pln_buf))
+      tosince(h.sincescriptsizeshapeslc_s, h.toscriptsizeshapeslc_s,
+              timesince_s, timeto_s);
+    if(hitinshape(slc, h.plane, h.cell, view, tiny_shape_pln_buf))
+      tosince(h.sincetinyshapeslc_s, h.totinyshapeslc_s,
+              timesince_s, timeto_s);
 
     // Preselections
-    if(h.toshapeslc_s    <= 2e-6) return false;
-    if(h.sinceshapeslc_s <= 6e-6) return false;
+    if(h.toshapeslc_s    <= MinToShapeSlc) return false;
+    if(h.sinceshapeslc_s <= MinSinceShapeSlc) return false;
 
     // Now with "far" spatial restriction
     if(hitinbox(slc.bminplane_far, slc.bmaxplane_far,
@@ -1496,8 +1671,8 @@ static bool fill_in_hit(mhit & h,
       tosince(h.sincetrkend_s, h.totrkend_s, since_s, to_s);
 
     // Preselections
-    if(h.totrkend_s    <=  2e-6) return false;
-    if(h.sincetrkend_s <= 20e-6) return false;
+    if(h.totrkend_s    <= MinToTrkEnd) return false;
+    if(h.sincetrkend_s <= MinSinceTrkEnd) return false;
 
     if(hitinbox(trk.endplane - big_trk_pln_buf,
                 trk.endplane + big_trk_pln_buf,
@@ -1553,6 +1728,22 @@ static bool fill_in_hit(mhit & h,
       const cheat::TrackIDE & trackIDE = trackIDEs.at(0);
       const sim::Particle* particle = bt->TrackIDToParticle(trackIDE.trackID);
       h.truepdg = particle->PdgCode();
+      h.truetrackid = trackIDE.trackID;
+      h.truepdgparent1 = 81;
+      h.truepdgparent2 = 81;
+      h.truepdgparent3 = 81;
+      if(particle->Mother() > 0){
+        const sim::Particle * p = bt->TrackIDToParticle(particle->Mother());
+        h.truepdgparent1 = p->PdgCode();
+        if(p->Mother() > 0){
+          const sim::Particle * p2 = bt->TrackIDToParticle(p->Mother());
+          h.truepdgparent2 = p2->PdgCode();
+          if(p2->Mother() > 0){
+            const sim::Particle * p3 = bt->TrackIDToParticle(p2->Mother());
+            h.truepdgparent3 = p3->PdgCode();
+          }
+        }
+      }
 
       // Warning: sim::Particle::T() is the *time*, not the kinetic
       // energy like it should be!
@@ -1562,6 +1753,10 @@ static bool fill_in_hit(mhit & h,
                    particle->Position());
     }else{
       h.truepdg = 81; // reserved for MC internal use, says PDG
+      h.truepdgparent1 = 81;
+      h.truepdgparent2 = 81;
+      h.truepdgparent3 = 81;
+      h.truetrackid = 0;
       h.trueE = 0;
       h.trueplane = -1;
       h.truecellx = -1;
@@ -1570,6 +1765,10 @@ static bool fill_in_hit(mhit & h,
   }
   else{
     h.truepdg = 0;
+    h.truepdgparent1 = 0;
+    h.truepdgparent2 = 0;
+    h.truepdgparent3 = 0;
+    h.truetrackid = 0;
     h.trueE = 0;
     h.trueplane = -1;
     h.truecellx = -1;
@@ -1735,24 +1934,31 @@ static int16_t plurality_of_truecelly(const sncluster & c)
 
 // For the given supernova cluster, return the true PDG id that contributed
 // the most PE-weighted hits.  Ignore hits with no truth information.
-static int plurality_of_truth(const sncluster & c)
-{
-  if(c.empty()) return 0;
-
-  std::map<int, float> m;
-  for(const mhit * h : c) if(h->truepdg != 0) m[h->truepdg] += h->pe;
-
-  float most = 0;
-  int best = 0;
-
-  for(const auto & x : m)
-    if(x.second > most){
-      most = x.second;
-      best = x.first;
-    }
-
-  return best;
+#define PLURALITY_OF_TRUTH(p) \
+static int plurality_of_##p(const sncluster & c) \
+{ \
+  if(c.empty()) return 0; \
+\
+  std::map<int, float> m; \
+  for(const mhit * h : c) if(h->p != 0) m[h->p] += h->pe; \
+\
+  float most = 0; \
+  int best = 0; \
+\
+  for(const auto & x : m) \
+    if(x.second > most){ \
+      most = x.second; \
+      best = x.first; \
+    } \
+\
+  return best; \
 }
+
+PLURALITY_OF_TRUTH(truepdg)
+PLURALITY_OF_TRUTH(truepdgparent1)
+PLURALITY_OF_TRUTH(truepdgparent2)
+PLURALITY_OF_TRUTH(truepdgparent3)
+PLURALITY_OF_TRUTH(truetrackid)
 
 // Return fraction of hits in this supernova cluster with truth information
 static float fractrue(const sncluster & c)
@@ -1858,6 +2064,9 @@ static double to_trkend(const sncluster & c, const bool x)
   return least;
 }
 
+// XXX This section is completely out of hand.  Should use #defines
+// or something.
+
 static double since_trkend(const sncluster & c, const bool x)
 {
   double least = 1e9;
@@ -1920,6 +2129,29 @@ static double since_shapeslc(const sncluster & c, const bool x)
       least = h->sinceshapeslc_s;
   return least;
 }
+
+#define TOSHAPESLC(x) \
+static double to_##x##shapeslc(const sncluster & c, const bool x) \
+{ \
+  double least = 1e9; \
+  for(const auto h : c) \
+    if((h->isx ^ !x) && h->to##x##shapeslc_s < least) \
+      least = h->to##x##shapeslc_s; \
+  return least; \
+} \
+static double since_##x##shapeslc(const sncluster & c, const bool x) \
+{ \
+  double least = 1e9; \
+  for(const auto h : c) \
+    if((h->isx ^ !x) && h->since##x##shapeslc_s < least) \
+      least = h->since##x##shapeslc_s; \
+  return least; \
+}
+
+TOSHAPESLC(small)
+TOSHAPESLC(footnotesize)
+TOSHAPESLC(scriptsize)
+TOSHAPESLC(tiny)
 
 static double to_tlslc(const sncluster & c, const bool x)
 {
@@ -2088,6 +2320,33 @@ static void calibrate(sninfo_t & ev)
              + ev.pey * atten(x, false);
 }
 
+int n_coin_hits(const art::Event & evt, const sncluster & c)
+{
+  art::Handle< std::vector<rb::Cluster> > slice;
+  evt.getByLabel("slicer", slice);
+
+  if(slice->empty()){
+    fprintf(stderr, "Unexpected empty slice vector, returning zero\n");
+    return 0;
+  }
+
+  int count = 0;
+
+  auto & noiseslice = (*slice)[0];
+  for(unsigned int i = 0; i < noiseslice.NCell(); i++){
+    const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(i);
+    for(unsigned int j = 0; j < c.size(); j++){
+      if(fabs(hit->TNS() - c[j]->tns) < 150.){
+        count++;
+        break;
+      }
+    }
+  }
+
+  // Of course, it should find itself, so correct for that
+  return count - c.size();
+}
+
 static void savecluster(const art::Event & evt, const sncluster & c)
 {
   memset(&sninfo, 0, sizeof(sninfo));
@@ -2101,15 +2360,20 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
 
+  int64_t event_length_tdc = 0, delta_tdc = 0;
+
   art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
   getflatdaq(flatdaq, evt);
   if(flatdaq.failedToGet()){
-    fprintf(stderr, "Couldn't get flatdaq in savecluster()");
-    exit(1);
+    static bool warned = false;
+    if(!warned)
+      fprintf(stderr, "Warning: Couldn't get flatdaq.\n"
+              "Won't fill tdc_tobeginning, tdc_toend.\n");
+    warned = true;
   }
-
-  int64_t event_length_tdc, delta_tdc;
-  delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger);
+  else{
+    delta_and_length(event_length_tdc, delta_tdc, flatdaq, rawtrigger);
+  }
 
   sninfo.pex = sum_pe(c).first;
   sninfo.pey = sum_pe(c).second;
@@ -2127,10 +2391,10 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   {
     if(sninfo.unattpe < 0){
       const double sumpe = sninfo.pex + sninfo.pey;
-      if(sumpe <= 50 || sumpe >= 250) return;
+      if(sumpe <= MinSumPE || sumpe >= MaxSumPE) return;
     }
     else{
-      if(sninfo.unattpe <= 500 || sninfo.unattpe >= 2500) return;
+      if(sninfo.unattpe <= MinUnattPE || sninfo.unattpe >= MaxUnattPE) return;
     }
 
     if(sninfo.minhitadc <= 40) return;
@@ -2138,14 +2402,24 @@ static void savecluster(const art::Event & evt, const sncluster & c)
 
   sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
-  sninfo.truepdg = plurality_of_truth(c);
+  sninfo.truepdg = plurality_of_truepdg(c);
+  sninfo.truetrackid = plurality_of_truetrackid(c);
+  sninfo.truepdgparent1 = plurality_of_truepdgparent1(c);
+  sninfo.truepdgparent2 = plurality_of_truepdgparent2(c);
+  sninfo.truepdgparent3 = plurality_of_truepdgparent3(c);
   sninfo.trueE = plurality_of_E(c);
   sninfo.trueplane = plurality_of_trueplane(c);
   sninfo.truecellx = plurality_of_truecellx(c);
   sninfo.truecelly = plurality_of_truecelly(c);
   sninfo.tdc = first_tdc(c);
-  sninfo.tdc_tobeginning = sninfo.tdc + delta_tdc;
-  sninfo.tdc_toend       = event_length_tdc - (sninfo.tdc + delta_tdc);
+  if(event_length_tdc != 0){
+    sninfo.tdc_tobeginning = sninfo.tdc + delta_tdc;
+    sninfo.tdc_toend       = event_length_tdc - (sninfo.tdc + delta_tdc);
+  }
+  else{
+    sninfo.tdc_tobeginning = 0;
+    sninfo.tdc_toend       = 0;
+  }
   sninfo.time_s = art_time_plus_some_ns(evt.time().value(),
                     mean_tns(c)).first;
   sninfo.time_ns = art_time_plus_some_ns(evt.time().value(),
@@ -2184,6 +2458,26 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.   x_toshapeslc_s = to_shapeslc(c, true);
   sninfo.   y_toshapeslc_s = to_shapeslc(c, false);
 
+  sninfo.x_sincesmallshapeslc_s = since_smallshapeslc(c, true);
+  sninfo.y_sincesmallshapeslc_s = since_smallshapeslc(c, false);
+  sninfo.   x_tosmallshapeslc_s = to_smallshapeslc(c, true);
+  sninfo.   y_tosmallshapeslc_s = to_smallshapeslc(c, false);
+
+  sninfo.x_sincefootnotesizeshapeslc_s = since_footnotesizeshapeslc(c, true);
+  sninfo.y_sincefootnotesizeshapeslc_s = since_footnotesizeshapeslc(c, false);
+  sninfo.   x_tofootnotesizeshapeslc_s = to_footnotesizeshapeslc(c, true);
+  sninfo.   y_tofootnotesizeshapeslc_s = to_footnotesizeshapeslc(c, false);
+
+  sninfo.x_sincescriptsizeshapeslc_s = since_scriptsizeshapeslc(c, true);
+  sninfo.y_sincescriptsizeshapeslc_s = since_scriptsizeshapeslc(c, false);
+  sninfo.   x_toscriptsizeshapeslc_s = to_scriptsizeshapeslc(c, true);
+  sninfo.   y_toscriptsizeshapeslc_s = to_scriptsizeshapeslc(c, false);
+
+  sninfo.x_sincetinyshapeslc_s = since_tinyshapeslc(c, true);
+  sninfo.y_sincetinyshapeslc_s = since_tinyshapeslc(c, false);
+  sninfo.   x_totinyshapeslc_s = to_tinyshapeslc(c, true);
+  sninfo.   y_totinyshapeslc_s = to_tinyshapeslc(c, false);
+
   sninfo.x_sincetlslc_s = since_tlslc(c, true);
   sninfo.y_sincetlslc_s = since_tlslc(c, false);
   sninfo.   x_totlslc_s =    to_tlslc(c, true);
@@ -2205,6 +2499,8 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   sninfo.hitid = c[0]->hitid;
 
   sninfo.maxnoise = max_noise(c);
+
+  sninfo.ncoinhits = n_coin_hits(evt, c);
 
   sntree->Fill();
 }
@@ -2282,7 +2578,7 @@ static void supernova(const art::Event & evt,
       }
     }while(!done);
 
-    if(clu.size() < 2 || clu.size() > 7) continue;
+    if(clu.size() < MinClusterSize || clu.size() > MaxClusterSize) continue;
 
     // Some preselection here to save time calculating slice
     // distance variables.  This is a massive time savings.
@@ -2338,8 +2634,6 @@ static void supernova(const art::Event & evt,
 
   std::sort(snclusters.begin(), snclusters.end(), comparebytime);
 
-  // While we throw most of these events out in preselection later,
-  // writing them out is an insignificant minority of the time usage.
   for(const auto & c : snclusters) savecluster(evt, c);
 }
 

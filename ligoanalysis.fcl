@@ -27,6 +27,57 @@ standard_ligoanalysis:
   # appears to be ok for the ND, but too big for the FD (so I set it in
   # the job fcl).
   MaxCellDist: 16
+
+  # In the case of 3D clusters, the minimum accepted unattenuated
+  # summed PE
+  MinUnattPE: 500
+
+  # In the case of 3D clusters, the maximum accepted unattenuated
+  # summed PE
+  MaxUnattPE: 2500
+
+  # In the case of 2D clusters, the minimum accepted summed raw PE
+  MinSumPE: 50
+
+  # In the case of 2D clusters, the maximum accepted summed raw PE
+  MaxSumPE: 250
+
+  # Minimum cluster size.  Typically reject 1-hit clusters because
+  # there's too much background.
+  MinClusterSize: 2
+
+  # Maximum cluster size.  There are a vanishingly small number of
+  # supernova eventst hat make eight or more hits.
+  MaxClusterSize: 7
+
+  # Minimim time until the location of this cluster is inside of a
+  # "close-slice", a.k.a. shapeslc, in seconds.  If set to a negative
+  # number, effectively disables the cut.  (But set to zero will still
+  # remove clusters that are coincident with slices.)
+  MinToShapeSlc: 2e-6
+
+  # Minimim time since the location of this cluster was inside of a
+  # "close-slice", a.k.a. shapeslc, in seconds
+  MinSinceShapeSlc: 6e-6
+
+  # Minimum time until the location of this cluster is inside a small
+  # box around the end of a track, in seconds
+  MinToTrkEnd:   2e-6
+
+  # Minimum time since the location of this cluster was inside a small
+  # box around the end of a track, in seconds
+  MinSinceTrkEnd:  20e-6
 }
+
+vmm_ligoanalysis: @local::standard_ligoanalysis
+vmm_ligoanalysis.MinUnattPE: 0
+vmm_ligoanalysis.MinSumPE: 0
+vmm_ligoanalysis.MinClusterSize: 1
+vmm_ligoanalysis.MinToShapeSlc: -1
+vmm_ligoanalysis.MinSinceShapeSlc: -1
+vmm_ligoanalysis.MinToTrkEnd:   -1
+vmm_ligoanalysis.MinSinceTrkEnd:  -1
+vmm_ligoanalysis.MaxPlaneDist: 2 # So far cutting gap > 1 = dist 2
+vmm_ligoanalysis.MaxCellDist: 2 # So far cutting gap > 0 = dist 1
 
 END_PROLOG
