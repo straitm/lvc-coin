@@ -16,6 +16,13 @@ standard_ligoanalysis:
   # If true, just report livetime instead of examining data
   Blind: false
 
+  # The rest of the variables apply to the supernova-like clusters that
+  # are formed in the analysis module.  That module also outputs summary
+  # information about the slices that are handed to it, in the same format.
+  # These cuts are not applied to those slices/clusters, but you can tell
+  # them apart in the output file because slices have a slice number > 0,
+  # and also more hits than supernova-like clusters.
+
   # Largest number of planes away a hit can be to be clustered. This
   # default appears ok for the ND, but too big for the FD (so I set it
   # in the job fcl)
@@ -47,7 +54,7 @@ standard_ligoanalysis:
   MinClusterSize: 2
 
   # Maximum cluster size.  There are a vanishingly small number of
-  # supernova eventst hat make eight or more hits.
+  # supernova events that make eight or more hits.
   MaxClusterSize: 7
 
   # Minimim time until the location of this cluster is inside of a
@@ -71,8 +78,10 @@ standard_ligoanalysis:
 
 vmm_ligoanalysis: @local::standard_ligoanalysis
 vmm_ligoanalysis.MinUnattPE: 0
+vmm_ligoanalysis.MaxUnattPE: 1e12
 vmm_ligoanalysis.MinSumPE: 0
 vmm_ligoanalysis.MinClusterSize: 1
+vmm_ligoanalysis.MaxClusterSize: 1e9
 vmm_ligoanalysis.MinToShapeSlc: -1
 vmm_ligoanalysis.MinSinceShapeSlc: -1
 vmm_ligoanalysis.MinToTrkEnd:   -1

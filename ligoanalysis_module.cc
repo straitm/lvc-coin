@@ -3,7 +3,8 @@
 ///
 /// Given a time window, specified as an absolute time and a delta, it
 /// writes out a livetime histogram and an ntuple of supernova event
-/// candidates.
+/// candidates.  Also can be used to look for neutrino magnetic moment
+/// events, some of which are in the same energy range.
 ///
 /// \author M. Strait
 ////////////////////////////////////////////////////////////////////////
@@ -42,6 +43,7 @@
 #include "progress.cpp"
 #include "func/timeutil.h"
 
+using std::vector;
 
 static const int TDC_PER_US = 64;
 static const int US_PER_MICROSLICE = 50; // I hope this is always true
@@ -161,7 +163,7 @@ static int gDet = caf::kUNKNOWN;
 
 // Hit information, distilled from CellHit, plus more info
 struct mhit{
-  unsigned int hitid; // index into the noise slice hit array
+  unsigned int hitid; // index into the slice hit array
   int32_t tdc; // coarse timing, in tdc ticks (1/64 us)
   float tns; // fine timing, in nanoseconds
   float tposoverc; // transverse position divided by speed of light
@@ -232,7 +234,7 @@ struct mhit{
   float noiselevel;
 };
 
-typedef std::vector<mhit *> sncluster;
+typedef vector<mhit *> sncluster;
 
 struct mslice{
   // Number of tracks in this slice.  I only plan to use this to check
@@ -381,7 +383,7 @@ static bool uniquedata_tdc(const double livetime, const int32_t tdc)
 }
 
 static int trigger(
-  const art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger)
+  const art::Handle< vector<rawdata::RawTrigger> > & rawtrigger)
 {
   if(rawtrigger->empty()) return -1;
   return (*rawtrigger)[0].fTriggerMask_TriggerType;
@@ -408,7 +410,7 @@ static bool longtriggertype(const int trigger)
 }
 
 __attribute__((unused)) static bool is_complete_event(
-  const art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq)
+  const art::Handle< vector<rawdata::FlatDAQData> > & flatdaq)
 {
   daqdataformats::RawEvent raw;
   if(flatdaq->empty()) return false;
@@ -431,8 +433,8 @@ __attribute__((unused)) static bool is_complete_event(
 // Returns whether this information was successfully extracted.
 static bool delta_and_length(int64_t & event_length_tdc,
   int64_t & delta_tdc,
-  const art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
-  const art::Handle< std::vector<rawdata::RawTrigger> > & rawtrigger)
+  const art::Handle< vector<rawdata::FlatDAQData> > & flatdaq,
+  const art::Handle< vector<rawdata::RawTrigger> > & rawtrigger)
 {
   daqdataformats::RawEvent raw;
   if(flatdaq->empty()) return false;
@@ -709,7 +711,7 @@ struct sninfo_t{
   unsigned int event;
 
   // The hit number inside the event for one of the hits of this cluster.
-  // It's the index of the hit in the noise slice, because CellHit::ID()
+  // It's the index of the hit in its slice, because CellHit::ID()
   // seems to always return zero.
   unsigned int hitid;
 
@@ -720,6 +722,11 @@ struct sninfo_t{
   // Number of hits in the noise slice that are in time with the
   // cluster, but not in the cluster. In time = within 150ns.
   int ncoinhits;
+
+  // Number of the slice that this cluster is from.  For supernova events,
+  // this is zero, since they are always in the noise slice.  We also write out
+  // each slice itself as a cluster, in which case this is non-zero.
+  unsigned int slc;
 } sninfo;
 
 static void init_supernova()
@@ -818,6 +825,7 @@ static void init_supernova()
   BRN(hitid,            i);
   BRN(maxnoise,         F);
   BRN(ncoinhits,        I);
+  BRN(slc,              i);
 }
 
 /*************************** End tree stuff **************************/
@@ -983,7 +991,7 @@ ligoanalysis::ligoanalysis(const fhicl::ParameterSet & pset) : EDAnalyzer(pset),
 // Get the FlatDAQData, either from "minbias", in the case of supernova MC
 // overlays, or "daq", for everything else.
 static void getflatdaq(
-  art::Handle< std::vector<rawdata::FlatDAQData> > & flatdaq,
+  art::Handle< vector<rawdata::FlatDAQData> > & flatdaq,
   const art::Event & evt)
 {
   evt.getByLabel("daq", flatdaq);
@@ -992,7 +1000,7 @@ static void getflatdaq(
 }
 
 static void getrawtrigger(
-  art::Handle< std::vector<rawdata::RawTrigger> > & trg,
+  art::Handle< vector<rawdata::RawTrigger> > & trg,
   const art::Event & evt)
 {
   evt.getByLabel("daq", trg);
@@ -1001,7 +1009,7 @@ static void getrawtrigger(
 }
 
 static void getrawdigits(
-  art::Handle< std::vector<rawdata::RawDigit> > & digits,
+  art::Handle< vector<rawdata::RawDigit> > & digits,
   const art::Event & evt)
 {
   evt.getByLabel("daq", digits);
@@ -1014,7 +1022,7 @@ static void getrawdigits(
 // tracks close to the time-edges of events).
 static double rawlivetime(const art::Event & evt, const bool veryraw = false)
 {
-  art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
+  art::Handle< vector<rawdata::FlatDAQData> > flatdaq;
   getflatdaq(flatdaq, evt);
   if(flatdaq.failedToGet()){
     static bool first = true;
@@ -1024,7 +1032,7 @@ static double rawlivetime(const art::Event & evt, const bool veryraw = false)
     return 0;
   }
 
-  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  art::Handle< vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
   if(flatdaq.failedToGet()){
     fprintf(stderr, "Unexpectedly failed to get flatdaq, returning -1\n");
@@ -1082,7 +1090,7 @@ static bool celleq(const art::Ptr<rb::CellHit> & a,
 // return the index in the regular slice array that the given track is in.
 static int which_slice_is_this_track_in(
   const rb::Track & t,
-  const art::Handle< std::vector<rb::Cluster> > & slice)
+  const art::Handle< vector<rb::Cluster> > & slice)
 {
   if(t.NCell() == 0) return -1;
   const art::Ptr<rb::CellHit> ahit =
@@ -1130,19 +1138,19 @@ static bool comparemtracktime(const mtrack & a, const mtrack & b)
 
 // Returns a useful list of (window)track information, with all tracks
 // going downward, and cell numbers for both x and y.
-static std::vector<mtrack> make_trackinfo_list(const art::Event & evt,
-  const art::Handle< std::vector<rb::Cluster> > & slice)
+static vector<mtrack> make_trackinfo_list(const art::Event & evt,
+  const art::Handle< vector<rb::Cluster> > & slice)
 {
   art::ServiceHandle<geo::Geometry> geo;
 
-  art::Handle< std::vector<rb::Track> > tracks;
+  art::Handle< vector<rb::Track> > tracks;
   evt.getByLabel("kalmantrackmerge", tracks);
   if(tracks->empty() && gDet == caf::kFARDET)
     fprintf(stderr, "Unexpected empty kalmantrackmerge vector\n");
 
   // Don't assume input tracks are stored in time order. Process them
   // all, sort, and write out in time order.
-  std::vector<mtrack> mtracks;
+  vector<mtrack> mtracks;
 
   for(const auto & trk : *tracks){
     if(!trk.Is3D()) continue;
@@ -1151,7 +1159,7 @@ static std::vector<mtrack> make_trackinfo_list(const art::Event & evt,
     // hits are stored, and I can't find a pattern that convinces
     // me I can trust the order for anything.  Sort them myself.
 
-    std::vector<hit> xhits, yhits;
+    vector<hit> xhits, yhits;
 
     for(unsigned int c = 0; c < trk.NYCell(); c++){
       hit h;
@@ -1293,11 +1301,11 @@ static std::vector<mtrack> make_trackinfo_list(const art::Event & evt,
 }
 
 // Builds list of distilled slice information
-static std::vector<mslice> make_sliceinfo_list(const art::Event & evt,
-  const art::Handle< std::vector<rb::Cluster> > & slice,
+static vector<mslice> make_sliceinfo_list(const art::Event & evt,
+  const art::Handle< vector<rb::Cluster> > & slice,
   const vector<mtrack> & trkinfo)
 {
-  std::vector<mslice> sliceinfo;
+  vector<mslice> sliceinfo;
 
   // Start at 1 to skip "noise" slice. Slice indices will all be off by
   // one, but makes it easier not to accidentally use the noise slice.
@@ -1485,27 +1493,30 @@ static bool compare_plane(const mhit & a, const mhit & b)
 }
 
 // Helper function for supernova(). Selects hits that are candidates to
-// be put into supernova clusters.
-static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
-                                            const double livetime)
+// be put into supernova clusters.  Or if islc != 0, just return all of
+// the hits.  Either way, apply timing corrections.
+static vector<mhit> hits_for_supernova(const rb::Cluster & slice,
+                                       const unsigned int islc,
+                                       const double livetime)
 {
-  std::vector<mhit> mhits;
+  vector<mhit> mhits;
 
   const int16_t high_adc = gDet == caf::kNEARDET? nd_high_adc: fd_high_adc;
 
   for(unsigned int i = 0; i < slice.NCell(); i++){
     const art::Ptr<rb::CellHit> & hit = slice.Cell(i);
 
-    if(!uniquedata_tdc(livetime, hit->TDC())) continue;
-
-    if(hit->ADC() >= high_adc) continue;
+    if(islc == 0){
+      if(!uniquedata_tdc(livetime, hit->TDC())) continue;
+      if(hit->ADC() >= high_adc) continue;
+    }
 
     const int cell  = hit->Cell();
     const int plane = hit->Plane();
 
     // Don't use noisy channels. We're operating entirely with bin
     // numbers and not bin ranges, so this is not an off-by-one error.
-    if(chmaskv[plane][cell]) continue;
+    if(islc == 0 && chmaskv[plane][cell]) continue;
 
     // Ok, it's a good hit
 
@@ -1535,7 +1546,7 @@ static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
     // the same as the FD as a function of distance to readout.
     if(hit->IsMC()){
       art::ServiceHandle<cheat::BackTracker> bt;
-      std::vector<sim::FLSHit> flshits = bt->HitToFLSHit(hit);
+      vector<sim::FLSHit> flshits = bt->HitToFLSHit(hit);
 
       double true_w = 0;
       if(!flshits.empty()){
@@ -1558,7 +1569,7 @@ static std::vector<mhit> hits_for_supernova(const rb::Cluster & slice,
       h.tns += randfortiming.Gaus() * (17.1 + true_d*0.017);
     }
 
-    h.adc   = hit->ADC();
+    h.adc = hit->ADC();
     h.tposoverc = tposoverc[plane][cell];
 
     mhits.push_back(h);
@@ -1584,14 +1595,19 @@ static bool hitinshape(const mslice & slc, const int16_t plane,
 }
 
 // Fill in the details of this hit, mostly (but not exclusively) its
-// proximity to cosmics.  Return false if the hit's characteristics
+// proximity to slices.  Return false if the hit's characteristics
 // should make the cluster fail preselection.  In this case, we probably
-// haven't filled in everything about the hit.
+// haven't filled in everything about the hit.  If 'islc' is zero, this is
+// a hit in a supernova-like cluster and is a candidate for being rejected.
+// Otherwise, keep it regardless, and also ignore hits in the same slice for
+// purposes of proximity to slices (otherwise, we'll always find the distance
+// in time and space is zero, obviously).
 static bool fill_in_hit(mhit & h,
-  const rb::Cluster & noiseslice, const std::vector<mslice> & sliceinfo,
-  const std::vector<mtrack> & trackinfo)
+  art::Handle< vector<rb::Cluster> > artslices,
+  const vector<mslice> & sliceinfo,
+  const vector<mtrack> & trackinfo, const unsigned int islc)
 {
-  const art::Ptr<rb::CellHit> & hit = noiseslice.Cell(h.hitid);
+  const art::Ptr<rb::CellHit> & hit = (*artslices)[islc].Cell(h.hitid);
 
   const unsigned int nslice = sliceinfo.size(), ntrack = trackinfo.size();
 
@@ -1623,6 +1639,11 @@ static bool fill_in_hit(mhit & h,
   h.to_anyslc_s = 1e9;
 
   for(unsigned int j = 0; j < nslice; j++){
+    // If we're looking at a hit in a non-noise slice, then ignore other hits in
+    // that slice when calculating these variables (otherwise they'll always all
+    // be zero). It's j+1 because we don't put the noise slice into sliceinfo.
+    if(islc != 0 && islc == j+1) continue;
+
     const mslice & slc = sliceinfo[j];
     const double timesince_s = (h.tns - slc.maxtns)*1e-9;
     const double timeto_s    = (slc.mintns - h.tns)*1e-9;
@@ -1645,8 +1666,10 @@ static bool fill_in_hit(mhit & h,
               timesince_s, timeto_s);
 
     // Preselections
-    if(h.to_shapeslc_s    <= MinToShapeSlc) return false;
-    if(h.since_shapeslc_s <= MinSinceShapeSlc) return false;
+    if(islc == 0){
+      if(h.to_shapeslc_s    <= MinToShapeSlc) return false;
+      if(h.since_shapeslc_s <= MinSinceShapeSlc) return false;
+    }
 
     // Now with "far" spatial restriction
     if(hitinbox(slc.bminplane_far, slc.bmaxplane_far,
@@ -1679,8 +1702,10 @@ static bool fill_in_hit(mhit & h,
       tosince(h.since_trkend_s, h.to_trkend_s, since_s, to_s);
 
     // Preselections
-    if(h.to_trkend_s    <= MinToTrkEnd) return false;
-    if(h.since_trkend_s <= MinSinceTrkEnd) return false;
+    if(islc == 0){
+      if(h.to_trkend_s    <= MinToTrkEnd) return false;
+      if(h.since_trkend_s <= MinSinceTrkEnd) return false;
+    }
 
     if(hitinbox(trk.endplane - big_trk_pln_buf,
                 trk.endplane + big_trk_pln_buf,
@@ -1728,7 +1753,7 @@ static bool fill_in_hit(mhit & h,
 
   if(hit->IsMC()){
     art::ServiceHandle<cheat::BackTracker> bt;
-    const std::vector<cheat::TrackIDE> & trackIDEs=bt->HitToTrackIDE(*hit);
+    const vector<cheat::TrackIDE> & trackIDEs=bt->HitToTrackIDE(*hit);
 
     // Very occasionally, this is empty, maybe when "uninteresting"
     // particles are pruned, but turned out to give the only hits?
@@ -2007,7 +2032,7 @@ static int max_plane(const sncluster & c)
 
 static int plane_gap(const sncluster & c)
 {
-  std::vector<int> planes;
+  vector<int> planes;
   for(const auto h : c) planes.push_back(h->plane);
 
   if(planes.size() == 1) return 0;
@@ -2025,7 +2050,7 @@ static int plane_gap(const sncluster & c)
 
 static int cell_gap(const sncluster & c, const bool x)
 {
-  std::vector<int> cells;
+  vector<int> cells;
   for(const auto h : c) if((h->isx ^ !x)) cells.push_back(h->cell);
 
   if(cells.size() == 0) return -1;
@@ -2126,7 +2151,7 @@ static float time_ext_ns(float &mingap, float & maxgap,
 {
   double mintime = FLT_MAX, maxtime = FLT_MIN;
   if(c.size() <= 1) return 0;
-  std::vector<float> reltimes;
+  vector<float> reltimes;
   for(const auto & h : c){
     // Calculate all times as relative to the first hit.  Absolute time and
     // overall sign don't matter because we're finding the extent.
@@ -2208,7 +2233,7 @@ static void calibrate(sninfo_t & ev)
 
 int n_coin_hits(const art::Event & evt, const sncluster & c)
 {
-  art::Handle< std::vector<rb::Cluster> > slice;
+  art::Handle< vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
 
   if(slice->empty()){
@@ -2233,7 +2258,12 @@ int n_coin_hits(const art::Event & evt, const sncluster & c)
   return count - c.size();
 }
 
-static void savecluster(const art::Event & evt, const sncluster & c)
+// Calculate all the as-yet-unfilled variables for cluster 'c' and write out its
+// summary to the ntuple file. For supernova-like events, 'slc' is zero, because
+// they are in the noise since. Otherwise, this gives the slice number. We just
+// write that out without doing anything with it.
+static void savecluster(const art::Event & evt, const sncluster & c,
+                        const unsigned int slc)
 {
   memset(&sninfo, 0, sizeof(sninfo));
 
@@ -2243,12 +2273,12 @@ static void savecluster(const art::Event & evt, const sncluster & c)
   }
 
   // Already got this before, so (maybe) don't need to check it
-  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  art::Handle< vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
 
   int64_t event_length_tdc = 0, delta_tdc = 0;
 
-  art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
+  art::Handle< vector<rawdata::FlatDAQData> > flatdaq;
   getflatdaq(flatdaq, evt);
   if(flatdaq.failedToGet()){
     static bool warned = false;
@@ -2271,10 +2301,10 @@ static void savecluster(const art::Event & evt, const sncluster & c)
 
   calibrate(sninfo); // set unattpe
 
-  sninfo.minhitadc  = min_hit_adc(c);
+  sninfo.minhitadc = min_hit_adc(c);
 
   // Preselection
-  {
+  if(slc == 0){
     if(sninfo.unattpe < 0){
       const double sumpe = sninfo.pex + sninfo.pey;
       if(sumpe <= MinSumPE || sumpe >= MaxSumPE) return;
@@ -2286,6 +2316,7 @@ static void savecluster(const art::Event & evt, const sncluster & c)
     if(sninfo.minhitadc <= 40) return;
   }
 
+  sninfo.slc = slc;
   sninfo.nhit = c.size();
   sninfo.truefrac = fractrue(c);
   sninfo.truepdg = plurality_of_truepdg(c);
@@ -2368,23 +2399,39 @@ static mhit hitwithplane(const unsigned int plane)
 
 // Search for supernova-like events.
 static void supernova(const art::Event & evt,
-                      const std::vector<mslice> & sliceinfo,
-                      const std::vector<mtrack> & trackinfo)
+                      const vector<mslice> & sliceinfo,
+                      const vector<mtrack> & trackinfo)
 {
-  art::Handle< std::vector<rb::Cluster> > slice;
-  evt.getByLabel("slicer", slice);
+  art::Handle< vector<rb::Cluster> > artslice;
+  evt.getByLabel("slicer", artslice);
 
-  if(slice->empty()){
+  if(artslice->empty()){
     fprintf(stderr, "Unexpected empty slice vector, skipping\n");
     return;
   }
 
   const double livetime = rawlivetime(evt);
 
-  // Find hits which we'll accept for possible membership in pairs.
-  std::vector<mhit> mhits = hits_for_supernova((*slice)[0], livetime);
+  // Find hits which we'll accept for possible membership in clusters.
+  vector<mhit> mhits = hits_for_supernova((*artslice)[0], 0, livetime);
 
-  std::vector<sncluster> snclusters;
+  // Make mhit clusters out of each slice so that we can treat them
+  // each as "supernova" clusters for the magnetic moment analysis. A
+  // little awkward. Need to convert into mhits and then make vectors of
+  // pointers to them to match the existing sncluster structure.
+  vector< vector<mhit> > slices_as_mhits;
+  vector<sncluster> slices_as_snclusters;
+  for(unsigned int i = 1; i < artslice->size(); i++){
+    slices_as_mhits.push_back(hits_for_supernova((*artslice)[i], i, livetime));
+    vector<mhit> & slice_as_mhit = slices_as_mhits[slices_as_mhits.size()-1];
+
+    sncluster slice_as_sncluster;
+    for(unsigned int j = 0; j < slice_as_mhit.size(); j++)
+      slice_as_sncluster.push_back(&(slice_as_mhit[j]));
+    slices_as_snclusters.push_back(slice_as_sncluster);
+  }
+
+  vector<sncluster> snclusters;
 
   // Starting with every eligible hit, form a cluster (possibly of size one)
   const unsigned int nmhits = mhits.size(); // really seems to help speed
@@ -2429,7 +2476,7 @@ static void supernova(const art::Event & evt,
 
     if(clu.size() < MinClusterSize || clu.size() > MaxClusterSize) continue;
 
-    // Some preselection here to save time calculating slice
+    // Some FD-only preselection here to save time calculating slice
     // distance variables.  This is a massive time savings.
     if(gDet == caf::kFARDET){
       if(clu.size() == 2){
@@ -2470,7 +2517,7 @@ static void supernova(const art::Event & evt,
     // Now that we're going to keep it, do the hard work
     bool passpresel = true;
     for(unsigned int j = 0; j < clu.size(); j++){
-      if(!fill_in_hit(*clu[j], (*slice)[0], sliceinfo, trackinfo)){
+      if(!fill_in_hit(*clu[j], artslice, sliceinfo, trackinfo, 0)){
         passpresel = false;
         break;
       }
@@ -2483,7 +2530,13 @@ static void supernova(const art::Event & evt,
 
   std::sort(snclusters.begin(), snclusters.end(), comparebytime);
 
-  for(const auto & c : snclusters) savecluster(evt, c);
+  for(const auto & c : snclusters) savecluster(evt, c, 0);
+  for(unsigned int i = 0; i < slices_as_snclusters.size(); i++){
+    for(unsigned int j = 0; j < slices_as_snclusters[i].size(); j++)
+      // It's i+1 because we don't put the noise slice into this vector
+      fill_in_hit(*slices_as_snclusters[i][j], artslice, sliceinfo, trackinfo, i+1);
+    savecluster(evt, slices_as_snclusters[i], i+1);
+  }
 }
 
 static void count_livetime(const art::Event & evt)
@@ -2492,7 +2545,7 @@ static void count_livetime(const art::Event & evt)
 #if 0
   const double veryrawlivetime = rawlivetime(evt, true);
 
-  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  art::Handle< vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
 
   printf("Trigger type %d: %g seconds, %g accepted\n",
@@ -2523,14 +2576,14 @@ void ligoanalysis::analyze(const art::Event & evt)
   // Must be called on every event to prevent SIGPIPE loops.
   signal(SIGPIPE, SIG_DFL);
 
-  art::Handle< std::vector<rawdata::RawTrigger> > rawtrigger;
+  art::Handle< vector<rawdata::RawTrigger> > rawtrigger;
   getrawtrigger(rawtrigger, evt);
   if(!goodtriggertype(trigger(rawtrigger))) return;
 
   const bool is_long_trigger = longtriggertype(trigger(rawtrigger));
 
   {
-    art::Handle< std::vector<rawdata::FlatDAQData> > flatdaq;
+    art::Handle< vector<rawdata::FlatDAQData> > flatdaq;
     getflatdaq(flatdaq, evt);
 
     // All this ever does is print a message, so disable unless we want to
@@ -2547,7 +2600,7 @@ void ligoanalysis::analyze(const art::Event & evt)
 
       // Check for empty 50us events in long readouts
       if(event_length_tdc/TDC_PER_US == 50){
-        art::Handle< std::vector< rawdata::RawDigit > > rd;
+        art::Handle< vector< rawdata::RawDigit > > rd;
         getrawdigits(rd, evt);
         if(rd->empty()){
           printf("Rejecting trigger: 50us event with zero hits\n");
@@ -2571,7 +2624,7 @@ void ligoanalysis::analyze(const art::Event & evt)
 
   if(fBlind) return;
 
-  art::Handle< std::vector<rb::Cluster> > slice;
+  art::Handle< vector<rb::Cluster> > slice;
 
   art::ServiceHandle<geo::Geometry> geo;
   gDet = geo->DetId();
@@ -2585,23 +2638,23 @@ void ligoanalysis::analyze(const art::Event & evt)
     return;
   }
 
-  const std::vector<mtrack> trackinfo = make_trackinfo_list(evt, slice);
-  const std::vector<mslice> sliceinfo = make_sliceinfo_list(evt, slice,
+  const vector<mtrack> trackinfo = make_trackinfo_list(evt, slice);
+  const vector<mslice> sliceinfo = make_sliceinfo_list(evt, slice,
                                                             trackinfo);
 
   // For holding tracks and slices from the previous trigger so (in the
   // rare case that triggers are 5 and not 5.05ms and therefore have no
   // overlaps) we can flag Michels, etc. at very beginning of the trigger.
-  static std::vector<mtrack> prev_trackinfo;
-  static std::vector<mslice> prev_sliceinfo;
+  static vector<mtrack> prev_trackinfo;
+  static vector<mslice> prev_sliceinfo;
 
   // Will pass in the concatenation of both sets.  Duplicates
   // are not a problem, because we always use the closest one.
-  std::vector<mtrack> trackinfo_wprev = prev_trackinfo;
+  vector<mtrack> trackinfo_wprev = prev_trackinfo;
   trackinfo_wprev.insert(trackinfo_wprev.end(),
                          trackinfo.begin(), trackinfo.end());
 
-  std::vector<mslice> sliceinfo_wprev = prev_sliceinfo;
+  vector<mslice> sliceinfo_wprev = prev_sliceinfo;
   sliceinfo_wprev.insert(sliceinfo_wprev.end(),
                          sliceinfo.begin(), sliceinfo.end());
 
