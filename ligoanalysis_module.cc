@@ -2231,7 +2231,8 @@ static void calibrate(sninfo_t & ev)
              + ev.pey * atten(x, false);
 }
 
-int n_coin_hits(const art::Event & evt, const sncluster & c, const bool is_slice)
+static int n_coin_hits(const art::Event & evt, const sncluster & c,
+                       const bool is_slice)
 {
   art::Handle< vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -2261,10 +2262,11 @@ int n_coin_hits(const art::Event & evt, const sncluster & c, const bool is_slice
   return count - c.size();
 }
 
-// Calculate all the as-yet-unfilled variables for cluster 'c' and write out its
-// summary to the ntuple file. For supernova-like events, 'slc' is zero, because
-// they are in the noise since. Otherwise, this gives the slice number. We just
-// write that out without doing anything with it.
+// Calculate all the as-yet-unfilled variables for cluster 'c' and write
+// out its summary to the ntuple file. For supernova-like events, 'slc'
+// is zero, because they are in the noise since. Otherwise, this gives
+// the slice number. We just write that out without doing anything with
+// it.
 static void savecluster(const art::Event & evt, const sncluster & c,
                         const unsigned int slc)
 {
@@ -2537,7 +2539,8 @@ static void supernova(const art::Event & evt,
   for(unsigned int i = 0; i < slices_as_snclusters.size(); i++){
     for(unsigned int j = 0; j < slices_as_snclusters[i].size(); j++)
       // It's i+1 because we don't put the noise slice into this vector
-      fill_in_hit(*slices_as_snclusters[i][j], artslice, sliceinfo, trackinfo, i+1);
+      fill_in_hit(*slices_as_snclusters[i][j], artslice,
+                  sliceinfo, trackinfo, i+1);
     savecluster(evt, slices_as_snclusters[i], i+1);
   }
 }
