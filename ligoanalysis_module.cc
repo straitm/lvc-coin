@@ -2231,7 +2231,7 @@ static void calibrate(sninfo_t & ev)
              + ev.pey * atten(x, false);
 }
 
-int n_coin_hits(const art::Event & evt, const sncluster & c)
+int n_coin_hits(const art::Event & evt, const sncluster & c, const bool is_slice)
 {
   art::Handle< vector<rb::Cluster> > slice;
   evt.getByLabel("slicer", slice);
@@ -2254,7 +2254,10 @@ int n_coin_hits(const art::Event & evt, const sncluster & c)
     }
   }
 
-  // Of course, it should find itself, so correct for that
+  if(is_slice) return count;
+
+  // Of course, if this cluster is in the noise slice, it should find itself,
+  // so correct for that
   return count - c.size();
 }
 
@@ -2380,7 +2383,7 @@ static void savecluster(const art::Event & evt, const sncluster & c,
 
   sninfo.maxnoise = max_noise(c);
 
-  sninfo.ncoinhits = n_coin_hits(evt, c);
+  sninfo.ncoinhits = n_coin_hits(evt, c, slc != 0);
 
   sntree->Fill();
 }
