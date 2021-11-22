@@ -647,6 +647,13 @@ struct sninfo_t{
   // See corresponding x variables.
   int cellygap, cellyextent;
 
+  // Extents of the clusters for the first 50% and 80% of the hits when
+  // sorted by plane number. This is (hopefully) helpful for identifying
+  // ~60-350 MeV electron events, which start with an electron track,
+  // but then shower.
+  int planeextent50, cellxextent50, cellyextent50;
+  int planeextent80, cellxextent80, cellyextent80;
+
   // The time in seconds until and since the last track end near this
   // cluster.
   double x_to_trkend_s, y_to_trkend_s;
@@ -819,6 +826,12 @@ static void init_supernova()
   BRN(maxcelly,         I);
   BRN(cellygap,         I);
   BRN(cellyextent,      I);
+  BRN(planeextent50,    I);
+  BRN(cellxextent50,    I);
+  BRN(cellyextent50,    I);
+  BRN(planeextent80,    I);
+  BRN(cellxextent80,    I);
+  BRN(cellyextent80,    I);
   BRN(run,              i);
   BRN(subrun,           i);
   BRN(event,            i);
@@ -2262,6 +2275,62 @@ static int n_coin_hits(const art::Event & evt, const sncluster & c,
   return count - c.size();
 }
 
+static bool comparebytime(const sncluster & a, const sncluster & b)
+{
+  return mean_tns(a) < mean_tns(b);
+}
+
+static bool comparebyplane(const mhit * a, const mhit * b)
+{
+  return a->plane < b->plane;
+}
+
+static unsigned int iclamp(const double x, unsigned int maxx)
+{
+  if(x < 0) return 0;
+  if(x > maxx) return maxx;
+  return x;
+}
+
+/* Find the cell and plane extents of a cluster, but only for the
+ * first 'frac' of the cluster when sorted by plane.  Consider
+ * all cells in the plane that gets to 'frac'. */
+static void extents_N(int & planeextent, int & cellxextent,
+                      int & cellyextent,
+                      /* not const & */sncluster c, const double frac)
+{
+  std::sort(c.begin(), c.end(), comparebyplane);
+
+  // So if there are 8 hits and frac = 0.8, we consider 75% of hits.
+  // If 10 hits, we consider 80%, if 12 hits, 83%, if 13, 77%, etc.
+  // (Plus how every many extra are in the same plane as the last one.)
+  unsigned int lasti = iclamp(c.size() * frac - 0.5, c.size()-1);
+  int16_t lastplane = c[lasti]->plane;
+
+  int16_t minplane = 9999, maxplane = -1;
+  int mincellx = 9999, mincelly = 9999;
+  int maxcellx = -1  , maxcelly = -1  ;
+
+  for(unsigned int i = 0; i < c.size(); i++){
+    if(c[i]->plane > lastplane) break;
+    if(c[i]->plane < minplane) minplane = c[i]->plane;
+    if(c[i]->plane > maxplane) maxplane = c[i]->plane;
+
+    if(c[i]->isx){
+      if(c[i]->cell < mincellx) mincellx = c[i]->cell;
+      if(c[i]->cell > maxcellx) maxcellx = c[i]->cell;
+    }
+    else{
+      if(c[i]->cell < mincelly) mincelly = c[i]->cell;
+      if(c[i]->cell > maxcelly) maxcelly = c[i]->cell;
+    }
+  }
+
+  planeextent = maxplane - minplane;
+  cellxextent = mincellx == 9999? -1: maxcellx - mincellx;
+  cellyextent = mincelly == 9999? -1: maxcelly - mincelly;
+}
+
 // Calculate all the as-yet-unfilled variables for cluster 'c' and write
 // out its summary to the ntuple file. For supernova-like events, 'slc'
 // is zero, because they are in the noise since. Otherwise, this gives
@@ -2360,6 +2429,11 @@ static void savecluster(const art::Event & evt, const sncluster & c,
   sninfo.cellyextent = sninfo.maxcelly == -1? -1:
                        sninfo.maxcelly - sninfo.mincelly + 1;
 
+  extents_N(sninfo.planeextent50, sninfo.cellxextent50, sninfo.cellyextent50,
+            c, 0.5);
+  extents_N(sninfo.planeextent80, sninfo.cellxextent80, sninfo.cellyextent80,
+            c, 0.8);
+
   #define FILLTOSINCE(what)  \
   sninfo.x_since_##what##_s = since_##what(c, true); \
   sninfo.y_since_##what##_s = since_##what(c, false); \
@@ -2388,11 +2462,6 @@ static void savecluster(const art::Event & evt, const sncluster & c,
   sninfo.ncoinhits = n_coin_hits(evt, c, slc != 0);
 
   sntree->Fill();
-}
-
-static bool comparebytime(const sncluster & a, const sncluster & b)
-{
-  return mean_tns(a) < mean_tns(b);
 }
 
 static mhit hitwithplane(const unsigned int plane)

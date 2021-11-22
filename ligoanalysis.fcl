@@ -80,7 +80,7 @@ vmm_ligoanalysis: @local::standard_ligoanalysis
 vmm_ligoanalysis.MinUnattPE: 0
 vmm_ligoanalysis.MaxUnattPE: 1e12
 vmm_ligoanalysis.MinSumPE: 0
-vmm_ligoanalysis.MinClusterSize: 1
+vmm_ligoanalysis.MinClusterSize: 2
 vmm_ligoanalysis.MaxClusterSize: 1e9
 vmm_ligoanalysis.MinToShapeSlc: -1
 vmm_ligoanalysis.MinSinceShapeSlc: -1
